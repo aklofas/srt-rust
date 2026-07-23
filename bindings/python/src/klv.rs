@@ -56,6 +56,12 @@ use tst_core::klv::st0605::{
     PrecisionTimeStampPack, TimeStatus as RustTimeStatus, decode as decode_st0605,
     encode as encode_st0605,
 };
+use tst_core::klv::st0806::{
+    RvtAoi as RustRvtAoi, RvtAoiType as RustRvtAoiType, RvtLs as RustRvtLs, RvtPoi as RustRvtPoi,
+    RvtPoiType as RustRvtPoiType, RvtUserData as RustRvtUserData, decode as decode_st0806,
+    decode_standalone as decode_st0806_standalone, encode_to_vec as encode_st0806,
+    encode_to_vec_standalone as encode_st0806_standalone,
+};
 use tst_core::klv::st0903::{
     VTargetPack as RustVTargetPack, VmtiLs, decode as decode_st0903_lenient,
     decode_strict as decode_st0903_strict,
@@ -342,6 +348,18 @@ fn is_st0903_vmti_typed_tag(tag: u32) -> bool {
 /// ST 0903.6 VTargetPack typed tags: 1..=23 + 100..=107.
 fn is_st0903_vtarget_typed_tag(tag: u32) -> bool {
     matches!(tag, 1..=23 | 100..=107)
+}
+
+/// ST 0806.4 RVT LS top-level typed tags: 1..=21 (Table 8-1 — no gaps;
+/// mirrors `crates/tst-core/src/klv/st0806/tags.rs::RVT_TAGS`).
+fn is_st0806_rvt_typed_tag(tag: u32) -> bool {
+    matches!(tag, 1..=21)
+}
+
+/// ST 0806.4 POI (Table 8-2) / AOI (Table 8-3) typed tags — both nested
+/// sets share the same 1..=10 tag universe, so one predicate covers both.
+fn is_st0806_poi_aoi_typed_tag(tag: u32) -> bool {
+    matches!(tag, 1..=10)
 }
 
 // ---------------------------------------------------------------------------
@@ -2873,6 +2891,494 @@ fn validate_mismms_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyO
 }
 
 // ---------------------------------------------------------------------------
+// ST 0806.4 — RVT (Remote Video Terminal) Local Set
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `RvtPoiType` to the matching Python
+/// `tstrans.klv.RvtPoiType` enum instance for known codepoints, or a raw
+/// `int` for `Other(code)` (wire-unknown, round-trips byte-exact) —
+/// mirrors the ST 0601 `IcingDetected` asymmetry.
+fn convert_rvt_poi_type(py: Python<'_>, v: RustRvtPoiType) -> PyResult<PyObject> {
+    let code = match v {
+        RustRvtPoiType::Friendly => 1u8,
+        RustRvtPoiType::Hostile => 2,
+        RustRvtPoiType::Target => 3,
+        RustRvtPoiType::Unknown => 4,
+        RustRvtPoiType::Other(b) => return Ok(b.into_py(py)),
+        // #[non_exhaustive] in tst-core: a wildcard is required even
+        // though every current variant is covered above.
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown RvtPoiType variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "RvtPoiType"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_rvt_poi_type`.
+fn rvt_poi_type_from_wire(b: u8) -> RustRvtPoiType {
+    match b {
+        1 => RustRvtPoiType::Friendly,
+        2 => RustRvtPoiType::Hostile,
+        3 => RustRvtPoiType::Target,
+        4 => RustRvtPoiType::Unknown,
+        other => RustRvtPoiType::Other(other),
+    }
+}
+
+/// Translate a Rust `RvtAoiType` to the matching Python
+/// `tstrans.klv.RvtAoiType` enum instance for known codepoints, or a raw
+/// `int` for `Other(code)`. Code 3 is "Reserved" here vs. "Target" for
+/// `RvtPoiType`.
+fn convert_rvt_aoi_type(py: Python<'_>, v: RustRvtAoiType) -> PyResult<PyObject> {
+    let code = match v {
+        RustRvtAoiType::Friendly => 1u8,
+        RustRvtAoiType::Hostile => 2,
+        RustRvtAoiType::Reserved => 3,
+        RustRvtAoiType::Unknown => 4,
+        RustRvtAoiType::Other(b) => return Ok(b.into_py(py)),
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown RvtAoiType variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "RvtAoiType"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_rvt_aoi_type`.
+fn rvt_aoi_type_from_wire(b: u8) -> RustRvtAoiType {
+    match b {
+        1 => RustRvtAoiType::Friendly,
+        2 => RustRvtAoiType::Hostile,
+        3 => RustRvtAoiType::Reserved,
+        4 => RustRvtAoiType::Unknown,
+        other => RustRvtAoiType::Other(other),
+    }
+}
+
+/// Translate a Rust `RvtPoi` to a Python `tstrans.klv.RvtPoi` dataclass.
+fn convert_rvt_poi(py: Python<'_>, poi: &RustRvtPoi) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "RvtPoi"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    if let Some(v) = poi.number {
+        kwargs.set_item("number", v)?;
+    }
+    if let Some(v) = poi.lat_deg {
+        kwargs.set_item("lat_deg", v)?;
+    }
+    if let Some(v) = poi.lon_deg {
+        kwargs.set_item("lon_deg", v)?;
+    }
+    if let Some(v) = poi.alt_m {
+        kwargs.set_item("alt_m", v)?;
+    }
+    if let Some(v) = poi.poi_type {
+        kwargs.set_item("poi_type", convert_rvt_poi_type(py, v)?)?;
+    }
+    if let Some(v) = &poi.text {
+        kwargs.set_item("text", v.as_str())?;
+    }
+    if let Some(v) = &poi.source_icon {
+        kwargs.set_item("source_icon", v.as_str())?;
+    }
+    if let Some(v) = &poi.source_id {
+        kwargs.set_item("source_id", v.as_str())?;
+    }
+    if let Some(v) = &poi.label {
+        kwargs.set_item("label", v.as_str())?;
+    }
+    if let Some(v) = &poi.operation_id {
+        kwargs.set_item("operation_id", v.as_str())?;
+    }
+    kwargs.set_item(
+        "sentinel_tags",
+        pyo3::types::PyTuple::new_bound(py, poi.sentinel_tags.iter().map(|&t| t as u64)),
+    )?;
+    kwargs.set_item("unknown", convert_unknown(py, &poi.unknown)?)?;
+    kwargs.set_item("field_errors", convert_field_errors(py, &poi.field_errors)?)?;
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Inverse of `convert_rvt_poi`.
+fn py_to_rvt_poi(p: &Bound<'_, PyAny>) -> PyResult<RustRvtPoi> {
+    let mut r = RustRvtPoi::default();
+    let py = p.py();
+
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    macro_rules! os {
+        ($field:ident) => {
+            if let Some(s) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<String>>()?
+            {
+                r.$field = Some(s);
+            }
+        };
+    }
+
+    op!(number, u16);
+    op!(lat_deg, f64);
+    op!(lon_deg, f64);
+    op!(alt_m, f64);
+    let poi_type_obj = p.getattr(intern!(py, "poi_type"))?;
+    if !poi_type_obj.is_none() {
+        r.poi_type = Some(rvt_poi_type_from_wire(enum_field_to_u8(&poi_type_obj)?));
+    }
+    os!(text);
+    os!(source_icon);
+    os!(source_id);
+    os!(label);
+    os!(operation_id);
+
+    r.sentinel_tags = p
+        .getattr(intern!(py, "sentinel_tags"))?
+        .extract::<Vec<u32>>()?;
+    r.unknown = py_to_unknown(p, is_st0806_poi_aoi_typed_tag)?;
+
+    Ok(r)
+}
+
+/// Translate a Rust `RvtAoi` to a Python `tstrans.klv.RvtAoi` dataclass.
+fn convert_rvt_aoi(py: Python<'_>, aoi: &RustRvtAoi) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "RvtAoi"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    if let Some(v) = aoi.number {
+        kwargs.set_item("number", v)?;
+    }
+    if let Some(v) = aoi.corner_lat_p1_deg {
+        kwargs.set_item("corner_lat_p1_deg", v)?;
+    }
+    if let Some(v) = aoi.corner_lon_p1_deg {
+        kwargs.set_item("corner_lon_p1_deg", v)?;
+    }
+    if let Some(v) = aoi.corner_lat_p3_deg {
+        kwargs.set_item("corner_lat_p3_deg", v)?;
+    }
+    if let Some(v) = aoi.corner_lon_p3_deg {
+        kwargs.set_item("corner_lon_p3_deg", v)?;
+    }
+    if let Some(v) = aoi.aoi_type {
+        kwargs.set_item("aoi_type", convert_rvt_aoi_type(py, v)?)?;
+    }
+    if let Some(v) = &aoi.text {
+        kwargs.set_item("text", v.as_str())?;
+    }
+    if let Some(v) = &aoi.source_id {
+        kwargs.set_item("source_id", v.as_str())?;
+    }
+    if let Some(v) = &aoi.label {
+        kwargs.set_item("label", v.as_str())?;
+    }
+    if let Some(v) = &aoi.operation_id {
+        kwargs.set_item("operation_id", v.as_str())?;
+    }
+    kwargs.set_item(
+        "sentinel_tags",
+        pyo3::types::PyTuple::new_bound(py, aoi.sentinel_tags.iter().map(|&t| t as u64)),
+    )?;
+    kwargs.set_item("unknown", convert_unknown(py, &aoi.unknown)?)?;
+    kwargs.set_item("field_errors", convert_field_errors(py, &aoi.field_errors)?)?;
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Inverse of `convert_rvt_aoi`.
+fn py_to_rvt_aoi(p: &Bound<'_, PyAny>) -> PyResult<RustRvtAoi> {
+    let mut r = RustRvtAoi::default();
+    let py = p.py();
+
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    macro_rules! os {
+        ($field:ident) => {
+            if let Some(s) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<String>>()?
+            {
+                r.$field = Some(s);
+            }
+        };
+    }
+
+    op!(number, u16);
+    op!(corner_lat_p1_deg, f64);
+    op!(corner_lon_p1_deg, f64);
+    op!(corner_lat_p3_deg, f64);
+    op!(corner_lon_p3_deg, f64);
+    let aoi_type_obj = p.getattr(intern!(py, "aoi_type"))?;
+    if !aoi_type_obj.is_none() {
+        r.aoi_type = Some(rvt_aoi_type_from_wire(enum_field_to_u8(&aoi_type_obj)?));
+    }
+    os!(text);
+    os!(source_id);
+    os!(label);
+    os!(operation_id);
+
+    r.sentinel_tags = p
+        .getattr(intern!(py, "sentinel_tags"))?
+        .extract::<Vec<u32>>()?;
+    r.unknown = py_to_unknown(p, is_st0806_poi_aoi_typed_tag)?;
+
+    Ok(r)
+}
+
+/// Translate a Rust `RvtUserData` to a Python `tstrans.klv.RvtUserData`
+/// dataclass. `data_type`/`numeric_id` are `@property` accessors computed
+/// on the Python side from `numeric_id_raw` (see `WeaponsStore`'s
+/// bitfield accessors for the same pattern) — only the two wire fields
+/// cross the binding.
+fn convert_rvt_user_data(py: Python<'_>, ud: &RustRvtUserData) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "RvtUserData"))?;
+    Ok(cls
+        .call1((
+            ud.numeric_id_raw,
+            pyo3::types::PyBytes::new_bound(py, &ud.data),
+        ))?
+        .unbind())
+}
+
+/// Inverse of `convert_rvt_user_data`.
+fn py_to_rvt_user_data(p: &Bound<'_, PyAny>) -> PyResult<RustRvtUserData> {
+    let py = p.py();
+    Ok(RustRvtUserData {
+        numeric_id_raw: p.getattr(intern!(py, "numeric_id_raw"))?.extract()?,
+        data: p.getattr(intern!(py, "data"))?.extract()?,
+    })
+}
+
+/// Translate a Rust `RvtLs` to a Python `tstrans.klv.RvtLs` dataclass.
+fn convert_rvt_ls(py: Python<'_>, ls: &RustRvtLs) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "RvtLs"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    if let Some(v) = ls.crc32 {
+        kwargs.set_item("crc32", v)?;
+    }
+    if let Some(v) = ls.timestamp_us {
+        kwargs.set_item("timestamp_us", v)?;
+    }
+    if let Some(v) = ls.platform_true_airspeed {
+        kwargs.set_item("platform_true_airspeed", v)?;
+    }
+    if let Some(v) = ls.platform_indicated_airspeed {
+        kwargs.set_item("platform_indicated_airspeed", v)?;
+    }
+    if let Some(v) = ls.telemetry_accuracy_indicator {
+        kwargs.set_item("telemetry_accuracy_indicator", v)?;
+    }
+    if let Some(v) = ls.frag_circle_radius_m {
+        kwargs.set_item("frag_circle_radius_m", v)?;
+    }
+    if let Some(v) = ls.frame_code {
+        kwargs.set_item("frame_code", v)?;
+    }
+    if let Some(v) = ls.rvt_ls_version {
+        kwargs.set_item("rvt_ls_version", v)?;
+    }
+    if let Some(v) = ls.video_data_rate {
+        kwargs.set_item("video_data_rate", v)?;
+    }
+    if let Some(v) = &ls.digital_video_file_format {
+        kwargs.set_item("digital_video_file_format", v.as_str())?;
+    }
+    let user_defined: Vec<PyObject> = ls
+        .user_defined
+        .iter()
+        .map(|u| convert_rvt_user_data(py, u))
+        .collect::<PyResult<Vec<_>>>()?;
+    kwargs.set_item(
+        "user_defined",
+        pyo3::types::PyTuple::new_bound(py, user_defined),
+    )?;
+    let pois: Vec<PyObject> = ls
+        .points_of_interest
+        .iter()
+        .map(|p| convert_rvt_poi(py, p))
+        .collect::<PyResult<Vec<_>>>()?;
+    kwargs.set_item(
+        "points_of_interest",
+        pyo3::types::PyTuple::new_bound(py, pois),
+    )?;
+    let aois: Vec<PyObject> = ls
+        .areas_of_interest
+        .iter()
+        .map(|a| convert_rvt_aoi(py, a))
+        .collect::<PyResult<Vec<_>>>()?;
+    kwargs.set_item(
+        "areas_of_interest",
+        pyo3::types::PyTuple::new_bound(py, aois),
+    )?;
+    if let Some(v) = ls.aircraft_mgrs_zone {
+        kwargs.set_item("aircraft_mgrs_zone", v)?;
+    }
+    if let Some(v) = &ls.aircraft_mgrs_band_grid {
+        kwargs.set_item("aircraft_mgrs_band_grid", v.as_str())?;
+    }
+    if let Some(v) = ls.aircraft_mgrs_easting_m {
+        kwargs.set_item("aircraft_mgrs_easting_m", v)?;
+    }
+    if let Some(v) = ls.aircraft_mgrs_northing_m {
+        kwargs.set_item("aircraft_mgrs_northing_m", v)?;
+    }
+    if let Some(v) = ls.frame_center_mgrs_zone {
+        kwargs.set_item("frame_center_mgrs_zone", v)?;
+    }
+    if let Some(v) = &ls.frame_center_mgrs_band_grid {
+        kwargs.set_item("frame_center_mgrs_band_grid", v.as_str())?;
+    }
+    if let Some(v) = ls.frame_center_mgrs_easting_m {
+        kwargs.set_item("frame_center_mgrs_easting_m", v)?;
+    }
+    if let Some(v) = ls.frame_center_mgrs_northing_m {
+        kwargs.set_item("frame_center_mgrs_northing_m", v)?;
+    }
+    kwargs.set_item("unknown", convert_unknown(py, &ls.unknown)?)?;
+    kwargs.set_item("field_errors", convert_field_errors(py, &ls.field_errors)?)?;
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Inverse of `convert_rvt_ls`.
+fn py_to_rvt_ls(p: &Bound<'_, PyAny>) -> PyResult<RustRvtLs> {
+    let mut r = RustRvtLs::default();
+    let py = p.py();
+
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    macro_rules! os {
+        ($field:ident) => {
+            if let Some(s) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<String>>()?
+            {
+                r.$field = Some(s);
+            }
+        };
+    }
+
+    op!(crc32, u32);
+    op!(timestamp_us, u64);
+    op!(platform_true_airspeed, u16);
+    op!(platform_indicated_airspeed, u16);
+    op!(telemetry_accuracy_indicator, u8);
+    op!(frag_circle_radius_m, u16);
+    op!(frame_code, u32);
+    op!(rvt_ls_version, u8);
+    op!(video_data_rate, u32);
+    os!(digital_video_file_format);
+
+    for u in p.getattr(intern!(py, "user_defined"))?.iter()? {
+        r.user_defined.push(py_to_rvt_user_data(&u?)?);
+    }
+    for poi in p.getattr(intern!(py, "points_of_interest"))?.iter()? {
+        r.points_of_interest.push(py_to_rvt_poi(&poi?)?);
+    }
+    for aoi in p.getattr(intern!(py, "areas_of_interest"))?.iter()? {
+        r.areas_of_interest.push(py_to_rvt_aoi(&aoi?)?);
+    }
+
+    op!(aircraft_mgrs_zone, u8);
+    os!(aircraft_mgrs_band_grid);
+    op!(aircraft_mgrs_easting_m, u32);
+    op!(aircraft_mgrs_northing_m, u32);
+    op!(frame_center_mgrs_zone, u8);
+    os!(frame_center_mgrs_band_grid);
+    op!(frame_center_mgrs_easting_m, u32);
+    op!(frame_center_mgrs_northing_m, u32);
+
+    r.unknown = py_to_unknown(p, is_st0806_rvt_typed_tag)?;
+
+    Ok(r)
+}
+
+/// Decode an RVT Local Set body (ST 0806.4 Table 8-1) — the form carried
+/// as the value of ST 0601 Tag 73. `buf` is **body-only** (no UL / outer
+/// BER length wrapper).
+#[pyfunction]
+#[pyo3(name = "decode_rvt")]
+fn decode_rvt_py(py: Python<'_>, buf: &[u8]) -> PyResult<PyObject> {
+    match decode_st0806(buf) {
+        Ok(ls) => convert_rvt_ls(py, &ls),
+        Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
+    }
+}
+
+/// Decode a standalone RVT Local Set: 16-byte UL + BER length + body,
+/// verifying the CRC-32/MPEG-2 checksum (Tag 1) when present. Raises
+/// `KlvError(CHECKSUM_MISMATCH)` on a bad CRC, `KlvError
+/// (BAD_UNIVERSAL_LABEL)` on a mismatched UL.
+#[pyfunction]
+#[pyo3(name = "decode_rvt_standalone")]
+fn decode_rvt_standalone_py(py: Python<'_>, buf: &[u8]) -> PyResult<PyObject> {
+    match decode_st0806_standalone(buf) {
+        Ok(ls) => convert_rvt_ls(py, &ls),
+        Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
+    }
+}
+
+/// Encode a Python `RvtLs` to wire bytes — RVT LS **body only** (no UL /
+/// outer BER length wrapper / no Tag 1 CRC). Use for embedded RVT carried
+/// in ST 0601 Tag 73. Returns `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_rvt")]
+fn encode_rvt_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_rvt_ls(record)?;
+    let bytes = encode_st0806(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+/// Encode a Python `RvtLs` as a standalone RVT record:
+/// `[RVT_LS_UL:16][outer BER length][Tag 2 timestamp first][body][Tag 1
+/// CRC-32/MPEG-2 last]` per ST 0806.4-02/-04. Raises `KlvEncodeError`
+/// with `tag=2` if `timestamp_us` is unset. Returns `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_rvt_standalone")]
+fn encode_rvt_standalone_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_rvt_ls(record)?;
+    let bytes =
+        encode_st0806_standalone(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -2905,5 +3411,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_mismms_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_sdcc_flp_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_sdcc_flp_mode2_py, m)?)?;
+    m.add_function(wrap_pyfunction!(decode_rvt_py, m)?)?;
+    m.add_function(wrap_pyfunction!(decode_rvt_standalone_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_rvt_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_rvt_standalone_py, m)?)?;
     Ok(())
 }

@@ -1472,6 +1472,204 @@ def parse_klv_universal(buf: bytes, *, strict: bool = False):
     return None
 
 
+# ---------------------------------------------------------------------------
+# ST 0806.4 RVT (Remote Video Terminal) Local Set
+# ---------------------------------------------------------------------------
+
+
+class RvtPoiType(enum.Enum):
+    """ST 0806.4 Table 8-2 Tag 5 — Point of Interest Type. Wire-unknown
+    codepoints surface as the raw `int` on `RvtPoi.poi_type` rather than
+    an enum instance (same asymmetric pattern as `IcingDetected`)."""
+
+    FRIENDLY = 1
+    HOSTILE = 2
+    TARGET = 3
+    UNKNOWN = 4
+
+
+class RvtAoiType(enum.Enum):
+    """ST 0806.4 Table 8-3 Tag 6 — Area of Interest Type. Shares codes
+    1/2/4 with `RvtPoiType`; code 3 is "Reserved" here rather than
+    "Target". Wire-unknown codepoints surface as the raw `int` on
+    `RvtAoi.aoi_type`."""
+
+    FRIENDLY = 1
+    HOSTILE = 2
+    RESERVED = 3
+    UNKNOWN = 4
+
+
+class RvtUserDataType(enum.Enum):
+    """ST 0806.4 Table 8-4 Tag 1 top-2-bit data-type code, derived from
+    `RvtUserData.numeric_id_raw` — see `RvtUserData.data_type`. Fully
+    enumerated (a 2-bit field has exactly these 4 values); unlike
+    `RvtPoiType`/`RvtAoiType` there is no wire-unknown catch-all."""
+
+    STRINGS = 0
+    INT = 1
+    UINT = 2
+    EXPERIMENTAL = 3
+
+
+@dataclass(frozen=True, slots=True)
+class RvtUserData:
+    """ST 0806.4 Table 8-4 User Defined Local Set, carried on RVT Tag 11
+    (repeatable — ST 0806.4-25). `numeric_id_raw` packs the Tag 1 byte
+    verbatim (bits 8-7 = data type, bits 6-1 = numeric id 0-63);
+    `data_type`/`numeric_id` are `@property` accessors computed from it
+    (mirrors the Rust `RvtUserData::data_type()`/`numeric_id()` methods
+    and the pure-Python bitfield-accessor pattern used by
+    `WeaponsStore`) — only the two wire fields cross the binding."""
+
+    numeric_id_raw: int
+    data: bytes = b""
+
+    @property
+    def data_type(self) -> RvtUserDataType:
+        return RvtUserDataType(self.numeric_id_raw >> 6)
+
+    @property
+    def numeric_id(self) -> int:
+        return self.numeric_id_raw & 0x3F
+
+
+@dataclass(frozen=True, slots=True)
+class RvtPoi:
+    """ST 0806.4 Table 8-2 Point of Interest Local Set, carried on RVT
+    Tag 12 (repeatable — ST 0806.4-25). Number/Latitude/Longitude are
+    mandatory on encode (ST 0806.4-08..-10); a `sentinel_tags` entry for
+    tag 2 or 3 counts as present even when the paired float field is
+    `None` (the wire carried the spec's `0x80000000` "error" indicator
+    instead of a value — see `UasDatalinkLs.sentinel_tags` for the same
+    convention at the ST 0601 layer)."""
+
+    number: int | None = None
+    lat_deg: float | None = None
+    lon_deg: float | None = None
+    alt_m: float | None = None
+    poi_type: RvtPoiType | int | None = None
+    text: str | None = None
+    source_icon: str | None = None
+    source_id: str | None = None
+    label: str | None = None
+    operation_id: str | None = None
+    sentinel_tags: tuple[int, ...] = ()
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RvtAoi:
+    """ST 0806.4 Table 8-3 Area of Interest Local Set, carried on RVT
+    Tag 13 (repeatable — ST 0806.4-25). Corner 1 = NW (upper-left),
+    Corner 3 = SE (lower-right). Number/both corner pairs/Type are
+    mandatory on encode (ST 0806.4-13..-18); same sentinel-counts-as-
+    present rule as `RvtPoi`."""
+
+    number: int | None = None
+    corner_lat_p1_deg: float | None = None
+    corner_lon_p1_deg: float | None = None
+    corner_lat_p3_deg: float | None = None
+    corner_lon_p3_deg: float | None = None
+    aoi_type: RvtAoiType | int | None = None
+    text: str | None = None
+    source_id: str | None = None
+    label: str | None = None
+    operation_id: str | None = None
+    sentinel_tags: tuple[int, ...] = ()
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+
+def _rvt_mgrs_string(
+    zone: int | None,
+    band_grid: str | None,
+    easting: int | None,
+    northing: int | None,
+) -> str | None:
+    """Reconstruct a 15-char MGRS string (zone zero-padded to 2, 3-char
+    band+grid, easting/northing zero-padded to 5) — pure-Python port of
+    the Rust `RvtLs::aircraft_mgrs`/`frame_center_mgrs` helper. `None` if
+    any of the four components is missing."""
+    if zone is None or band_grid is None or easting is None or northing is None:
+        return None
+    return f"{zone:02d}{band_grid}{easting:05d}{northing:05d}"
+
+
+@dataclass(frozen=True, slots=True)
+class RvtLs:
+    """MISB ST 0806.4 RVT (Remote Video Terminal) Local Set typed view.
+
+    Standalone-capable: carries its own 16-byte Universal Label and, per
+    ST 0806.4-02/-04, a timestamp-first Tag 2 plus a CRC-last Tag 1 when
+    transmitted independently — see `decode_rvt_standalone` /
+    `encode_rvt_standalone`. Also embeddable: ST 0601 Tag 73 carries the
+    RVT LS *body* (no UL, no timestamp/CRC-position requirement) — see
+    `decode_rvt` / `encode_rvt` and `UasDatalinkLs`.
+
+    The checksum (`crc32`) is CRC-32/MPEG-2 (ISO/IEC 13818-1) — a real
+    divergence from the ST 0601 16-bit running-sum checksum. It is
+    captured on decode but only verified by `decode_rvt_standalone` (an
+    embedded RVT LS never carries one)."""
+
+    crc32: int | None = None
+    timestamp_us: int | None = None
+    platform_true_airspeed: int | None = None
+    platform_indicated_airspeed: int | None = None
+    telemetry_accuracy_indicator: int | None = None
+    frag_circle_radius_m: int | None = None
+    frame_code: int | None = None
+    rvt_ls_version: int | None = None
+    video_data_rate: int | None = None
+    digital_video_file_format: str | None = None
+    user_defined: tuple[RvtUserData, ...] = ()
+    points_of_interest: tuple[RvtPoi, ...] = ()
+    areas_of_interest: tuple[RvtAoi, ...] = ()
+    aircraft_mgrs_zone: int | None = None
+    aircraft_mgrs_band_grid: str | None = None
+    aircraft_mgrs_easting_m: int | None = None
+    aircraft_mgrs_northing_m: int | None = None
+    frame_center_mgrs_zone: int | None = None
+    frame_center_mgrs_band_grid: str | None = None
+    frame_center_mgrs_easting_m: int | None = None
+    frame_center_mgrs_northing_m: int | None = None
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+    def with_(self, **changes: object) -> "RvtLs":
+        """Return a copy with the named fields replaced."""
+        return replace(self, **changes)
+
+    @property
+    def aircraft_mgrs(self) -> str | None:
+        """Reconstructed 15-char aircraft MGRS string (Tags 14-17), or
+        `None` if any component is missing."""
+        return _rvt_mgrs_string(
+            self.aircraft_mgrs_zone,
+            self.aircraft_mgrs_band_grid,
+            self.aircraft_mgrs_easting_m,
+            self.aircraft_mgrs_northing_m,
+        )
+
+    @property
+    def frame_center_mgrs(self) -> str | None:
+        """Reconstructed 15-char frame-center MGRS string (Tags 18-21),
+        same layout as `aircraft_mgrs`."""
+        return _rvt_mgrs_string(
+            self.frame_center_mgrs_zone,
+            self.frame_center_mgrs_band_grid,
+            self.frame_center_mgrs_easting_m,
+            self.frame_center_mgrs_northing_m,
+        )
+
+
+decode_rvt = _native_mod.decode_rvt
+decode_rvt_standalone = _native_mod.decode_rvt_standalone
+encode_rvt = _native_mod.encode_rvt
+encode_rvt_standalone = _native_mod.encode_rvt_standalone
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -1545,4 +1743,15 @@ __all__: list[str] = [
     "encode_sdcc_flp_mode2",
     "MismmsViolation",
     "validate_mismms",
+    "RvtPoiType",
+    "RvtAoiType",
+    "RvtUserDataType",
+    "RvtUserData",
+    "RvtPoi",
+    "RvtAoi",
+    "RvtLs",
+    "decode_rvt",
+    "decode_rvt_standalone",
+    "encode_rvt",
+    "encode_rvt_standalone",
 ]

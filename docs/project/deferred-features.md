@@ -1994,3 +1994,54 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A consumer asks for a wired CoT sender (e.g.
   "give me a `CotSender` that takes a `UasDatalinkLs` and multicasts
   the Platform Position event every N seconds").
+
+## SDCC-FLP wire-adjacency preservation on encode
+
+- **Status:** Not implemented. `UasDatalinkLs::sdcc_flps` (ST 0601 Tag
+  102, MULTI-INSTANCE) captures each wire occurrence as raw pack bytes
+  plus its `preceding_tags` — the Local Set item tags the occurrence
+  refines, per the "Refined Source List" binding (ST 0601.19 §8.102).
+  On encode, `write_typed_fields` re-emits every `sdcc_flps` entry
+  verbatim but groups all occurrences together at Tag 102's
+  ascending-tag-order position in the body — it does not reproduce the
+  original interleaving with each occurrence's `preceding_tags` (see
+  the `SdccFlpField` "Ascending-order emission caveat" rustdoc in
+  `klv::st0601::model`). `preceding_tags` still records what the
+  original wire order was; the pack bytes themselves stay byte-exact.
+  The lower-level `klv::st1010::encode_sdcc_flp_mode2` pack encoder has
+  no adjacency concept at all — it emits one self-contained pack from
+  caller-supplied std-dev/correlation slices with no notion of a
+  surrounding Local Set.
+- **Why deferred:** Conformant SDCC emission with arbitrary member
+  sets — constructing a fresh `UasDatalinkLs` (rather than replaying a
+  captured one) with SDCC-FLP occurrences correctly interleaved at the
+  wire positions of the items they refine — would need new encoder
+  plumbing to place each Tag 102 TLV mid-body instead of at the fixed
+  post-typed-fields position `write_typed_fields` uses today. No
+  consumer has asked for constructed (as opposed to captured/replayed)
+  SDCC-FLP emission.
+- **Trigger to revisit:** A consumer needs to construct — not just
+  decode-then-replay — an ST 0601 record with SDCC-FLP occurrences
+  correctly interleaved with the Local Set items they refine.
+
+## ST 0903 VTrack standalone LS
+
+- **Status:** Not implemented, and not planned against the spec
+  version this crate targets. MISB ST 0903.4/.5 defined a standalone
+  "VTrack LS" + "VTrackItem" pack (track-level reporting, distinct
+  from the nested `VTracker` sub-pack on each `VTargetPack` — see the
+  "Typed nested VMTI Local Sets" entry above, which is a different
+  construct and not affected by this entry). ST 0903.6 — the version
+  `klv::st0903` implements — formally **removed VTrack LS** (its own
+  Revision History: "Removed VTrack LS"); every VTrack-LS-related
+  requirement in the ST 0903.6 text (ST 0903.4-95/-96/-97,
+  ST 0903.5-109 through -115) is marked `(Deprecated)`.
+- **Why deferred:** This isn't a coverage gap in the ST 0903.6
+  decoder — VTrack LS is withdrawn from the spec version this crate
+  targets, so `klv::st0903` correctly does not model it. The only
+  reason to add it would be to read legacy captures still carrying an
+  ST 0903.4/.5-era VTrack LS, which is a distinct (older-spec-version)
+  concern from the ST 0903.6 typed layer this crate ships.
+- **Trigger to revisit:** A consumer needs to ingest legacy ST
+  0903.4/.5 captures that still carry the (now-removed) VTrack LS /
+  VTrackItem pack.

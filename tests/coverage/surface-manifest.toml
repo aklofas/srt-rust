@@ -3349,7 +3349,7 @@ reason = "derive impl for st0806 RvtLs; see tst_core::klv::st0806::RvtLs entry â
 
 [[exempt]]
 item = "tst_core::klv::RvtLs::frame_center_mgrs"
-reason = "st0806 RvtLs accessor; exercised by the Python and Java st0806 suites, no dedicated Rust test yet"
+reason = "st0806 RvtLs accessor; mirrored by the Python and Java st0806 suites, no dedicated Rust test yet"
 
 [[exempt]]
 item = "tst_core::klv::RvtPoi::clone"

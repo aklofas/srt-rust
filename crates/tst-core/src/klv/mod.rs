@@ -34,6 +34,7 @@ pub mod pack;
 pub mod st0102;
 pub mod st0601;
 pub mod st0605;
+pub mod st0805;
 pub mod st0806;
 pub mod st0903;
 pub mod st1010;
@@ -47,6 +48,7 @@ pub use st0102::{
     SecurityClassification, SecurityLs,
 };
 pub use st0605::{PrecisionTimeStampPack, TimeStatus};
+pub use st0805::{CotConfig, platform_uid, spi_uid};
 pub use st0806::{
     RVT_AOI_LS_UL, RVT_LS_UL, RVT_POI_LS_UL, RVT_USER_DEFINED_LS_UL, RvtAoi, RvtAoiType, RvtLs,
     RvtPoi, RvtPoiType, RvtUserData, RvtUserDataType,

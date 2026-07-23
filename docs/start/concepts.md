@@ -73,7 +73,7 @@ The military / ISR community settled on the **MISB** (Motion Imagery Standards B
 - **MISB ST 0605** — Amend tags (corrections to previously-sent records).
 - **MISB ST 0903** — VMTI (Video Moving Target Indicator) — per-target detection bounding boxes inside the video.
 
-ts-transformer ships typed Rust structs for all four sets: encode a typed `UasDatalinkLs` into KLV bytes, or decode KLV bytes into a typed `UasDatalinkLs`. Sibling typed layers cover items nested inside an ST 0601 record too — ST 0806 (Remote Video Terminal, Tag 73) and ST 1010 (SDCC-FLP error covariance, Tag 102) — plus a one-way ST 0805 KLV→Cursor-on-Target conversion. See [`guides/klv.md`](/docs/guides/klv.md).
+ts-transformer ships typed Rust structs for all four sets — `UasDatalinkLs` (ST 0601), `SecurityLs` (ST 0102), `PrecisionTimeStampPack` (ST 0605), and `VmtiLs` (ST 0903): encode a typed record into KLV bytes, or decode KLV bytes into the typed struct. Sibling typed layers cover items nested inside an ST 0601 record too — ST 0806 (Remote Video Terminal, Tag 73) and ST 1010 (SDCC-FLP error covariance, Tag 102) — plus a one-way ST 0805 KLV→Cursor-on-Target conversion. See [`guides/klv.md`](/docs/guides/klv.md).
 
 ### Lengths: BER encoding
 

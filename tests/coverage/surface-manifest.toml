@@ -3179,6 +3179,186 @@ item = "tst_core::klv::st0605::TimeStatus"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::klv::st0806::RvtAoi"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RvtLs"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RvtPoi"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RvtUserData"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RVT_AOI_LS_UL"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RVT_LS_UL"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RVT_POI_LS_UL"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::st0806::RVT_USER_DEFINED_LS_UL"
+reason = "st0806 RVT model added in WP-D Task D2 (2026-07-22); no decode/encode/tests yet — graduate to [[surface]] with owning_tests when D3/D4 land"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoi"
+reason = "top-level re-export of tst_core::klv::st0806::RvtAoi; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs"
+reason = "top-level re-export of tst_core::klv::st0806::RvtLs; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoi"
+reason = "top-level re-export of tst_core::klv::st0806::RvtPoi; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData"
+reason = "top-level re-export of tst_core::klv::st0806::RvtUserData; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RVT_AOI_LS_UL"
+reason = "top-level re-export of tst_core::klv::st0806::RVT_AOI_LS_UL; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RVT_LS_UL"
+reason = "top-level re-export of tst_core::klv::st0806::RVT_LS_UL; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RVT_POI_LS_UL"
+reason = "top-level re-export of tst_core::klv::st0806::RVT_POI_LS_UL; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RVT_USER_DEFINED_LS_UL"
+reason = "top-level re-export of tst_core::klv::st0806::RVT_USER_DEFINED_LS_UL; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoi::clone"
+reason = "derive impl for st0806 RvtAoi; see tst_core::klv::st0806::RvtAoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoi::eq"
+reason = "derive impl for st0806 RvtAoi; see tst_core::klv::st0806::RvtAoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoi::fmt"
+reason = "derive impl for st0806 RvtAoi; see tst_core::klv::st0806::RvtAoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoi::default"
+reason = "derive impl for st0806 RvtAoi; see tst_core::klv::st0806::RvtAoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs::clone"
+reason = "derive impl for st0806 RvtLs; see tst_core::klv::st0806::RvtLs entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs::eq"
+reason = "derive impl for st0806 RvtLs; see tst_core::klv::st0806::RvtLs entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs::fmt"
+reason = "derive impl for st0806 RvtLs; see tst_core::klv::st0806::RvtLs entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs::default"
+reason = "derive impl for st0806 RvtLs; see tst_core::klv::st0806::RvtLs entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs::aircraft_mgrs"
+reason = "st0806 RvtLs accessor added in WP-D Task D2 (2026-07-22); no dedicated test yet — graduate to [[surface]] when D3/D4 tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtLs::frame_center_mgrs"
+reason = "st0806 RvtLs accessor added in WP-D Task D2 (2026-07-22); no dedicated test yet — graduate to [[surface]] when D3/D4 tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoi::clone"
+reason = "derive impl for st0806 RvtPoi; see tst_core::klv::st0806::RvtPoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoi::eq"
+reason = "derive impl for st0806 RvtPoi; see tst_core::klv::st0806::RvtPoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoi::fmt"
+reason = "derive impl for st0806 RvtPoi; see tst_core::klv::st0806::RvtPoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoi::default"
+reason = "derive impl for st0806 RvtPoi; see tst_core::klv::st0806::RvtPoi entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData::clone"
+reason = "derive impl for st0806 RvtUserData; see tst_core::klv::st0806::RvtUserData entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData::eq"
+reason = "derive impl for st0806 RvtUserData; see tst_core::klv::st0806::RvtUserData entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData::fmt"
+reason = "derive impl for st0806 RvtUserData; see tst_core::klv::st0806::RvtUserData entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData::default"
+reason = "derive impl for st0806 RvtUserData; see tst_core::klv::st0806::RvtUserData entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData::data_type"
+reason = "st0806 RvtUserData accessor added in WP-D Task D2 (2026-07-22); no dedicated test yet — graduate to [[surface]] when D3/D4 tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserData::numeric_id"
+reason = "st0806 RvtUserData accessor added in WP-D Task D2 (2026-07-22); no dedicated test yet — graduate to [[surface]] when D3/D4 tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoiType::clone"
+reason = "derive impl for st0806 RvtAoiType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoiType::eq"
+reason = "derive impl for st0806 RvtAoiType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtAoiType::fmt"
+reason = "derive impl for st0806 RvtAoiType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoiType::clone"
+reason = "derive impl for st0806 RvtPoiType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoiType::eq"
+reason = "derive impl for st0806 RvtPoiType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtPoiType::fmt"
+reason = "derive impl for st0806 RvtPoiType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserDataType::clone"
+reason = "derive impl for st0806 RvtUserDataType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserDataType::eq"
+reason = "derive impl for st0806 RvtUserDataType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
+item = "tst_core::klv::RvtUserDataType::fmt"
+reason = "derive impl for st0806 RvtUserDataType; covered when D3/D4 decode/encode tests land"
+
+[[exempt]]
 item = "tst_core::klv::st0903::VMTI_LS_UL"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

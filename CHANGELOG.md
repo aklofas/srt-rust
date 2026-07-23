@@ -9,6 +9,55 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — MISB ST 0806.4 Remote Video Terminal (RVT) Local Set typed layer (`klv::st0806`)
+
+- New sibling-layer module `klv::st0806` types the RVT Local Set carried
+  by ST 0601 Tag 73: both the nested body form (`decode`/`encode_to_vec`,
+  no UL, embedded via `UasDatalinkLs::rvt`) and the standalone
+  independent form (`decode_standalone`/`encode_to_vec_standalone`, own
+  16-byte UL, timestamp-first Tag 2, checksum-last Tag 1 per
+  ST 0806.4-02/-04). `UasDatalinkLs::rvt`'s rustdoc now points to the
+  typed layer, mirroring the `vmti` field's pointer to `klv::st0903`.
+- Two repeatable nested Local Sets — Point of Interest (`RvtPoi`, Tag
+  12) and Area of Interest (`RvtAoi`, Tag 13) — and one repeatable User
+  Defined LS (`RvtUserData`, Tag 11) round out the schema (ST 0806.4
+  Tables 8-2/8-3/8-4); POI/AOI lat-lon/altitude use the same
+  symmetric-mapped range + `0x80000000` "error"-sentinel machinery as
+  ST 0601. POI Type and AOI Type share a wire key but diverge at value
+  3 ("Target" vs. "Reserved"), so each gets its own `RvtPoiType`/
+  `RvtAoiType` enum (plus `RvtUserDataType`).
+- The standalone form's checksum (Tag 1) is CRC-32/MPEG-2 (ISO/IEC
+  13818-1: poly `0x04C11DB7`, init `0xFFFFFFFF`, no reflection, no
+  final XOR) — a new `klv::crc32` substrate, and a real divergence from
+  the ST 0601 16-bit running-sum. A mismatch raises the new
+  `KlvDecodeError::Crc32Mismatch { expected, found }` variant. An
+  embedded RVT LS carries neither Tag 1 nor Tag 2.
+- Encoding a typed tag through the `unknown` pass-through bucket (RVT
+  LS top level, or nested in `RvtPoi`/`RvtAoi`) is rejected with the
+  existing `KlvEncodeError::ReservedTagInUnknown`, mirroring
+  `klv::st0601::encode`'s guard.
+- New fuzz target `klv_st0806_decode` (29 fuzz targets total across the
+  workspace).
+
+### Added — Python bindings: `klv::st0806` RVT Local Set mirror
+
+- `tstrans.klv` gains `RvtLs`/`RvtPoi`/`RvtAoi`/`RvtUserData` frozen
+  dataclasses (plus `RvtPoiType`/`RvtAoiType`/`RvtUserDataType` enums)
+  and `decode_rvt`/`decode_rvt_standalone`/`encode_rvt`/
+  `encode_rvt_standalone` entry points. A CRC-32 mismatch on the
+  standalone form raises `KlvError` with the existing
+  `CHECKSUM_MISMATCH` kind (reused, not a new kind) and the declared/
+  computed values in hex.
+
+### Added — JVM bindings: `klv::st0806` RVT Local Set mirror
+
+- `org.tstrans.klv` gains `RvtLs`/`RvtPoi`/`RvtAoi`/`RvtUserData`
+  records (plus `RvtPoiType`/`RvtAoiType`/`RvtUserDataType` enums) and
+  `Klv.decodeRvt`/`decodeRvtStandalone`/`encodeRvt`/
+  `encodeRvtStandalone`. A CRC-32 mismatch on the standalone form
+  throws `KlvDecodeException` with the existing `CHECKSUM_MISMATCH`
+  kind (reused, not a new kind).
+
 ### Added — ST 0601 Tag 102 SDCC-FLP positional capture (1 new item, 142 of 143 total)
 
 - MISB ST 0601 Tag 102 (SDCC-FLP, Standard Deviation and Correlation

@@ -318,8 +318,8 @@ coarser grain to avoid drifting per-tag detail out of sync).
 | 110–111, 123–126, 131, 133, 136–137, 139 | Var-length int/enum items (incl. `PlatformStatus`, `SensorControlMode`) | ✅ Full |
 | 47 | Generic flag bitfield | ✅ Full |
 | 81, 102, 115–116, 121–122, 127–128, 130, 138, 140–143 | Pack & list items (Appendix Table C1 — `ImageHorizonPixels`, `SdccFlpField`, `ControlCommand`, id lists, `CountryCodes`, `WavelengthRecord`, `AirbaseLocations`, `PayloadList`, `WeaponsStore`, `Waypoint`, `ViewDomain`, `MetadataSubstreamId`) | ✅ Full |
-| 48, 74, 94 | Sibling-decoded nested local sets | ✅ Bytes pass-through; typed via `klv::st0102`/`klv::st0903`/`klv::st1204` |
-| 73, 95, 97–101 | Named nested-set byte fields (RVT / SAR MI / Range Image / Geo-Registration / Composite Imaging / Segment / Amend) | 🔁 Pass-through — dedicated struct field, interior bytes not yet decoded |
+| 48, 73, 74, 94 | Sibling-decoded nested local sets | ✅ Bytes pass-through; typed via `klv::st0102`/`klv::st0806`/`klv::st0903`/`klv::st1204` |
+| 95, 97–101 | Named nested-set byte fields (SAR MI / Range Image / Geo-Registration / Composite Imaging / Segment / Amend) | 🔁 Pass-through — dedicated struct field, interior bytes not yet decoded |
 | 66 | (deprecated placeholder) | 🔁 Pass-through via `unknown` (permanently, by design) |
 | any other tag | forward-compat | 🔁 Pass-through via `unknown` (ST 0107.5 future-proof skip) |
 

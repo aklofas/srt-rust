@@ -21,10 +21,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `uid` is a deterministic concatenation of KLV tags, never a UUID (a
   replayed file must reproduce byte-identical CoT): `platform_uid` =
   `"{tag10}_{tag3}"`, `spi_uid` = `"{tag10}_{tag3}_{tag11}"`. Platform
-  point uses tags 13/14 + HAE; SPI point prefers tags 40/41 (falling
-  back to the frame-center tags 23/24), with elevation preferring the
-  HAE-native tag (75 platform / 78 frame-center) over MSL tag 42/25 +
-  configurable `geoid_undulation_m`. `point/@ce`/`@le` are the fixed
+  point uses tags 13/14 + HAE, with the platform `hae` source order
+  following ST 0601.19's extended-representation precedence — Tag 104
+  (Sensor Ellipsoid Height Extended) first, then Tag 75 (Sensor Ellipsoid
+  Height), then MSL Tag 15 + configurable `geoid_undulation_m`. SPI point
+  prefers tags 40/41 (falling back to the frame-center tags 23/24), with
+  `hae` paired to whichever position source was chosen: Tag 42 (MSL, no
+  HAE-native twin exists for target location) + `geoid_undulation_m` with
+  40/41; Tag 78 (HAE-native) then Tag 25 (MSL) + `geoid_undulation_m` with
+  23/24 — only the frame-center branch has an HAE-native preference.
+  `point/@ce`/`@le` are the fixed
   sentinel `9999999` for the Platform event, and for SPI are `tag45 /
   2.146` / `tag46 / 1.645` (falling back to the same sentinel when the
   source tag is absent). The Platform event's `sensor` sub-element maps

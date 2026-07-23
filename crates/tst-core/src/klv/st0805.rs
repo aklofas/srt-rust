@@ -211,11 +211,16 @@ fn hae_from_msl(msl: Option<f64>, cfg: &CotConfig) -> Option<f64> {
 /// sampled internally, so conversion stays deterministic and `no_std` — a
 /// replayed-file CoT run must be byte-identical to a live one (§1).
 ///
-/// `point/@hae` prefers the HAE-native Sensor Ellipsoid Height (Tag 75)
-/// when present; otherwise it falls back to the MSL-referenced Sensor True
-/// Altitude (Tag 15), adjusted by [`CotConfig::geoid_undulation_m`] when
-/// the caller has supplied one (item 7 of the mapping analysis — ST 0805.1
-/// requires an MSL→HAE conversion but supplies no geoid model).
+/// `point/@hae` prefers the HAE-native fields, in the ST 0601.19 extended-
+/// representation precedence order (reqs 0601.9-20/-21, quoted at
+/// `model.rs:80-86`: a decoder that understands Item 104 uses it and
+/// ignores Item 75 when both are present — Item 75 also saturates at
+/// 19000 m): **Sensor Ellipsoid Height Extended (Tag 104)**, then **Sensor
+/// Ellipsoid Height (Tag 75)**. Only when neither is present does it fall
+/// back to the MSL-referenced Sensor True Altitude (Tag 15), adjusted by
+/// [`CotConfig::geoid_undulation_m`] when the caller has supplied one
+/// (item 7 of the mapping analysis — ST 0805.1 requires an MSL→HAE
+/// conversion but supplies no geoid model).
 ///
 /// The `sensor` sub-element is omitted entirely when either Tag 5
 /// (Platform Heading Angle) or Tag 18 (Sensor Relative Azimuth Angle) is
@@ -245,7 +250,8 @@ pub fn platform_position_xml(
         name: "Sensor Longitude",
     })?;
     let hae = ls
-        .sensor_ellipsoid_height_m
+        .sensor_ellipsoid_height_extended_m
+        .or(ls.sensor_ellipsoid_height_m)
         .or_else(|| hae_from_msl(ls.sensor_alt_m, cfg))
         .ok_or(CotError::MissingField {
             tag: 15,
@@ -525,6 +531,64 @@ mod tests {
             platform_position_xml(&ls, &CotConfig::default(), 0).unwrap_err(),
             CotError::MissingField { tag: 2, .. }
         ));
+
+        // Sum-of-two-angles can go negative before the final mod-360 step
+        // (the `%` operator keeps the dividend's sign); renormalization
+        // must still land the result in [0, 360).
+        let mut neg = fixture();
+        neg.platform_heading_deg = Some(-10.0);
+        neg.sensor_rel_az_deg = Some(-20.0); // sum = -30 → renormalized to 330
+        let xml = platform_position_xml(&neg, &CotConfig::default(), 798_039_895_000_000).unwrap();
+        assert!(xml.contains(r#"azimuth="330""#));
+
+        // Missing Tag 10 (Platform Designation) surfaces its own MissingField
+        // (uid is checked before timestamp/position).
+        let mut no_tag10 = fixture();
+        no_tag10.platform_designation = None;
+        assert!(matches!(
+            platform_position_xml(&no_tag10, &CotConfig::default(), 0).unwrap_err(),
+            CotError::MissingField { tag: 10, .. }
+        ));
+    }
+
+    #[test]
+    fn platform_hae_uses_item_104_when_only_extended_present() {
+        // Item 104 (Sensor Ellipsoid Height Extended) is an HAE-native
+        // source in its own right — usable even with no Tag 75 and no
+        // Tag 15 present at all.
+        let mut ls = fixture();
+        ls.sensor_ellipsoid_height_m = None;
+        ls.sensor_ellipsoid_height_extended_m = Some(25_000.0);
+        let xml = platform_position_xml(&ls, &CotConfig::default(), 798_039_895_000_000).unwrap();
+        assert!(xml.contains(r#"hae="25000""#));
+    }
+
+    #[test]
+    fn platform_hae_item_104_wins_over_75_when_both_present() {
+        // ST 0601.19 reqs 0601.9-20/-21 (model.rs:80-86): a decoder that
+        // understands Item 104 uses it and ignores Item 75 when both are
+        // present. Item 75 also saturates at 19000 m, so this is the only
+        // way to represent an altitude above that ceiling.
+        let mut ls = fixture();
+        ls.sensor_ellipsoid_height_m = Some(19_000.0); // Tag 75, saturated
+        ls.sensor_ellipsoid_height_extended_m = Some(25_000.0); // Tag 104
+        let xml = platform_position_xml(&ls, &CotConfig::default(), 798_039_895_000_000).unwrap();
+        assert!(xml.contains(r#"hae="25000""#));
+    }
+
+    #[test]
+    fn platform_hae_applies_geoid_undulation_to_msl_altitude() {
+        // Tag-15-only altitude (no 75, no 104) plus a configured geoid
+        // undulation: hae = msl + undulation, applied exactly.
+        let mut ls = fixture();
+        ls.sensor_ellipsoid_height_m = None;
+        ls.sensor_alt_m = Some(1500.0);
+        let cfg = CotConfig {
+            geoid_undulation_m: Some(24.5),
+            ..CotConfig::default()
+        };
+        let xml = platform_position_xml(&ls, &cfg, 798_039_895_000_000).unwrap();
+        assert!(xml.contains(r#"hae="1524.5""#));
     }
 
     #[test]

@@ -72,7 +72,17 @@ fn read_mandatory_string(
 /// Read a Java `CotConfig` record into a Rust `CotConfig`.
 fn read_cot_config(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Result<RustCotConfig> {
     let platform_type = read_mandatory_string(env, obj, "platformType")?;
-    let update_interval_us = env.call_method(obj, "updateIntervalUs", "()J", &[])?.j()? as u64;
+    let update_interval_us_raw = env.call_method(obj, "updateIntervalUs", "()J", &[])?.j()?;
+    if update_interval_us_raw < 0 {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!(
+                "CotConfig.updateIntervalUs must be non-negative; got {update_interval_us_raw}"
+            ),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    let update_interval_us = update_interval_us_raw as u64;
     let producer = read_mandatory_string(env, obj, "producer")?;
     let geoid_undulation_m = read_nullable_double(env, obj, "geoidUndulationM")?;
     let how = read_mandatory_string(env, obj, "how")?;
@@ -83,6 +93,20 @@ fn read_cot_config(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Resu
         geoid_undulation_m,
         how,
     })
+}
+
+/// Validate a `generatedUs` `jlong` is non-negative before the `as u64` cast
+/// — a negative Java value would otherwise wrap to a far-future timestamp.
+/// Shared by both XML entry points.
+fn checked_generated_us(env: &mut JNIEnv<'_>, generated_us: jlong) -> jni::errors::Result<u64> {
+    if generated_us < 0 {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("generatedUs must be non-negative; got {generated_us}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(generated_us as u64)
 }
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
@@ -129,7 +153,11 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_platformPositionXmlNative<'local
             Ok(c) => c,
             Err(_) => return std::ptr::null_mut(),
         };
-        match platform_position_xml(&rust_rec, &cfg, generated_us as u64) {
+        let generated_us = match checked_generated_us(env, generated_us) {
+            Ok(v) => v,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        match platform_position_xml(&rust_rec, &cfg, generated_us) {
             Ok(xml) => new_string_or_throw(env, &xml, "platformPositionXmlNative"),
             Err(e) => {
                 throw_cot_error(env, &e);
@@ -157,7 +185,11 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_sensorPointOfInterestXmlNative<'
             Ok(c) => c,
             Err(_) => return std::ptr::null_mut(),
         };
-        match sensor_point_of_interest_xml(&rust_rec, &cfg, generated_us as u64) {
+        let generated_us = match checked_generated_us(env, generated_us) {
+            Ok(v) => v,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        match sensor_point_of_interest_xml(&rust_rec, &cfg, generated_us) {
             Ok(xml) => new_string_or_throw(env, &xml, "sensorPointOfInterestXmlNative"),
             Err(e) => {
                 throw_cot_error(env, &e);

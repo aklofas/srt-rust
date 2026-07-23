@@ -19,6 +19,7 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use tst_core::error::CotError;
 use tst_core::error::KlvDecodeError;
 use tst_core::error::KlvFieldError as RustKlvFieldError;
 use tst_core::error::KlvPatchError;
@@ -55,6 +56,11 @@ use tst_core::klv::st0601::{
 use tst_core::klv::st0605::{
     PrecisionTimeStampPack, TimeStatus as RustTimeStatus, decode as decode_st0605,
     encode as encode_st0605,
+};
+use tst_core::klv::st0805::{
+    CotConfig as RustCotConfig, platform_position_xml as st0805_platform_position_xml,
+    platform_uid as st0805_platform_uid,
+    sensor_point_of_interest_xml as st0805_sensor_point_of_interest_xml, spi_uid as st0805_spi_uid,
 };
 use tst_core::klv::st0806::{
     RvtAoi as RustRvtAoi, RvtAoiType as RustRvtAoiType, RvtLs as RustRvtLs, RvtPoi as RustRvtPoi,
@@ -3379,6 +3385,111 @@ fn encode_rvt_standalone_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResu
 }
 
 // ---------------------------------------------------------------------------
+// ST 0805.1 — KLV -> Cursor-on-Target (CoT) conversion
+// ---------------------------------------------------------------------------
+
+/// Map a Rust `CotError` to a Python `ValueError`. A missing input field is
+/// an invalid-argument error on an already-decoded record, not a KLV
+/// byte-decode failure, so this does NOT route through
+/// `make_klv_error`/`KlvError` (contrast `st1204_error_to_pyerr` above,
+/// which decodes wire bytes) — `ValueError` also keeps cross-binding
+/// symmetry with the JVM `IllegalArgumentException` mapping.
+fn cot_error_to_pyerr(e: CotError) -> PyErr {
+    PyValueError::new_err(format!("{e}"))
+}
+
+/// Translate a Python `CotConfig` dataclass instance to a Rust `CotConfig`.
+fn py_to_cot_config(cfg: &Bound<'_, PyAny>) -> PyResult<RustCotConfig> {
+    let py = cfg.py();
+    Ok(RustCotConfig {
+        platform_type: cfg.getattr(intern!(py, "platform_type"))?.extract()?,
+        update_interval_us: cfg.getattr(intern!(py, "update_interval_us"))?.extract()?,
+        producer: cfg.getattr(intern!(py, "producer"))?.extract()?,
+        geoid_undulation_m: cfg.getattr(intern!(py, "geoid_undulation_m"))?.extract()?,
+        how: cfg.getattr(intern!(py, "how"))?.extract()?,
+    })
+}
+
+/// `config = None` (the pyfunction default) means `CotConfig::default()`
+/// (ST 0805.1's own defaults) — mirrors the Rust API's `&CotConfig`
+/// requirement without forcing every Python call site to construct one.
+fn cot_config_from_py(config: Option<&Bound<'_, PyAny>>) -> PyResult<RustCotConfig> {
+    match config {
+        Some(c) => py_to_cot_config(c),
+        None => Ok(RustCotConfig::default()),
+    }
+}
+
+/// Serialize a Platform Position CoT event (ST 0805.1 §5 Table 1) from a
+/// decoded `UasDatalinkLs` record. `generated_us` (POSIX epoch
+/// microseconds) is stamped into `detail/_flow-tags_`; it is a required
+/// keyword argument rather than sampled internally, so conversion stays
+/// deterministic (a replayed-file CoT run must be byte-identical to a live
+/// one). `config` defaults to `CotConfig()` when omitted.
+///
+/// Raises `ValueError` naming the missing KLV tag when a mapping-required
+/// field (uid components, timestamp, sensor position, altitude) is absent
+/// from `record`.
+#[pyfunction]
+#[pyo3(
+    name = "platform_position_xml",
+    signature = (record, *, config = None, generated_us)
+)]
+fn platform_position_xml_py(
+    record: &Bound<'_, PyAny>,
+    config: Option<&Bound<'_, PyAny>>,
+    generated_us: u64,
+) -> PyResult<String> {
+    let ls = py_to_uas_datalink_ls(record)?;
+    let cfg = cot_config_from_py(config)?;
+    st0805_platform_position_xml(&ls, &cfg, generated_us).map_err(cot_error_to_pyerr)
+}
+
+/// Serialize a Sensor Point of Interest CoT event (ST 0805.1 §5 Table 2)
+/// from a decoded `UasDatalinkLs` record, linked back to the Platform
+/// Position event via `detail/link`. See `platform_position_xml` for the
+/// shared `config`/`generated_us` contract.
+///
+/// Raises `ValueError` naming the missing KLV tag when a mapping-required
+/// field (uid components, timestamp, an aimpoint position pair, that
+/// pair's elevation) is absent from `record`.
+#[pyfunction]
+#[pyo3(
+    name = "sensor_point_of_interest_xml",
+    signature = (record, *, config = None, generated_us)
+)]
+fn sensor_point_of_interest_xml_py(
+    record: &Bound<'_, PyAny>,
+    config: Option<&Bound<'_, PyAny>>,
+    generated_us: u64,
+) -> PyResult<String> {
+    let ls = py_to_uas_datalink_ls(record)?;
+    let cfg = cot_config_from_py(config)?;
+    st0805_sensor_point_of_interest_xml(&ls, &cfg, generated_us).map_err(cot_error_to_pyerr)
+}
+
+/// Deterministic Platform Position `uid`: `"{tag10}_{tag3}"` (ST 0805.1 §5
+/// Table 1). Raises `ValueError` naming the missing tag when Platform
+/// Designation (Tag 10) or Mission ID (Tag 3) is absent from `record`.
+#[pyfunction]
+#[pyo3(name = "platform_uid")]
+fn platform_uid_py(record: &Bound<'_, PyAny>) -> PyResult<String> {
+    let ls = py_to_uas_datalink_ls(record)?;
+    st0805_platform_uid(&ls).map_err(cot_error_to_pyerr)
+}
+
+/// Deterministic SPI `uid`: `"{tag10}_{tag3}_{tag11}"` (ST 0805.1 §5 Table
+/// 2). Raises `ValueError` naming the missing tag when Platform
+/// Designation (Tag 10), Mission ID (Tag 3), or Image Source Sensor (Tag
+/// 11) is absent from `record`.
+#[pyfunction]
+#[pyo3(name = "spi_uid")]
+fn spi_uid_py(record: &Bound<'_, PyAny>) -> PyResult<String> {
+    let ls = py_to_uas_datalink_ls(record)?;
+    st0805_spi_uid(&ls).map_err(cot_error_to_pyerr)
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -3415,5 +3526,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_rvt_standalone_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_rvt_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_rvt_standalone_py, m)?)?;
+    m.add_function(wrap_pyfunction!(platform_position_xml_py, m)?)?;
+    m.add_function(wrap_pyfunction!(sensor_point_of_interest_xml_py, m)?)?;
+    m.add_function(wrap_pyfunction!(platform_uid_py, m)?)?;
+    m.add_function(wrap_pyfunction!(spi_uid_py, m)?)?;
     Ok(())
 }

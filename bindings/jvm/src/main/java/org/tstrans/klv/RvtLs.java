@@ -17,7 +17,7 @@ import java.util.List;
  * <p>The checksum ({@link #crc32()}) is CRC-32/MPEG-2 (ISO/IEC 13818-1) — a
  * real divergence from the ST 0601 16-bit running-sum checksum. It is
  * captured on decode but only verified by {@link Klv#decodeRvtStandalone(byte[])}
- * (an embedded RVT LS never carries one).
+ * (an embedded RVT LS is not required to carry one).
  *
  * <p>Integer widths: u8/u16 fields are {@code Integer}; u32/u64 fields are
  * {@code Long} (matches {@code tst_core::klv::st0806::RvtLs}).

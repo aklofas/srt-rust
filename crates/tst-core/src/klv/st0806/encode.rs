@@ -18,7 +18,7 @@ use super::model::{RVT_LS_UL, RvtAoi, RvtLs, RvtPoi, RvtUserData};
 /// Encode an RVT Local Set body (ST 0806.4 Table 8-1) — the form carried
 /// as the *value* of ST 0601 Tag 73: no 16-byte UL, no outer BER length
 /// wrapper (the caller prepends both), and no CRC (an embedded RVT LS
-/// never carries Tag 1 — see [`RvtLs::crc32`]).
+/// is not required to carry Tag 1 — see [`RvtLs::crc32`]).
 ///
 /// Tag 2 (timestamp) is emitted first when present — matching the
 /// independent-LS ordering rule even though it is not required for the

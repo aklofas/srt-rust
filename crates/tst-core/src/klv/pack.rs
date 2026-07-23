@@ -55,9 +55,10 @@ impl OwnedRawField {
 
 /// Iterator over a KLV body (post-UL, post-outer-length). Crate-internal:
 /// the typed decoders (`klv::st0601`, `klv::st0102`, `klv::st0605`,
-/// `klv::st0903`) are the consumer-facing API; this is BER/length-prefix
-/// substrate. Local-set form only (1-byte tag + BER-OID length); a future
-/// ST 0905 universal-set decoder would need a separate iterator.
+/// `klv::st0806`, `klv::st0903`) are the consumer-facing API; this is
+/// BER/length-prefix substrate. Local-set form only (1-byte tag + BER-OID
+/// length); a future ST 0905 universal-set decoder would need a separate
+/// iterator.
 pub(crate) struct Iter<'a> {
     buf: &'a [u8],
     offset: usize,
@@ -140,8 +141,9 @@ impl<'a> Iter<'a> {
 ///
 /// `lookup` is a per-set function `fn(u8) -> Option<T>` (e.g.
 /// `st0601::tags::lookup`, `st0903::tags::lookup`, `st0102::tags::lookup`,
-/// `vtarget_pack::model::pack_lookup`). Collapses the 4 identical
-/// `is_reserved_or_typed_tag` function bodies across the KLV encode modules.
+/// `st0806::tags::lookup`, `vtarget_pack::model::pack_lookup`). Collapses
+/// the 5 identical `is_reserved_or_typed_tag` function bodies across the
+/// KLV encode modules.
 ///
 /// Any tag value > 255 is by definition not in a u8-keyed typed table and
 /// returns `false` without calling `lookup`.
@@ -156,11 +158,11 @@ pub(crate) fn is_typed_tag<T>(tag: u32, lookup: fn(u8) -> Option<T>) -> bool {
 ///
 /// Writes: `BER-OID(tag)` + `BER-length(value.len())` + `value`. This is
 /// the repeated 6-line emit pattern shared by every unknown-tag loop and
-/// typed-field emit in the ST 0601 / ST 0903 / VTargetPack encoders.
+/// typed-field emit in the ST 0601 / ST 0806 / ST 0903 / VTargetPack encoders.
 ///
 /// Returns `Err` only if `write_ber_oid` rejects the tag (i.e. the tag
 /// value is too large to encode as BER-OID, which is exceedingly unlikely
-/// for any realistic ST 0601/0903 tag number).
+/// for any realistic ST 0601/0806/0903 tag number).
 pub(crate) fn emit_ber_oid_tlv(
     tag: u32,
     value: &[u8],

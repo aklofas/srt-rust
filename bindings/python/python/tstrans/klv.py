@@ -1,4 +1,5 @@
-"""tstrans.klv — KLV typed sets (ST 0601, ST 0102, ST 0605, ST 0903, ST 1204).
+"""tstrans.klv — KLV typed sets (ST 0601, ST 0102, ST 0605, ST 0805, ST 0806,
+ST 0903, ST 1010, ST 1204).
 
 Decode surface:
 
@@ -1611,7 +1612,7 @@ class RvtLs:
     The checksum (`crc32`) is CRC-32/MPEG-2 (ISO/IEC 13818-1) — a real
     divergence from the ST 0601 16-bit running-sum checksum. It is
     captured on decode but only verified by `decode_rvt_standalone` (an
-    embedded RVT LS never carries one)."""
+    embedded RVT LS is not required to carry one)."""
 
     crc32: int | None = None
     timestamp_us: int | None = None

@@ -55,7 +55,7 @@ pub(super) const ALT_RANGE: LinearRange = LinearRange {
 /// Tag 1 (CRC-32/MPEG-2), if present, is captured into [`RvtLs::crc32`]
 /// but **not verified**: the checksum's spec coverage is "the entire LS
 /// packet including the 16-byte UL key" (ST 0806.4 §8/Appendix), which
-/// this body form never carries. Use [`decode_standalone`] to verify it.
+/// this body form does not include. Use [`decode_standalone`] to verify it.
 ///
 /// ST 0806.4-02/-04 require an *independent* RVT LS to lead with Tag 2
 /// (timestamp) and end with Tag 1 (CRC); this function does not enforce
@@ -80,12 +80,13 @@ pub fn decode(bytes: &[u8]) -> Result<RvtLs, KlvDecodeError> {
 /// The CRC covers every byte from the start of the UL up to (but not
 /// including) the CRC's own 4 value bytes — the last well-formed Tag 1
 /// occurrence wins if the (non-conformant) input repeats it. Absence of
-/// Tag 1 is not an error: an embedded RVT LS never carries one, and this
-/// function accepts standalone captures that omit it too. ST 0806.4 does
-/// not explicitly state whether the covered span includes the CRC's own
-/// value bytes; excluding them is the universal-practice reading here,
-/// pending a real-capture check (spec ambiguity, not yet resolved) — the
-/// same caveat class as the POI Label field's, see [`RvtPoi::label`].
+/// Tag 1 is not an error: an embedded RVT LS is not required to carry
+/// one, and this function accepts standalone captures that omit it too.
+/// ST 0806.4 does not explicitly state whether the covered span includes
+/// the CRC's own value bytes; excluding them is the universal-practice
+/// reading here, pending a real-capture check (spec ambiguity, not yet
+/// resolved) — the same caveat class as the POI Label field's, see
+/// [`RvtPoi::label`].
 ///
 /// # Errors
 /// - [`KlvDecodeError::Truncated`] if `bytes` is shorter than the UL, or

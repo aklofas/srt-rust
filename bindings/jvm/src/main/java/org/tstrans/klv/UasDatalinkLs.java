@@ -48,7 +48,7 @@ import java.util.Optional;
  *   sensorLatDeg                Tag 13  [-90, 90] deg
  *   sensorLonDeg                Tag 14  [-180, 180] deg
  *   sensorAltM                  Tag 15  [-900, 19000] m
- *   sensorEllipsoidHeightM      Tag 75  [-900, 19000] m
+ *   sensorEllipsoidHeightM      Tag 75  [-900, 19000] m  extended twin: sensorEllipsoidHeightExtendedM (Tag 104, IMAPB)
  *   sensorHfovDeg               Tag 16  [0, 180] deg
  *   sensorVfovDeg               Tag 17  [0, 180] deg
  *   sensorRelAzDeg              Tag 18  [0, 360] deg
@@ -57,7 +57,7 @@ import java.util.Optional;
  *
  * Ranging &amp; frame center
  *   slantRangeM                 Tag 21  [0, 5000000] m
- *   targetWidthM                Tag 22  [0, 10000] m
+ *   targetWidthM                Tag 22  [0, 10000] m  extended twin: targetWidthExtendedM (Tag 96, IMAPB)
  *   frameCenterLatDeg           Tag 23  [-90, 90] deg
  *   frameCenterLonDeg           Tag 24  [-180, 180] deg
  *   frameCenterElevM            Tag 25  [-900, 19000] m
@@ -82,6 +82,62 @@ import java.util.Optional;
  *   cornerLonP3Deg              Tag 87  [-180, 180] deg    full twin of cornerLonOffsetP3Deg (Tag 31)
  *   cornerLatP4Deg              Tag 88  [-90, 90] deg      full twin of cornerLatOffsetP4Deg (Tag 32)
  *   cornerLonP4Deg              Tag 89  [-180, 180] deg    full twin of cornerLonOffsetP4Deg (Tag 33)
+ *
+ * Target location &amp; tracking
+ *   targetLocationLatDeg        Tag 40  [-90, 90] deg
+ *   targetLocationLonDeg        Tag 41  [-180, 180] deg
+ *   targetLocationElevM         Tag 42  [-900, 19000] m
+ *   targetTrackGateWidthPx      Tag 43  [0, 510] px
+ *   targetTrackGateHeightPx     Tag 44  [0, 510] px
+ *   targetErrorCe90M            Tag 45  [0, 4095] m
+ *   targetErrorLe90M            Tag 46  [0, 4095] m
+ *
+ * Weather / atmospheric
+ *   windDirectionDeg            Tag 35  [0, 360] deg
+ *   windSpeed                   Tag 36  [0, 100] m/s
+ *   staticPressureMbar          Tag 37  [0, 5000] mbar
+ *   densityAltitudeM            Tag 38  [-900, 19000] m  extended twin: densityAltitudeExtendedM (Tag 103, IMAPB)
+ *   differentialPressureMbar    Tag 49  [0, 5000] mbar
+ *   airfieldBarometricPressureMbar Tag 53  [0, 5000] mbar
+ *   airfieldElevationM          Tag 54  [-900, 19000] m
+ *   relativeHumidityPct         Tag 55  [0, 100] %
+ *
+ * Extended platform state
+ *   platformVerticalSpeed       Tag 51  [-180, 180] m/s
+ *   platformSideslipDeg         Tag 52  [-20, 20] deg    narrow; full twin: platformSideslipFullDeg (Tag 93)
+ *   platformGroundSpeed         Tag 56  [0, 255] m/s
+ *   groundRangeM                Tag 57  [0, 5000000] m
+ *   platformFuelRemainingKg     Tag 58  [0, 10000] kg
+ *   platformMagneticHeadingDeg  Tag 64  [0, 360] deg
+ *   platformAngleOfAttackFullDeg Tag 92  [-90, 90] deg
+ *   platformSideslipFullDeg     Tag 93  [-180, 180] deg  full twin of platformSideslipDeg (Tag 52)
+ *
+ * Alternate platform
+ *   alternatePlatformLatDeg     Tag 67  [-90, 90] deg
+ *   alternatePlatformLonDeg     Tag 68  [-180, 180] deg
+ *   alternatePlatformAltM       Tag 69  [-900, 19000] m  not to be confused with Item 105 (extends Tag 76); no IMAPB twin of its own
+ *   alternatePlatformHeadingDeg Tag 71  [0, 360] deg
+ *   alternatePlatformEllipsoidHeightM Tag 76  [-900, 19000] m  extended twin: alternatePlatformEllipsoidHeightExtendedM (Tag 105, IMAPB)
+ *
+ * Sensor velocity
+ *   sensorNorthVelocity         Tag 79  [-327, 327] m/s
+ *   sensorEastVelocity          Tag 80  [-327, 327] m/s
+ *
+ * Extended-range items (ST 1201.5 IMAPB)
+ *   targetWidthExtendedM        Tag 96  [0, 1500000] m        IMAPB, &le;8 bytes; extended twin of targetWidthM (Tag 22)
+ *   densityAltitudeExtendedM    Tag 103  [-900, 40000] m      IMAPB, &le;8 bytes; extended twin of densityAltitudeM (Tag 38)
+ *   sensorEllipsoidHeightExtendedM Tag 104  [-900, 40000] m      IMAPB, &le;8 bytes; extended twin of sensorEllipsoidHeightM (Tag 75)
+ *   alternatePlatformEllipsoidHeightExtendedM Tag 105  [-900, 40000] m      IMAPB, &le;8 bytes; extended twin of alternatePlatformEllipsoidHeightM (Tag 76)
+ *   rangeToRecoveryKm           Tag 109  [0, 21000] km        IMAPB, &le;4 bytes
+ *   platformCourseAngleDeg      Tag 112  [0, 360] deg         IMAPB, &le;8 bytes
+ *   altitudeAglM                Tag 113  [-900, 40000] m      IMAPB, &le;4 bytes
+ *   radarAltimeterM             Tag 114  [-900, 40000] m      IMAPB, &le;4 bytes
+ *   sensorAzimuthRateDps        Tag 117  [-1000, 1000] deg/s  IMAPB, &le;4 bytes
+ *   sensorElevationRateDps      Tag 118  [-1000, 1000] deg/s  IMAPB, &le;4 bytes
+ *   sensorRollRateDps           Tag 119  [-1000, 1000] deg/s  IMAPB, &le;4 bytes
+ *   miStoragePercentFull        Tag 120  [0, 100] %           IMAPB, &le;3 bytes
+ *   transmissionFrequencyMhz    Tag 132  [1, 99999] MHz       IMAPB, &le;4 bytes
+ *   zoomPercentage              Tag 134  [0, 100] %           IMAPB, &le;4 bytes
  * </pre>
  */
 public record UasDatalinkLs(

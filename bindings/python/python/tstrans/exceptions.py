@@ -140,8 +140,14 @@ class KlvEncodeErrorKind(enum.IntEnum):
     Raised by KLV `encode_*` functions when a typed record cannot be
     serialized to wire bytes — output buffer too small, value outside
     the spec-declared range, IMAPB params violating ST 1201.5 §6
-    preconditions, mandatory ST 0601 items missing under
-    `encode_strict_compliance`, or a reserved tag placed in `unknown`.
+    preconditions, or mandatory ST 0601 items missing under
+    `encode_strict_compliance`.
+
+    `RESERVED_TAG_IN_UNKNOWN` is a real Rust `KlvEncodeError` variant,
+    but this binding's encode path (`py_to_unknown`) silently filters
+    any typed/reserved tag out of `unknown` before the Rust encoder
+    runs (the typed field wins) — so that cause is never raised from
+    Python.
 
     The Rust enum is `#[non_exhaustive]`; new variants land as the
     encoder catches more failure modes. Python matchers should include

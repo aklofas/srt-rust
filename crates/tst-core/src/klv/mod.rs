@@ -1,6 +1,7 @@
-//! KLV codec — generic substrate plus the typed ST 0601 UAS Datalink Local Set.
+//! KLV codec — generic substrate plus the typed ST 0601/0102/0605/0805/0806/
+//! 0903/1010/1204 local sets.
 //!
-//! Two layers:
+//! Generic substrate plus typed layers:
 //!
 //! - **Generic substrate** (`universal_label`, `length`, `pack`, `imapb`,
 //!   `checksum`) — handles raw KLV machinery: 16-byte SMPTE Universal Labels,
@@ -17,6 +18,11 @@
 //!   typically reach this from `UasDatalinkLs::security_local_set`.
 //!   Anything not typed-modeled passes through as `OwnedRawField` in
 //!   `record.unknown`.
+//! - **Further typed layers** (`st0605`, `st0805`, `st0806`, `st0903`,
+//!   `st1010`, `st1204`) follow the same flat-struct decode/encode
+//!   pattern as `st0601`/`st0102` — see each module's own docs for its
+//!   MISB standard and scope (`st0805` is KLV→CoT conversion rather
+//!   than a decode/encode pair).
 //!
 //! MPEG-TS sync-metadata AU cell carriage lives at
 //! [`crate::mpegts::au_cell`] (per ITU-T H.222.0 V9 §2.12.4.2 — that's

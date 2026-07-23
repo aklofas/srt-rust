@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Static facade for MISB typed-KLV decode/encode (ST 0601 / 0102 / 0605 / 0903).
- * Mirrors tst-py's {@code tstrans.klv} free functions.
+ * Static facade for MISB typed-KLV decode/encode (ST 0601 / 0102 / 0605 / 0805 /
+ * 0806 / 0903 / 1010 / 1204). Mirrors tst-py's {@code tstrans.klv} free functions.
  *
  * <p>Decode/encode methods for each set are added in Tasks 1–4. The UL accessors
  * and {@link #isSt0601Family} are available immediately.
@@ -146,12 +146,12 @@ public final class Klv {
      *
      * <p>Returns body-only bytes — no Universal Label or outer BER length wrapper.
      * Encoding is lenient (emits only populated fields; no mandatory-tag enforcement).
-     * Mirrors tst-py's {@code encode_security(record)}.
+     * A typed/reserved tag placed in {@code unknown} is silently filtered before
+     * encoding (the typed field wins). Mirrors tst-py's {@code encode_security(record)}.
      *
      * @param record the Security LS to encode
      * @return ST 0102 body bytes
-     * @throws org.tstrans.KlvEncodeException if any field value is out of range or
-     *                                        a reserved tag appears in {@code unknown}
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range
      */
     public static byte[] encodeSecurity(SecurityLs record)
             throws org.tstrans.KlvEncodeException {
@@ -227,13 +227,13 @@ public final class Klv {
      *
      * <p>Returns body-only bytes — no Universal Label, no outer BER length, and
      * no Tag 1 checksum (per ST 0903.6-120). For standalone carriage on a
-     * dedicated KLV PID, use {@link #encodeVmtiStandalone(VmtiLs)}.
-     * Mirrors tst-py's {@code encode_vmti(record)}.
+     * dedicated KLV PID, use {@link #encodeVmtiStandalone(VmtiLs)}. A typed/
+     * reserved tag placed in {@code unknown} is silently filtered before
+     * encoding (the typed field wins). Mirrors tst-py's {@code encode_vmti(record)}.
      *
      * @param record the VMTI LS to encode
      * @return ST 0903 embedded body bytes
-     * @throws org.tstrans.KlvEncodeException if any field value is out of range or
-     *                                        a reserved tag appears in {@code unknown}
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range
      */
     public static byte[] encodeVmti(VmtiLs record) throws org.tstrans.KlvEncodeException {
         return nEncodeVmti(record);
@@ -244,13 +244,13 @@ public final class Klv {
      *
      * <p>Returns the full framing: {@code [VMTI_LS_UL:16][outer BER length][body][Tag1 checksum]}
      * per ST 0903.4-17 / ST 0903.6-119. The Tag 1 checksum is computed from the
-     * assembled framing; any value in {@link VmtiLs#checksum()} is ignored.
-     * Mirrors tst-py's {@code encode_vmti_standalone(record)}.
+     * assembled framing; any value in {@link VmtiLs#checksum()} is ignored. A typed/
+     * reserved tag placed in {@code unknown} is silently filtered before encoding
+     * (the typed field wins). Mirrors tst-py's {@code encode_vmti_standalone(record)}.
      *
      * @param record the VMTI LS to encode
      * @return the full standalone VMTI wire record
-     * @throws org.tstrans.KlvEncodeException if any field value is out of range or
-     *                                        a reserved tag appears in {@code unknown}
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range
      */
     public static byte[] encodeVmtiStandalone(VmtiLs record) throws org.tstrans.KlvEncodeException {
         return nEncodeVmtiStandalone(record);
@@ -360,12 +360,12 @@ public final class Klv {
      *
      * <p>Returns the full framing: {@code [UL:16][BER length][body][Tag1 checksum]}.
      * Encoding is lenient (emits only populated fields; no mandatory-tag enforcement).
-     * Mirrors tst-py's {@code encode_uas_datalink(record)}.
+     * A typed/reserved tag placed in {@code unknown} is silently filtered before
+     * encoding (the typed field wins). Mirrors tst-py's {@code encode_uas_datalink(record)}.
      *
      * @param record the UAS Datalink LS to encode
      * @return ST 0601 wire bytes
-     * @throws org.tstrans.KlvEncodeException if any field value is out of range or a
-     *                                        reserved tag appears in {@code unknown}
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range
      */
     public static byte[] encodeUasDatalink(UasDatalinkLs record)
             throws org.tstrans.KlvEncodeException {
@@ -384,14 +384,15 @@ public final class Klv {
      * values on tags whose ST 0601 INT_MIN sentinel means "Out of Range"
      * (Tags 6, 7, 50, 51, 52, 79, 80, 90–93 — all of which are encodable
      * typed fields) are replaced by the spec-defined special value rather
-     * than throwing. All other tags and non-finite inputs still throw.
+     * than throwing. All other tags and non-finite inputs still throw. A
+     * typed/reserved tag placed in {@code unknown} is silently filtered
+     * before encoding (the typed field wins).
      *
      * @param record the UAS Datalink LS to encode
      * @param policy how to handle out-of-range field values
      * @return ST 0601 wire bytes
      * @throws org.tstrans.KlvEncodeException if any field value is out of range
-     *                                        (and not eligible for INDICATOR), or a
-     *                                        reserved tag appears in {@code unknown}
+     *                                        (and not eligible for INDICATOR)
      */
     public static byte[] encodeUasDatalink(UasDatalinkLs record, OutOfRangePolicy policy)
             throws org.tstrans.KlvEncodeException {
@@ -521,7 +522,8 @@ public final class Klv {
      *
      * <p>Mirrors tst-py's {@code validate_mismms(record)}.
      *
-     * @param record the UAS Datalink LS to validate
+     * @param record the UAS Datalink LS to validate; passing {@code null} returns
+     *               {@code null} rather than throwing
      * @return a list of all MISMMS violations (empty if compliant)
      */
     public static List<MismmsViolation> validateMismms(UasDatalinkLs record) {
@@ -615,9 +617,9 @@ public final class Klv {
      * Decode a standalone RVT Local Set: 16-byte UL + BER length + body,
      * verifying the CRC-32/MPEG-2 checksum (Tag 1) when present.
      *
-     * <p>Absence of Tag 1 is not an error — an embedded RVT LS never
-     * carries one, and this method accepts standalone captures that omit
-     * it too. Mirrors tst-py's {@code decode_rvt_standalone(buf)}.
+     * <p>Absence of Tag 1 is not an error — an embedded RVT LS is not
+     * required to carry one, and this method accepts standalone captures
+     * that omit it too. Mirrors tst-py's {@code decode_rvt_standalone(buf)}.
      *
      * @param buf the full standalone RVT wire record (UL + BER length + body)
      * @return the decoded {@link RvtLs}
@@ -634,14 +636,17 @@ public final class Klv {
      * Encode an {@link RvtLs} to RVT body bytes (embedded form).
      *
      * <p>Returns body-only bytes — no Universal Label, no outer BER length,
-     * and no Tag 1 CRC (an embedded RVT LS never carries one). Use for
-     * carriage inside ST 0601 Tag 73. Mirrors tst-py's {@code encode_rvt(record)}.
+     * and no Tag 1 CRC (an embedded RVT LS is not required to carry one).
+     * Use for carriage inside ST 0601 Tag 73. A typed/reserved tag placed in
+     * an {@code unknown} list (top-level or nested in {@link RvtPoi}/{@link RvtAoi})
+     * is silently filtered before encoding (the typed field wins). Mirrors
+     * tst-py's {@code encode_rvt(record)}.
      *
      * @param record the RVT LS to encode
      * @return ST 0806.4 embedded body bytes
      * @throws org.tstrans.KlvEncodeException if a nested {@link RvtPoi}/{@link RvtAoi} omits a
-     *         mandatory item, a string field exceeds its byte cap, an MGRS easting/northing
-     *         exceeds 99,999, or a reserved tag appears in an {@code unknown} list
+     *         mandatory item, a string field exceeds its byte cap, or an MGRS
+     *         easting/northing exceeds 99,999
      */
     public static byte[] encodeRvt(RvtLs record) throws org.tstrans.KlvEncodeException {
         return nEncodeRvt(record);
@@ -679,7 +684,8 @@ public final class Klv {
      * Serialize a Platform Position CoT event (ST 0805.1 §5 Table 1) from a
      * decoded {@link UasDatalinkLs} record, using {@link CotConfig#defaults()}.
      *
-     * @param record      the UAS Datalink LS to convert
+     * @param record      the UAS Datalink LS to convert; passing {@code null} returns
+     *                    {@code null} rather than throwing
      * @param generatedUs POSIX epoch microseconds stamped into
      *                    {@code detail/_flow-tags_}; an explicit argument (not
      *                    sampled internally) so conversion stays deterministic —
@@ -699,8 +705,10 @@ public final class Klv {
      * decoded {@link UasDatalinkLs} record with an explicit {@link CotConfig}.
      * Mirrors tst-py's {@code platform_position_xml(record, config=..., generated_us=...)}.
      *
-     * @param record      the UAS Datalink LS to convert
-     * @param config      the CoT conversion configuration
+     * @param record      the UAS Datalink LS to convert; passing {@code null} returns
+     *                    {@code null} rather than throwing
+     * @param config      the CoT conversion configuration; passing {@code null} also
+     *                    returns {@code null} rather than throwing
      * @param generatedUs see {@link #platformPositionXml(UasDatalinkLs, long)}
      * @return the serialized CoT event XML
      * @throws IllegalArgumentException naming the missing KLV tag when a
@@ -717,7 +725,8 @@ public final class Klv {
      * {@link CotConfig#defaults()}. Linked back to the Platform Position
      * event via {@code detail/link}.
      *
-     * @param record      the UAS Datalink LS to convert
+     * @param record      the UAS Datalink LS to convert; passing {@code null} returns
+     *                    {@code null} rather than throwing
      * @param generatedUs see {@link #platformPositionXml(UasDatalinkLs, long)}
      * @return the serialized CoT event XML
      * @throws IllegalArgumentException naming the missing KLV tag when a
@@ -735,8 +744,10 @@ public final class Klv {
      * for the shared {@code config}/{@code generatedUs} contract. Mirrors
      * tst-py's {@code sensor_point_of_interest_xml(record, config=..., generated_us=...)}.
      *
-     * @param record      the UAS Datalink LS to convert
-     * @param config      the CoT conversion configuration
+     * @param record      the UAS Datalink LS to convert; passing {@code null} returns
+     *                    {@code null} rather than throwing
+     * @param config      the CoT conversion configuration; passing {@code null} also
+     *                    returns {@code null} rather than throwing
      * @param generatedUs see {@link #platformPositionXml(UasDatalinkLs, long)}
      * @return the serialized CoT event XML
      * @throws IllegalArgumentException naming the missing KLV tag when a
@@ -751,7 +762,8 @@ public final class Klv {
      * Deterministic Platform Position {@code uid}: {@code "{tag10}_{tag3}"}
      * (ST 0805.1 §5 Table 1). Mirrors tst-py's {@code platform_uid(record)}.
      *
-     * @param record the UAS Datalink LS to derive the uid from
+     * @param record the UAS Datalink LS to derive the uid from; passing {@code null}
+     *               returns {@code null} rather than throwing
      * @return the deterministic uid
      * @throws IllegalArgumentException naming the missing tag when Platform
      *         Designation (Tag 10) or Mission ID (Tag 3) is absent
@@ -764,7 +776,8 @@ public final class Klv {
      * Deterministic SPI {@code uid}: {@code "{tag10}_{tag3}_{tag11}"} (ST
      * 0805.1 §5 Table 2). Mirrors tst-py's {@code spi_uid(record)}.
      *
-     * @param record the UAS Datalink LS to derive the uid from
+     * @param record the UAS Datalink LS to derive the uid from; passing {@code null}
+     *               returns {@code null} rather than throwing
      * @return the deterministic uid
      * @throws IllegalArgumentException naming the missing tag when Platform
      *         Designation (Tag 10), Mission ID (Tag 3), or Image Source

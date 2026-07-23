@@ -2,11 +2,13 @@
 
 Covers the MISB typed sets — ST 0605 Precision Time Stamp Pack, ST 0102 Security
 Metadata LS, ST 0903 VMTI LS, ST 0601 UAS Datalink LS (in runtime declaration
-order) — as frozen dataclasses, their ST 0102 coding-method enums, the
-`KlvFieldError` diagnostic type, the per-set `decode_*` / `encode_*`
-`_native`-backed entry points, the universal `parse_klv_universal` dispatcher,
-the well-known 16-byte UL `bytes` constants, and the `is_st0601_family`
-predicate.
+order), ST 0806 RVT Local Set, ST 1010 SDCC-FLP, and ST 1204 Core Identifier —
+as frozen dataclasses, their ST 0102 coding-method enums, the `KlvFieldError`
+diagnostic type, the per-set `decode_*` / `encode_*` `_native`-backed entry
+points, ST 0805 KLV→CoT conversion (`platform_position_xml`,
+`sensor_point_of_interest_xml`, `platform_uid`, `spi_uid`, `CotConfig`), the
+universal `parse_klv_universal` dispatcher, the well-known 16-byte UL `bytes`
+constants, and the `is_st0601_family` predicate.
 
 The `decode_*` / `encode_*` functions are re-exported from the compiled
 `_native` extension; signatures here mirror the `#[pyo3(signature = ...)]`
@@ -469,7 +471,7 @@ class UasDatalinkLs:
     sensor_lat_deg              Tag 13, [-90, 90] deg
     sensor_lon_deg              Tag 14, [-180, 180] deg
     sensor_alt_m                Tag 15, [-900, 19000] m
-    sensor_ellipsoid_height_m   Tag 75, [-900, 19000] m
+    sensor_ellipsoid_height_m   Tag 75, [-900, 19000] m  — extended twin: sensor_ellipsoid_height_extended_m (Tag 104, IMAPB)
     sensor_hfov_deg             Tag 16, [0, 180] deg
     sensor_vfov_deg             Tag 17, [0, 180] deg
     sensor_rel_az_deg           Tag 18, [0, 360] deg
@@ -479,7 +481,7 @@ class UasDatalinkLs:
     Ranging & frame center
     ----------------------
     slant_range_m               Tag 21, [0, 5000000] m
-    target_width_m              Tag 22, [0, 10000] m
+    target_width_m              Tag 22, [0, 10000] m  — extended twin: target_width_extended_m (Tag 96, IMAPB)
     frame_center_lat_deg        Tag 23, [-90, 90] deg
     frame_center_lon_deg        Tag 24, [-180, 180] deg
     frame_center_elev_m         Tag 25, [-900, 19000] m
@@ -506,6 +508,68 @@ class UasDatalinkLs:
     corner_lon_p3_deg           Tag 87, [-180, 180] deg      — full twin of corner_lon_offset_p3_deg (Tag 31)
     corner_lat_p4_deg           Tag 88, [-90, 90] deg        — full twin of corner_lat_offset_p4_deg (Tag 32)
     corner_lon_p4_deg           Tag 89, [-180, 180] deg      — full twin of corner_lon_offset_p4_deg (Tag 33)
+
+    Target location & tracking
+    --------------------------
+    target_location_lat_deg     Tag 40, [-90, 90] deg
+    target_location_lon_deg     Tag 41, [-180, 180] deg
+    target_location_elev_m      Tag 42, [-900, 19000] m
+    target_track_gate_width_px  Tag 43, [0, 510] px
+    target_track_gate_height_px Tag 44, [0, 510] px
+    target_error_ce90_m         Tag 45, [0, 4095] m
+    target_error_le90_m         Tag 46, [0, 4095] m
+
+    Weather / atmospheric
+    ---------------------
+    wind_direction_deg          Tag 35, [0, 360] deg
+    wind_speed                  Tag 36, [0, 100] m/s
+    static_pressure_mbar        Tag 37, [0, 5000] mbar
+    density_altitude_m          Tag 38, [-900, 19000] m  — extended twin: density_altitude_extended_m (Tag 103, IMAPB)
+    differential_pressure_mbar  Tag 49, [0, 5000] mbar
+    airfield_barometric_pressure_mbar Tag 53, [0, 5000] mbar
+    airfield_elevation_m        Tag 54, [-900, 19000] m
+    relative_humidity_pct       Tag 55, [0, 100] %
+
+    Extended platform state
+    -----------------------
+    platform_vertical_speed     Tag 51, [-180, 180] m/s
+    platform_sideslip_deg       Tag 52, [-20, 20] deg    — narrow; full twin: platform_sideslip_full_deg (Tag 93)
+    platform_ground_speed       Tag 56, [0, 255] m/s
+    ground_range_m              Tag 57, [0, 5000000] m
+    platform_fuel_remaining_kg  Tag 58, [0, 10000] kg
+    platform_magnetic_heading_deg Tag 64, [0, 360] deg
+    platform_angle_of_attack_full_deg Tag 92, [-90, 90] deg
+    platform_sideslip_full_deg  Tag 93, [-180, 180] deg  — full twin of platform_sideslip_deg (Tag 52)
+
+    Alternate platform
+    ------------------
+    alternate_platform_lat_deg  Tag 67, [-90, 90] deg
+    alternate_platform_lon_deg  Tag 68, [-180, 180] deg
+    alternate_platform_alt_m    Tag 69, [-900, 19000] m  — not to be confused with Item 105 (extends Tag 76); no IMAPB twin of its own
+    alternate_platform_heading_deg Tag 71, [0, 360] deg
+    alternate_platform_ellipsoid_height_m Tag 76, [-900, 19000] m  — extended twin: alternate_platform_ellipsoid_height_extended_m (Tag 105, IMAPB)
+
+    Sensor velocity
+    ---------------
+    sensor_north_velocity       Tag 79, [-327, 327] m/s
+    sensor_east_velocity        Tag 80, [-327, 327] m/s
+
+    Extended-range items (ST 1201.5 IMAPB)
+    --------------------------------------
+    target_width_extended_m     Tag 96, [0, 1500000] m        — IMAPB, ≤8 bytes; extended twin of target_width_m (Tag 22)
+    density_altitude_extended_m Tag 103, [-900, 40000] m      — IMAPB, ≤8 bytes; extended twin of density_altitude_m (Tag 38)
+    sensor_ellipsoid_height_extended_m Tag 104, [-900, 40000] m      — IMAPB, ≤8 bytes; extended twin of sensor_ellipsoid_height_m (Tag 75)
+    alternate_platform_ellipsoid_height_extended_m Tag 105, [-900, 40000] m      — IMAPB, ≤8 bytes; extended twin of alternate_platform_ellipsoid_height_m (Tag 76)
+    range_to_recovery_km        Tag 109, [0, 21000] km        — IMAPB, ≤4 bytes
+    platform_course_angle_deg   Tag 112, [0, 360] deg         — IMAPB, ≤8 bytes
+    altitude_agl_m              Tag 113, [-900, 40000] m      — IMAPB, ≤4 bytes
+    radar_altimeter_m           Tag 114, [-900, 40000] m      — IMAPB, ≤4 bytes
+    sensor_azimuth_rate_dps     Tag 117, [-1000, 1000] deg/s  — IMAPB, ≤4 bytes
+    sensor_elevation_rate_dps   Tag 118, [-1000, 1000] deg/s  — IMAPB, ≤4 bytes
+    sensor_roll_rate_dps        Tag 119, [-1000, 1000] deg/s  — IMAPB, ≤4 bytes
+    mi_storage_percent_full     Tag 120, [0, 100] %           — IMAPB, ≤3 bytes
+    transmission_frequency_mhz  Tag 132, [1, 99999] MHz       — IMAPB, ≤4 bytes
+    zoom_percentage             Tag 134, [0, 100] %           — IMAPB, ≤4 bytes
     """
 
     universal_label: bytes = ...

@@ -212,11 +212,12 @@ fn hae_from_msl(msl: Option<f64>, cfg: &CotConfig) -> Option<f64> {
 /// replayed-file CoT run must be byte-identical to a live one (§1).
 ///
 /// `point/@hae` prefers the HAE-native fields, in the ST 0601.19 extended-
-/// representation precedence order (reqs 0601.9-20/-21, quoted at
-/// `model.rs:80-86`: a decoder that understands Item 104 uses it and
-/// ignores Item 75 when both are present — Item 75 also saturates at
-/// 19000 m): **Sensor Ellipsoid Height Extended (Tag 104)**, then **Sensor
-/// Ellipsoid Height (Tag 75)**. Only when neither is present does it fall
+/// representation precedence order (reqs 0601.9-20/-21, quoted on
+/// [`UasDatalinkLs::sensor_ellipsoid_height_m`](crate::klv::st0601::UasDatalinkLs::sensor_ellipsoid_height_m):
+/// a decoder that understands Item 104 uses it and ignores Item 75 when
+/// both are present — Item 75 also saturates at 19000 m): **Sensor
+/// Ellipsoid Height Extended (Tag 104)**, then **Sensor Ellipsoid Height
+/// (Tag 75)**. Only when neither is present does it fall
 /// back to the MSL-referenced Sensor True Altitude (Tag 15), adjusted by
 /// [`CotConfig::geoid_undulation_m`] when the caller has supplied one
 /// (item 7 of the mapping analysis — ST 0805.1 requires an MSL→HAE
@@ -565,10 +566,10 @@ mod tests {
 
     #[test]
     fn platform_hae_item_104_wins_over_75_when_both_present() {
-        // ST 0601.19 reqs 0601.9-20/-21 (model.rs:80-86): a decoder that
-        // understands Item 104 uses it and ignores Item 75 when both are
-        // present. Item 75 also saturates at 19000 m, so this is the only
-        // way to represent an altitude above that ceiling.
+        // ST 0601.19 reqs 0601.9-20/-21 (see UasDatalinkLs::sensor_ellipsoid_height_m's
+        // rustdoc): a decoder that understands Item 104 uses it and ignores
+        // Item 75 when both are present. Item 75 also saturates at 19000 m,
+        // so this is the only way to represent an altitude above that ceiling.
         let mut ls = fixture();
         ls.sensor_ellipsoid_height_m = Some(19_000.0); // Tag 75, saturated
         ls.sensor_ellipsoid_height_extended_m = Some(25_000.0); // Tag 104

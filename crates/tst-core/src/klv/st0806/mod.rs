@@ -17,6 +17,7 @@
 //! round out the schema (ST 0806.4 Tables 8-2/8-3/8-4).
 
 pub(crate) mod decode;
+pub(crate) mod encode;
 pub(crate) mod model;
 pub(crate) mod tags;
 
@@ -24,6 +25,7 @@ pub(crate) mod tags;
 mod tests;
 
 pub use decode::{decode, decode_standalone};
+pub use encode::{encode_to_vec, encode_to_vec_standalone};
 pub use model::{
     RVT_AOI_LS_UL, RVT_LS_UL, RVT_POI_LS_UL, RVT_USER_DEFINED_LS_UL, RvtAoi, RvtAoiType, RvtLs,
     RvtPoi, RvtPoiType, RvtUserData, RvtUserDataType,

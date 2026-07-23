@@ -16,7 +16,9 @@ use super::tags::{RvtEncoding, lookup};
 
 /// POI/AOI latitude mapping (ST 0806.4 Table 8-2 Tag 2 / Table 8-3 Tags
 /// 2 & 4): signed int32, symmetric ±90°, `0x80000000` = "error" sentinel.
-const LAT_RANGE: LinearRange = LinearRange {
+/// `pub(super)`: shared with `super::encode`, which re-encodes the same
+/// sentinel bytes on the value-absent-but-recorded path.
+pub(super) const LAT_RANGE: LinearRange = LinearRange {
     signed: true,
     byte_length: 4,
     min: -90.0,
@@ -24,7 +26,7 @@ const LAT_RANGE: LinearRange = LinearRange {
 };
 /// POI/AOI longitude mapping (Table 8-2 Tag 3 / Table 8-3 Tags 3 & 5):
 /// signed int32, symmetric ±180°, same sentinel as [`LAT_RANGE`].
-const LON_RANGE: LinearRange = LinearRange {
+pub(super) const LON_RANGE: LinearRange = LinearRange {
     signed: true,
     byte_length: 4,
     min: -180.0,
@@ -32,7 +34,7 @@ const LON_RANGE: LinearRange = LinearRange {
 };
 /// POI altitude mapping (Table 8-2 Tag 4): unsigned uint16, [-900, 19000] m
 /// MSL. Unsigned ranges never produce the `None` sentinel outcome.
-const ALT_RANGE: LinearRange = LinearRange {
+pub(super) const ALT_RANGE: LinearRange = LinearRange {
     signed: false,
     byte_length: 2,
     min: -900.0,

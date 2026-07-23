@@ -2962,6 +2962,8 @@ pub const tst_core::klv::st0806::RVT_POI_LS_UL: tst_core::klv::universal_label::
 pub const tst_core::klv::st0806::RVT_USER_DEFINED_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub fn tst_core::klv::st0806::decode(&[u8]) -> core::result::Result<tst_core::klv::RvtLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0806::decode_standalone(&[u8]) -> core::result::Result<tst_core::klv::RvtLs, tst_core::error::KlvDecodeError>
+pub fn tst_core::klv::st0806::encode_to_vec(&tst_core::klv::RvtLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0806::encode_to_vec_standalone(&tst_core::klv::RvtLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::st0903
 #[non_exhaustive] pub enum tst_core::klv::st0903::VTargetPackError
 pub tst_core::klv::st0903::VTargetPackError::InvalidLength

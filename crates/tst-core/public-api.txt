@@ -2761,6 +2761,202 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::TimeStatus
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::TimeStatus
 pub fn tst_core::klv::st0605::decode(&[u8]) -> core::result::Result<tst_core::klv::PrecisionTimeStampPack, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0605::encode(&tst_core::klv::PrecisionTimeStampPack) -> [u8; 26]
+pub mod tst_core::klv::st0806
+#[non_exhaustive] pub enum tst_core::klv::st0806::RvtAoiType
+pub tst_core::klv::st0806::RvtAoiType::Friendly
+pub tst_core::klv::st0806::RvtAoiType::Hostile
+pub tst_core::klv::st0806::RvtAoiType::Other(u8)
+pub tst_core::klv::st0806::RvtAoiType::Reserved
+pub tst_core::klv::st0806::RvtAoiType::Unknown
+impl core::clone::Clone for tst_core::klv::RvtAoiType
+pub fn tst_core::klv::RvtAoiType::clone(&self) -> tst_core::klv::RvtAoiType
+impl core::cmp::Eq for tst_core::klv::RvtAoiType
+impl core::cmp::PartialEq for tst_core::klv::RvtAoiType
+pub fn tst_core::klv::RvtAoiType::eq(&self, &tst_core::klv::RvtAoiType) -> bool
+impl core::fmt::Debug for tst_core::klv::RvtAoiType
+pub fn tst_core::klv::RvtAoiType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::RvtAoiType
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtAoiType
+impl core::marker::Freeze for tst_core::klv::RvtAoiType
+impl core::marker::Send for tst_core::klv::RvtAoiType
+impl core::marker::Sync for tst_core::klv::RvtAoiType
+impl core::marker::Unpin for tst_core::klv::RvtAoiType
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtAoiType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtAoiType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtAoiType
+#[non_exhaustive] pub enum tst_core::klv::st0806::RvtPoiType
+pub tst_core::klv::st0806::RvtPoiType::Friendly
+pub tst_core::klv::st0806::RvtPoiType::Hostile
+pub tst_core::klv::st0806::RvtPoiType::Other(u8)
+pub tst_core::klv::st0806::RvtPoiType::Target
+pub tst_core::klv::st0806::RvtPoiType::Unknown
+impl core::clone::Clone for tst_core::klv::RvtPoiType
+pub fn tst_core::klv::RvtPoiType::clone(&self) -> tst_core::klv::RvtPoiType
+impl core::cmp::Eq for tst_core::klv::RvtPoiType
+impl core::cmp::PartialEq for tst_core::klv::RvtPoiType
+pub fn tst_core::klv::RvtPoiType::eq(&self, &tst_core::klv::RvtPoiType) -> bool
+impl core::fmt::Debug for tst_core::klv::RvtPoiType
+pub fn tst_core::klv::RvtPoiType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::RvtPoiType
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtPoiType
+impl core::marker::Freeze for tst_core::klv::RvtPoiType
+impl core::marker::Send for tst_core::klv::RvtPoiType
+impl core::marker::Sync for tst_core::klv::RvtPoiType
+impl core::marker::Unpin for tst_core::klv::RvtPoiType
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtPoiType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtPoiType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtPoiType
+#[non_exhaustive] pub enum tst_core::klv::st0806::RvtUserDataType
+pub tst_core::klv::st0806::RvtUserDataType::Experimental
+pub tst_core::klv::st0806::RvtUserDataType::Int
+pub tst_core::klv::st0806::RvtUserDataType::Strings
+pub tst_core::klv::st0806::RvtUserDataType::Uint
+impl core::clone::Clone for tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserDataType::clone(&self) -> tst_core::klv::RvtUserDataType
+impl core::cmp::Eq for tst_core::klv::RvtUserDataType
+impl core::cmp::PartialEq for tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserDataType::eq(&self, &tst_core::klv::RvtUserDataType) -> bool
+impl core::fmt::Debug for tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserDataType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::RvtUserDataType
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtUserDataType
+impl core::marker::Freeze for tst_core::klv::RvtUserDataType
+impl core::marker::Send for tst_core::klv::RvtUserDataType
+impl core::marker::Sync for tst_core::klv::RvtUserDataType
+impl core::marker::Unpin for tst_core::klv::RvtUserDataType
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtUserDataType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtUserDataType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtUserDataType
+pub struct tst_core::klv::st0806::RvtAoi
+pub tst_core::klv::st0806::RvtAoi::aoi_type: core::option::Option<tst_core::klv::RvtAoiType>
+pub tst_core::klv::st0806::RvtAoi::corner_lat_p1_deg: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtAoi::corner_lat_p3_deg: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtAoi::corner_lon_p1_deg: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtAoi::corner_lon_p3_deg: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtAoi::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
+pub tst_core::klv::st0806::RvtAoi::label: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtAoi::number: core::option::Option<u16>
+pub tst_core::klv::st0806::RvtAoi::operation_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtAoi::sentinel_tags: alloc::vec::Vec<u32>
+pub tst_core::klv::st0806::RvtAoi::source_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtAoi::text: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtAoi::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+impl core::clone::Clone for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::clone(&self) -> tst_core::klv::RvtAoi
+impl core::cmp::PartialEq for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::eq(&self, &tst_core::klv::RvtAoi) -> bool
+impl core::default::Default for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::default() -> tst_core::klv::RvtAoi
+impl core::fmt::Debug for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtAoi
+impl core::marker::Freeze for tst_core::klv::RvtAoi
+impl core::marker::Send for tst_core::klv::RvtAoi
+impl core::marker::Sync for tst_core::klv::RvtAoi
+impl core::marker::Unpin for tst_core::klv::RvtAoi
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtAoi
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtAoi
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtAoi
+pub struct tst_core::klv::st0806::RvtLs
+pub tst_core::klv::st0806::RvtLs::aircraft_mgrs_band_grid: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtLs::aircraft_mgrs_easting_m: core::option::Option<u32>
+pub tst_core::klv::st0806::RvtLs::aircraft_mgrs_northing_m: core::option::Option<u32>
+pub tst_core::klv::st0806::RvtLs::aircraft_mgrs_zone: core::option::Option<u8>
+pub tst_core::klv::st0806::RvtLs::areas_of_interest: alloc::vec::Vec<tst_core::klv::RvtAoi>
+pub tst_core::klv::st0806::RvtLs::crc32: core::option::Option<u32>
+pub tst_core::klv::st0806::RvtLs::digital_video_file_format: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtLs::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
+pub tst_core::klv::st0806::RvtLs::frag_circle_radius_m: core::option::Option<u16>
+pub tst_core::klv::st0806::RvtLs::frame_center_mgrs_band_grid: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtLs::frame_center_mgrs_easting_m: core::option::Option<u32>
+pub tst_core::klv::st0806::RvtLs::frame_center_mgrs_northing_m: core::option::Option<u32>
+pub tst_core::klv::st0806::RvtLs::frame_center_mgrs_zone: core::option::Option<u8>
+pub tst_core::klv::st0806::RvtLs::frame_code: core::option::Option<u32>
+pub tst_core::klv::st0806::RvtLs::platform_indicated_airspeed: core::option::Option<u16>
+pub tst_core::klv::st0806::RvtLs::platform_true_airspeed: core::option::Option<u16>
+pub tst_core::klv::st0806::RvtLs::points_of_interest: alloc::vec::Vec<tst_core::klv::RvtPoi>
+pub tst_core::klv::st0806::RvtLs::rvt_ls_version: core::option::Option<u8>
+pub tst_core::klv::st0806::RvtLs::telemetry_accuracy_indicator: core::option::Option<u8>
+pub tst_core::klv::st0806::RvtLs::timestamp_us: core::option::Option<u64>
+pub tst_core::klv::st0806::RvtLs::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+pub tst_core::klv::st0806::RvtLs::user_defined: alloc::vec::Vec<tst_core::klv::RvtUserData>
+pub tst_core::klv::st0806::RvtLs::video_data_rate: core::option::Option<u32>
+impl tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::aircraft_mgrs(&self) -> core::option::Option<alloc::string::String>
+pub fn tst_core::klv::RvtLs::frame_center_mgrs(&self) -> core::option::Option<alloc::string::String>
+impl core::clone::Clone for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::clone(&self) -> tst_core::klv::RvtLs
+impl core::cmp::PartialEq for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::eq(&self, &tst_core::klv::RvtLs) -> bool
+impl core::default::Default for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::default() -> tst_core::klv::RvtLs
+impl core::fmt::Debug for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtLs
+impl core::marker::Freeze for tst_core::klv::RvtLs
+impl core::marker::Send for tst_core::klv::RvtLs
+impl core::marker::Sync for tst_core::klv::RvtLs
+impl core::marker::Unpin for tst_core::klv::RvtLs
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtLs
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtLs
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtLs
+pub struct tst_core::klv::st0806::RvtPoi
+pub tst_core::klv::st0806::RvtPoi::alt_m: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtPoi::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
+pub tst_core::klv::st0806::RvtPoi::label: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtPoi::lat_deg: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtPoi::lon_deg: core::option::Option<f64>
+pub tst_core::klv::st0806::RvtPoi::number: core::option::Option<u16>
+pub tst_core::klv::st0806::RvtPoi::operation_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtPoi::poi_type: core::option::Option<tst_core::klv::RvtPoiType>
+pub tst_core::klv::st0806::RvtPoi::sentinel_tags: alloc::vec::Vec<u32>
+pub tst_core::klv::st0806::RvtPoi::source_icon: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtPoi::source_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtPoi::text: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0806::RvtPoi::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+impl core::clone::Clone for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::clone(&self) -> tst_core::klv::RvtPoi
+impl core::cmp::PartialEq for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::eq(&self, &tst_core::klv::RvtPoi) -> bool
+impl core::default::Default for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::default() -> tst_core::klv::RvtPoi
+impl core::fmt::Debug for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtPoi
+impl core::marker::Freeze for tst_core::klv::RvtPoi
+impl core::marker::Send for tst_core::klv::RvtPoi
+impl core::marker::Sync for tst_core::klv::RvtPoi
+impl core::marker::Unpin for tst_core::klv::RvtPoi
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtPoi
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtPoi
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtPoi
+pub struct tst_core::klv::st0806::RvtUserData
+pub tst_core::klv::st0806::RvtUserData::data: alloc::vec::Vec<u8>
+pub tst_core::klv::st0806::RvtUserData::numeric_id_raw: u8
+impl tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::data_type(&self) -> tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserData::numeric_id(&self) -> u8
+impl core::clone::Clone for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::clone(&self) -> tst_core::klv::RvtUserData
+impl core::cmp::Eq for tst_core::klv::RvtUserData
+impl core::cmp::PartialEq for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::eq(&self, &tst_core::klv::RvtUserData) -> bool
+impl core::default::Default for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::default() -> tst_core::klv::RvtUserData
+impl core::fmt::Debug for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtUserData
+impl core::marker::Freeze for tst_core::klv::RvtUserData
+impl core::marker::Send for tst_core::klv::RvtUserData
+impl core::marker::Sync for tst_core::klv::RvtUserData
+impl core::marker::Unpin for tst_core::klv::RvtUserData
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtUserData
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtUserData
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtUserData
+pub const tst_core::klv::st0806::RVT_AOI_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::st0806::RVT_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::st0806::RVT_POI_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::st0806::RVT_USER_DEFINED_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub mod tst_core::klv::st0903
 #[non_exhaustive] pub enum tst_core::klv::st0903::VTargetPackError
 pub tst_core::klv::st0903::VTargetPackError::InvalidLength
@@ -3127,6 +3323,71 @@ impl core::marker::Unpin for tst_core::klv::ObjectCountryCodingMethod
 impl core::marker::UnsafeUnpin for tst_core::klv::ObjectCountryCodingMethod
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::ObjectCountryCodingMethod
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::ObjectCountryCodingMethod
+#[non_exhaustive] pub enum tst_core::klv::RvtAoiType
+pub tst_core::klv::RvtAoiType::Friendly
+pub tst_core::klv::RvtAoiType::Hostile
+pub tst_core::klv::RvtAoiType::Other(u8)
+pub tst_core::klv::RvtAoiType::Reserved
+pub tst_core::klv::RvtAoiType::Unknown
+impl core::clone::Clone for tst_core::klv::RvtAoiType
+pub fn tst_core::klv::RvtAoiType::clone(&self) -> tst_core::klv::RvtAoiType
+impl core::cmp::Eq for tst_core::klv::RvtAoiType
+impl core::cmp::PartialEq for tst_core::klv::RvtAoiType
+pub fn tst_core::klv::RvtAoiType::eq(&self, &tst_core::klv::RvtAoiType) -> bool
+impl core::fmt::Debug for tst_core::klv::RvtAoiType
+pub fn tst_core::klv::RvtAoiType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::RvtAoiType
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtAoiType
+impl core::marker::Freeze for tst_core::klv::RvtAoiType
+impl core::marker::Send for tst_core::klv::RvtAoiType
+impl core::marker::Sync for tst_core::klv::RvtAoiType
+impl core::marker::Unpin for tst_core::klv::RvtAoiType
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtAoiType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtAoiType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtAoiType
+#[non_exhaustive] pub enum tst_core::klv::RvtPoiType
+pub tst_core::klv::RvtPoiType::Friendly
+pub tst_core::klv::RvtPoiType::Hostile
+pub tst_core::klv::RvtPoiType::Other(u8)
+pub tst_core::klv::RvtPoiType::Target
+pub tst_core::klv::RvtPoiType::Unknown
+impl core::clone::Clone for tst_core::klv::RvtPoiType
+pub fn tst_core::klv::RvtPoiType::clone(&self) -> tst_core::klv::RvtPoiType
+impl core::cmp::Eq for tst_core::klv::RvtPoiType
+impl core::cmp::PartialEq for tst_core::klv::RvtPoiType
+pub fn tst_core::klv::RvtPoiType::eq(&self, &tst_core::klv::RvtPoiType) -> bool
+impl core::fmt::Debug for tst_core::klv::RvtPoiType
+pub fn tst_core::klv::RvtPoiType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::RvtPoiType
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtPoiType
+impl core::marker::Freeze for tst_core::klv::RvtPoiType
+impl core::marker::Send for tst_core::klv::RvtPoiType
+impl core::marker::Sync for tst_core::klv::RvtPoiType
+impl core::marker::Unpin for tst_core::klv::RvtPoiType
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtPoiType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtPoiType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtPoiType
+#[non_exhaustive] pub enum tst_core::klv::RvtUserDataType
+pub tst_core::klv::RvtUserDataType::Experimental
+pub tst_core::klv::RvtUserDataType::Int
+pub tst_core::klv::RvtUserDataType::Strings
+pub tst_core::klv::RvtUserDataType::Uint
+impl core::clone::Clone for tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserDataType::clone(&self) -> tst_core::klv::RvtUserDataType
+impl core::cmp::Eq for tst_core::klv::RvtUserDataType
+impl core::cmp::PartialEq for tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserDataType::eq(&self, &tst_core::klv::RvtUserDataType) -> bool
+impl core::fmt::Debug for tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserDataType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::RvtUserDataType
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtUserDataType
+impl core::marker::Freeze for tst_core::klv::RvtUserDataType
+impl core::marker::Send for tst_core::klv::RvtUserDataType
+impl core::marker::Sync for tst_core::klv::RvtUserDataType
+impl core::marker::Unpin for tst_core::klv::RvtUserDataType
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtUserDataType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtUserDataType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtUserDataType
 pub enum tst_core::klv::SecurityClassification
 pub tst_core::klv::SecurityClassification::Confidential
 pub tst_core::klv::SecurityClassification::Restricted
@@ -3256,6 +3517,132 @@ impl<'a> core::marker::Unpin for tst_core::klv::pack::RawField<'a>
 impl<'a> core::marker::UnsafeUnpin for tst_core::klv::pack::RawField<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::pack::RawField<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::klv::pack::RawField<'a>
+pub struct tst_core::klv::RvtAoi
+pub tst_core::klv::RvtAoi::aoi_type: core::option::Option<tst_core::klv::RvtAoiType>
+pub tst_core::klv::RvtAoi::corner_lat_p1_deg: core::option::Option<f64>
+pub tst_core::klv::RvtAoi::corner_lat_p3_deg: core::option::Option<f64>
+pub tst_core::klv::RvtAoi::corner_lon_p1_deg: core::option::Option<f64>
+pub tst_core::klv::RvtAoi::corner_lon_p3_deg: core::option::Option<f64>
+pub tst_core::klv::RvtAoi::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
+pub tst_core::klv::RvtAoi::label: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtAoi::number: core::option::Option<u16>
+pub tst_core::klv::RvtAoi::operation_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtAoi::sentinel_tags: alloc::vec::Vec<u32>
+pub tst_core::klv::RvtAoi::source_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtAoi::text: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtAoi::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+impl core::clone::Clone for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::clone(&self) -> tst_core::klv::RvtAoi
+impl core::cmp::PartialEq for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::eq(&self, &tst_core::klv::RvtAoi) -> bool
+impl core::default::Default for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::default() -> tst_core::klv::RvtAoi
+impl core::fmt::Debug for tst_core::klv::RvtAoi
+pub fn tst_core::klv::RvtAoi::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtAoi
+impl core::marker::Freeze for tst_core::klv::RvtAoi
+impl core::marker::Send for tst_core::klv::RvtAoi
+impl core::marker::Sync for tst_core::klv::RvtAoi
+impl core::marker::Unpin for tst_core::klv::RvtAoi
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtAoi
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtAoi
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtAoi
+pub struct tst_core::klv::RvtLs
+pub tst_core::klv::RvtLs::aircraft_mgrs_band_grid: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtLs::aircraft_mgrs_easting_m: core::option::Option<u32>
+pub tst_core::klv::RvtLs::aircraft_mgrs_northing_m: core::option::Option<u32>
+pub tst_core::klv::RvtLs::aircraft_mgrs_zone: core::option::Option<u8>
+pub tst_core::klv::RvtLs::areas_of_interest: alloc::vec::Vec<tst_core::klv::RvtAoi>
+pub tst_core::klv::RvtLs::crc32: core::option::Option<u32>
+pub tst_core::klv::RvtLs::digital_video_file_format: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtLs::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
+pub tst_core::klv::RvtLs::frag_circle_radius_m: core::option::Option<u16>
+pub tst_core::klv::RvtLs::frame_center_mgrs_band_grid: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtLs::frame_center_mgrs_easting_m: core::option::Option<u32>
+pub tst_core::klv::RvtLs::frame_center_mgrs_northing_m: core::option::Option<u32>
+pub tst_core::klv::RvtLs::frame_center_mgrs_zone: core::option::Option<u8>
+pub tst_core::klv::RvtLs::frame_code: core::option::Option<u32>
+pub tst_core::klv::RvtLs::platform_indicated_airspeed: core::option::Option<u16>
+pub tst_core::klv::RvtLs::platform_true_airspeed: core::option::Option<u16>
+pub tst_core::klv::RvtLs::points_of_interest: alloc::vec::Vec<tst_core::klv::RvtPoi>
+pub tst_core::klv::RvtLs::rvt_ls_version: core::option::Option<u8>
+pub tst_core::klv::RvtLs::telemetry_accuracy_indicator: core::option::Option<u8>
+pub tst_core::klv::RvtLs::timestamp_us: core::option::Option<u64>
+pub tst_core::klv::RvtLs::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+pub tst_core::klv::RvtLs::user_defined: alloc::vec::Vec<tst_core::klv::RvtUserData>
+pub tst_core::klv::RvtLs::video_data_rate: core::option::Option<u32>
+impl tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::aircraft_mgrs(&self) -> core::option::Option<alloc::string::String>
+pub fn tst_core::klv::RvtLs::frame_center_mgrs(&self) -> core::option::Option<alloc::string::String>
+impl core::clone::Clone for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::clone(&self) -> tst_core::klv::RvtLs
+impl core::cmp::PartialEq for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::eq(&self, &tst_core::klv::RvtLs) -> bool
+impl core::default::Default for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::default() -> tst_core::klv::RvtLs
+impl core::fmt::Debug for tst_core::klv::RvtLs
+pub fn tst_core::klv::RvtLs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtLs
+impl core::marker::Freeze for tst_core::klv::RvtLs
+impl core::marker::Send for tst_core::klv::RvtLs
+impl core::marker::Sync for tst_core::klv::RvtLs
+impl core::marker::Unpin for tst_core::klv::RvtLs
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtLs
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtLs
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtLs
+pub struct tst_core::klv::RvtPoi
+pub tst_core::klv::RvtPoi::alt_m: core::option::Option<f64>
+pub tst_core::klv::RvtPoi::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
+pub tst_core::klv::RvtPoi::label: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtPoi::lat_deg: core::option::Option<f64>
+pub tst_core::klv::RvtPoi::lon_deg: core::option::Option<f64>
+pub tst_core::klv::RvtPoi::number: core::option::Option<u16>
+pub tst_core::klv::RvtPoi::operation_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtPoi::poi_type: core::option::Option<tst_core::klv::RvtPoiType>
+pub tst_core::klv::RvtPoi::sentinel_tags: alloc::vec::Vec<u32>
+pub tst_core::klv::RvtPoi::source_icon: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtPoi::source_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtPoi::text: core::option::Option<alloc::string::String>
+pub tst_core::klv::RvtPoi::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+impl core::clone::Clone for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::clone(&self) -> tst_core::klv::RvtPoi
+impl core::cmp::PartialEq for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::eq(&self, &tst_core::klv::RvtPoi) -> bool
+impl core::default::Default for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::default() -> tst_core::klv::RvtPoi
+impl core::fmt::Debug for tst_core::klv::RvtPoi
+pub fn tst_core::klv::RvtPoi::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtPoi
+impl core::marker::Freeze for tst_core::klv::RvtPoi
+impl core::marker::Send for tst_core::klv::RvtPoi
+impl core::marker::Sync for tst_core::klv::RvtPoi
+impl core::marker::Unpin for tst_core::klv::RvtPoi
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtPoi
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtPoi
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtPoi
+pub struct tst_core::klv::RvtUserData
+pub tst_core::klv::RvtUserData::data: alloc::vec::Vec<u8>
+pub tst_core::klv::RvtUserData::numeric_id_raw: u8
+impl tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::data_type(&self) -> tst_core::klv::RvtUserDataType
+pub fn tst_core::klv::RvtUserData::numeric_id(&self) -> u8
+impl core::clone::Clone for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::clone(&self) -> tst_core::klv::RvtUserData
+impl core::cmp::Eq for tst_core::klv::RvtUserData
+impl core::cmp::PartialEq for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::eq(&self, &tst_core::klv::RvtUserData) -> bool
+impl core::default::Default for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::default() -> tst_core::klv::RvtUserData
+impl core::fmt::Debug for tst_core::klv::RvtUserData
+pub fn tst_core::klv::RvtUserData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::RvtUserData
+impl core::marker::Freeze for tst_core::klv::RvtUserData
+impl core::marker::Send for tst_core::klv::RvtUserData
+impl core::marker::Sync for tst_core::klv::RvtUserData
+impl core::marker::Unpin for tst_core::klv::RvtUserData
+impl core::marker::UnsafeUnpin for tst_core::klv::RvtUserData
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::RvtUserData
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::RvtUserData
 pub struct tst_core::klv::SdccFlp
 pub tst_core::klv::SdccFlp::correlation_present: alloc::vec::Vec<bool>
 pub tst_core::klv::SdccFlp::correlations: alloc::vec::Vec<f64>
@@ -3448,6 +3835,10 @@ impl core::marker::Unpin for tst_core::klv::VmtiLs
 impl core::marker::UnsafeUnpin for tst_core::klv::VmtiLs
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::VmtiLs
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::VmtiLs
+pub const tst_core::klv::RVT_AOI_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::RVT_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::RVT_POI_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::RVT_USER_DEFINED_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::SECURITY_LS_UL: [u8; 16]
 pub const tst_core::klv::VMTI_LS_UL: [u8; 16]
 pub fn tst_core::klv::decode_sdcc_flp(&[u8]) -> core::result::Result<tst_core::klv::st1010::SdccFlp, tst_core::error::KlvFieldError>

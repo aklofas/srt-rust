@@ -48,7 +48,9 @@ pub use st0102::{
     SecurityClassification, SecurityLs,
 };
 pub use st0605::{PrecisionTimeStampPack, TimeStatus};
-pub use st0805::{CotConfig, platform_uid, spi_uid};
+pub use st0805::{
+    CotConfig, platform_position_xml, platform_uid, sensor_point_of_interest_xml, spi_uid,
+};
 pub use st0806::{
     RVT_AOI_LS_UL, RVT_LS_UL, RVT_POI_LS_UL, RVT_USER_DEFINED_LS_UL, RvtAoi, RvtAoiType, RvtLs,
     RvtPoi, RvtPoiType, RvtUserData, RvtUserDataType,

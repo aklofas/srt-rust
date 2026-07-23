@@ -3921,7 +3921,9 @@ pub const tst_core::klv::SECURITY_LS_UL: [u8; 16]
 pub const tst_core::klv::VMTI_LS_UL: [u8; 16]
 pub fn tst_core::klv::decode_sdcc_flp(&[u8]) -> core::result::Result<tst_core::klv::st1010::SdccFlp, tst_core::error::KlvFieldError>
 pub fn tst_core::klv::encode_sdcc_flp_mode2(&[f64], &[f64], usize) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::platform_position_xml(&tst_core::UasDatalinkLs, &tst_core::klv::st0805::CotConfig, u64) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub fn tst_core::klv::platform_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
+pub fn tst_core::klv::sensor_point_of_interest_xml(&tst_core::UasDatalinkLs, &tst_core::klv::st0805::CotConfig, u64) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub fn tst_core::klv::spi_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub mod tst_core::mpegts
 pub mod tst_core::mpegts::au_cell

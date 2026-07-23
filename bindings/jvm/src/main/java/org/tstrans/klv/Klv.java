@@ -672,6 +672,119 @@ public final class Klv {
     private static native byte[] nEncodeRvtStandalone(RvtLs record) throws org.tstrans.KlvEncodeException;
 
     // -----------------------------------------------------------------------
+    // ST 0805.1 — KLV -> Cursor-on-Target (CoT) conversion
+    // -----------------------------------------------------------------------
+
+    /**
+     * Serialize a Platform Position CoT event (ST 0805.1 §5 Table 1) from a
+     * decoded {@link UasDatalinkLs} record, using {@link CotConfig#defaults()}.
+     *
+     * @param record      the UAS Datalink LS to convert
+     * @param generatedUs POSIX epoch microseconds stamped into
+     *                    {@code detail/_flow-tags_}; an explicit argument (not
+     *                    sampled internally) so conversion stays deterministic —
+     *                    a replayed-file CoT run must be byte-identical to a
+     *                    live one (ST 0805.1 §1)
+     * @return the serialized CoT event XML
+     * @throws IllegalArgumentException naming the missing KLV tag when a
+     *         mapping-required field (uid components, timestamp, sensor
+     *         position, altitude) is absent from {@code record}
+     */
+    public static String platformPositionXml(UasDatalinkLs record, long generatedUs) {
+        return platformPositionXml(record, CotConfig.defaults(), generatedUs);
+    }
+
+    /**
+     * Serialize a Platform Position CoT event (ST 0805.1 §5 Table 1) from a
+     * decoded {@link UasDatalinkLs} record with an explicit {@link CotConfig}.
+     * Mirrors tst-py's {@code platform_position_xml(record, config=..., generated_us=...)}.
+     *
+     * @param record      the UAS Datalink LS to convert
+     * @param config      the CoT conversion configuration
+     * @param generatedUs see {@link #platformPositionXml(UasDatalinkLs, long)}
+     * @return the serialized CoT event XML
+     * @throws IllegalArgumentException naming the missing KLV tag when a
+     *         mapping-required field (uid components, timestamp, sensor
+     *         position, altitude) is absent from {@code record}
+     */
+    public static String platformPositionXml(UasDatalinkLs record, CotConfig config, long generatedUs) {
+        return platformPositionXmlNative(record, config, generatedUs);
+    }
+
+    /**
+     * Serialize a Sensor Point of Interest CoT event (ST 0805.1 §5 Table 2)
+     * from a decoded {@link UasDatalinkLs} record, using
+     * {@link CotConfig#defaults()}. Linked back to the Platform Position
+     * event via {@code detail/link}.
+     *
+     * @param record      the UAS Datalink LS to convert
+     * @param generatedUs see {@link #platformPositionXml(UasDatalinkLs, long)}
+     * @return the serialized CoT event XML
+     * @throws IllegalArgumentException naming the missing KLV tag when a
+     *         mapping-required field (uid components, timestamp, an aimpoint
+     *         position pair, that pair's elevation) is absent from {@code record}
+     */
+    public static String sensorPointOfInterestXml(UasDatalinkLs record, long generatedUs) {
+        return sensorPointOfInterestXml(record, CotConfig.defaults(), generatedUs);
+    }
+
+    /**
+     * Serialize a Sensor Point of Interest CoT event (ST 0805.1 §5 Table 2)
+     * from a decoded {@link UasDatalinkLs} record with an explicit
+     * {@link CotConfig}. See {@link #platformPositionXml(UasDatalinkLs, CotConfig, long)}
+     * for the shared {@code config}/{@code generatedUs} contract. Mirrors
+     * tst-py's {@code sensor_point_of_interest_xml(record, config=..., generated_us=...)}.
+     *
+     * @param record      the UAS Datalink LS to convert
+     * @param config      the CoT conversion configuration
+     * @param generatedUs see {@link #platformPositionXml(UasDatalinkLs, long)}
+     * @return the serialized CoT event XML
+     * @throws IllegalArgumentException naming the missing KLV tag when a
+     *         mapping-required field (uid components, timestamp, an aimpoint
+     *         position pair, that pair's elevation) is absent from {@code record}
+     */
+    public static String sensorPointOfInterestXml(UasDatalinkLs record, CotConfig config, long generatedUs) {
+        return sensorPointOfInterestXmlNative(record, config, generatedUs);
+    }
+
+    /**
+     * Deterministic Platform Position {@code uid}: {@code "{tag10}_{tag3}"}
+     * (ST 0805.1 §5 Table 1). Mirrors tst-py's {@code platform_uid(record)}.
+     *
+     * @param record the UAS Datalink LS to derive the uid from
+     * @return the deterministic uid
+     * @throws IllegalArgumentException naming the missing tag when Platform
+     *         Designation (Tag 10) or Mission ID (Tag 3) is absent
+     */
+    public static String platformUid(UasDatalinkLs record) {
+        return platformUidNative(record);
+    }
+
+    /**
+     * Deterministic SPI {@code uid}: {@code "{tag10}_{tag3}_{tag11}"} (ST
+     * 0805.1 §5 Table 2). Mirrors tst-py's {@code spi_uid(record)}.
+     *
+     * @param record the UAS Datalink LS to derive the uid from
+     * @return the deterministic uid
+     * @throws IllegalArgumentException naming the missing tag when Platform
+     *         Designation (Tag 10), Mission ID (Tag 3), or Image Source
+     *         Sensor (Tag 11) is absent
+     */
+    public static String spiUid(UasDatalinkLs record) {
+        return spiUidNative(record);
+    }
+
+    private static native String platformPositionXmlNative(
+            UasDatalinkLs record, CotConfig config, long generatedUs);
+
+    private static native String sensorPointOfInterestXmlNative(
+            UasDatalinkLs record, CotConfig config, long generatedUs);
+
+    private static native String platformUidNative(UasDatalinkLs record);
+
+    private static native String spiUidNative(UasDatalinkLs record);
+
+    // -----------------------------------------------------------------------
     // UL dispatcher
     // -----------------------------------------------------------------------
 

@@ -112,3 +112,12 @@ def test_custom_config_overrides_platform_type_and_producer():
     xml = platform_position_xml(_fixture(), config=cfg, generated_us=GENERATED_US)
     assert 'type="a-f-G-U-C"' in xml
     assert "<_flow-tags_ MyOrg=" in xml
+
+
+def test_custom_config_geoid_undulation_marshals_to_msl_altitude():
+    # MSL-only record (no HAE-native tag 75/104) + a configured geoid
+    # undulation: hae = msl + undulation, marshaled through CotConfig.
+    record = _fixture(sensor_ellipsoid_height_m=None, sensor_alt_m=1500.0)
+    cfg = CotConfig(geoid_undulation_m=24.5)
+    xml = platform_position_xml(record, config=cfg, generated_us=GENERATED_US)
+    assert 'hae="1524.5"' in xml

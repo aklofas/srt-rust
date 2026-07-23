@@ -198,4 +198,23 @@ class St0805Test {
         assertTrue(xml.contains("type=\"a-f-G-U-C\""));
         assertTrue(xml.contains("<_flow-tags_ MyOrg="));
     }
+
+    @Test
+    void customConfigGeoidUndulationMarshalsToMslAltitude() {
+        // MSL-only record (no HAE-native tag 75/104) + a configured geoid
+        // undulation: hae = msl + undulation, marshaled through CotConfig.
+        UasDatalinkLs record = new UasDatalinkLs.Builder()
+                .universalLabel(ByteBuffer.wrap(Klv.st0601Ul()))
+                .timestampUs(798_039_894_000_000L)
+                .platformDesignation("PRED01")
+                .missionId("M05")
+                .imageSourceSensor("EO")
+                .sensorLatDeg(34.05)
+                .sensorLonDeg(-118.25)
+                .sensorAltM(1500.0)
+                .build();
+        CotConfig cfg = CotConfig.builder().geoidUndulationM(24.5).build();
+        String xml = Klv.platformPositionXml(record, cfg, GENERATED_US);
+        assertTrue(xml.contains("hae=\"1524.5\""));
+    }
 }

@@ -7,7 +7,7 @@ the Rust layer."""
 
 import pytest
 
-from tstrans.exceptions import KlvEncodeError, KlvError
+from tstrans.exceptions import KlvEncodeError, KlvError, KlvErrorKind
 from tstrans.klv import (
     RvtAoi,
     RvtAoiType,
@@ -173,8 +173,22 @@ def test_decode_rvt_standalone_round_trips_and_verifies_crc():
 def test_decode_rvt_standalone_crc_mismatch_raises():
     good = encode_rvt_standalone(RvtLs(timestamp_us=1))
     bad = good[:-1] + bytes([good[-1] ^ 0xFF])
-    with pytest.raises(KlvError):
+    # The trailing 4 bytes ARE the declared CRC value itself (Tag 1's
+    # value bytes -- see `encode_to_vec_standalone`), so flipping only
+    # the last byte corrupts the DECLARED value while the RECOMPUTED
+    # value (over everything else, unchanged) stays the original correct
+    # CRC. Both are therefore knowable here, letting us assert the D3
+    # mapper arm's message carries the exact hex the Rust `Crc32Mismatch`
+    # Display impl emits: `"CRC-32 mismatch: declared {expected:#010x},
+    # computed {found:#010x}"` (crates/tst-core/src/error.rs) -- not just
+    # that some KlvError was raised.
+    declared = int.from_bytes(bad[-4:], "big")
+    recomputed = int.from_bytes(good[-4:], "big")
+    with pytest.raises(KlvError) as excinfo:
         decode_rvt_standalone(bad)
+    assert excinfo.value.kind == KlvErrorKind.CHECKSUM_MISMATCH
+    assert f"declared {declared:#010x}" in excinfo.value.message
+    assert f"computed {recomputed:#010x}" in excinfo.value.message
 
 
 def test_decode_rvt_standalone_bad_universal_label_raises():
@@ -465,5 +479,10 @@ def test_rvt_round_trip_brief_slice():
 def test_standalone_crc_mismatch_raises_brief_slice():
     good = encode_rvt_standalone(RvtLs(timestamp_us=1))
     bad = good[:-1] + bytes([good[-1] ^ 0xFF])
-    with pytest.raises(KlvError):
+    declared = int.from_bytes(bad[-4:], "big")
+    recomputed = int.from_bytes(good[-4:], "big")
+    with pytest.raises(KlvError) as excinfo:
         decode_rvt_standalone(bad)
+    assert excinfo.value.kind == KlvErrorKind.CHECKSUM_MISMATCH
+    assert f"declared {declared:#010x}" in excinfo.value.message
+    assert f"computed {recomputed:#010x}" in excinfo.value.message

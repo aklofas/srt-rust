@@ -264,20 +264,35 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A consumer ingesting archival / file-based
   VMTI-bearing streams that use the Universal Set encoding.
 
-## `klv::st0806` RVT typed layer
+## `klv::st0806` RVT typed layer — SHIPPED
 
-- **Status:** Pass-through. Carried as ST 0601 Tag 73; consumers see
-  raw bytes in the `unknown` field of `UasDatalinkLs` (no typed
-  pass-through field today — could be added if a consumer asks,
-  mirroring how Tag 48 → `security_local_set` and Tag 74 → `vmti`
-  fields work).
-- **Why deferred:** No consumer ask. ST 0806 PDF is not on hand —
-  acquiring it (it's a public NGA spec) is a prerequisite. ST 0806 is
-  metadata-emitting from receiver terminals (POI / AOI annotations,
-  user-typed text) — narrower scope than VMTI but still its own per-
-  tag table.
-- **Trigger to revisit:** A consumer asks AND the ST 0806 PDF is
-  obtained.
+- **Status:** SHIPPED. `klv::st0806` types the MISB ST 0806.4 Remote
+  Video Terminal (RVT) Local Set: the nested body form (carried via
+  `UasDatalinkLs::rvt`, ST 0601 Tag 73) and the standalone independent
+  form (own 16-byte UL, timestamp-first Tag 2, CRC-32/MPEG-2-last
+  Tag 1). The repeatable nested POI (Tag 12), AOI (Tag 13), and User
+  Defined (Tag 11) sub-sets are typed too. Decode via
+  `klv::st0806::decode` (nested) or `klv::st0806::decode_standalone`
+  (independent). See the `klv::st0806` module docs for the full
+  surface.
+
+## RVT standalone-PID demuxer dispatch (`MetadataKind::RvtLs`)
+
+- **Status:** Consumer-side dispatch. Consumers carrying a standalone
+  RVT LS on its own KLV PID (the ST 0806.4-01/-03 independent form)
+  match `data.starts_with(&klv::st0806::RVT_LS_UL)` themselves and call
+  `klv::st0806::decode_standalone` on the inner bytes. The demuxer's
+  `MetadataKind` enum has no RVT-aware variant — same shape as the
+  VMTI standalone-PID entry above.
+- **Why deferred:** Same slippery-slope reasoning as the VMTI entry:
+  adding `MetadataKind::RvtLs` commits the demuxer to a growing per-
+  typed-set variant list. Today's pattern keeps the demuxer UL-agnostic
+  and pushes dispatch to consumer code, which is where the typed-set
+  decision naturally lives.
+- **Trigger to revisit:** A consumer with standalone-RVT streams (own
+  KLV PID, ST 0806.4-01/-03 form) asks for ergonomic dispatch, AND
+  we're prepared to commit to a `MetadataKind::*` policy across all
+  typed sets.
 
 ## KLV conformance cross-check vs. Python `klvdata`
 

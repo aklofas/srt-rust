@@ -498,8 +498,9 @@ pub struct UasDatalinkLs {
     pub generic_flag_data: Option<u8>,
     pub security_local_set: Option<Vec<u8>>,
     /// Item 73: MISB ST 0806 Remote Video Terminal LS bytes.
-    /// Pass-through bytes; interior typing deferred (the sibling
-    /// `klv::st0806` module lands in a later work package).
+    /// Pass-through bytes; consumers needing typed access call
+    /// `klv::st0806::decode` on `rvt.as_deref()?`. See
+    /// [`crate::klv::st0806`] for the typed layer.
     pub rvt: Option<Vec<u8>>,
     /// Tag 74 — VMTI Local Set (MISB ST 0903). Pass-through bytes;
     /// consumers needing typed access call `klv::st0903::decode` on

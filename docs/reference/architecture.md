@@ -326,7 +326,7 @@ an entry in [`docs/project/deferred-features.md`](/docs/project/deferred-feature
 - Audio frame parsers — `codec::mpegaudio` (Layer I/II/III), `codec::aac::adts`, and `codec::ac3` (syncframe parser) ship; `codec::aac::latm` is a sync validator only (full `audioMuxElement` decode deferred); E-AC-3 (Annex E) is deferred.
 - Reactor / async / `srt_epoll_*` — see the sync-vs-async section above.
 - Bonding / connection groups (`SRTO_GROUP*`) — no consumer demand.
-- Other typed MISB sets — ST 0102 (Security LS) and ST 0903 (top-level VMTI + per-target `VTargetPack`) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) and ST 0806 RVT remain pass-through.
+- Other typed MISB sets — ST 0102 (Security LS), ST 0903 (top-level VMTI + per-target `VTargetPack`), and ST 0806 (RVT, plus nested POI/AOI/User Defined sub-sets) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) remain pass-through.
 - Owned-projection variants on borrowed iterator types — `VTargetSeriesIter`, `KlvIterator`, and the indexed NAL iterator are borrow-coupled today; cross-language wrappability needs owned-by-value variants.
 - `serde` / `no_std` for `klv` — pure additive; behind feature flags when added.
 - `tst-c` receiver surface — fully shipped (`tst_raw_receiver_t` Phase 1 plan #59, `tst_receiver_t` Phase 2 plan #60, `tst_demux_receiver_t` + typed `tst_event_t` tagged union + multi-program demux Phase 3 plan #62), not deferred. Listed here for cross-reference only. The two genuinely-still-deferred C-ABI hooks are `add_byte_sink` fan-out and `tst_pairer_t` (both tracked in `docs/project/deferred-features.md`).

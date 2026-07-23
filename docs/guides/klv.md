@@ -691,9 +691,12 @@ Each item below maps to an entry in
 - ST 0102 country-code validation — codes pass through as `String`;
   no validation against ISO 3166 / GENC / FIPS 10-4 / STANAG 1059 /
   CAPCO tables. See [project/deferred-features.md](/docs/project/deferred-features.md).
-- Other typed sets (ST 0903 VMTI, ST 0806 RVT, ...) — the substrate
-  supports them; per-tag tables are missing without a driving consumer.
-  See [project/deferred-features.md](/docs/project/deferred-features.md).
+- Other nested local sets (ST 1206 SAR Motion Imagery, ST 1002 Range
+  Image, ST 1601 Geo-Registration, ST 1602 Composite Imaging, and the
+  two ST 1607 Segment / Amend sets; and, within VMTI, the VMask /
+  VTracker / VChip / Algorithm Series / Ontology Series sub-sets) — the
+  substrate supports them; per-tag tables are missing without a driving
+  consumer. See [project/deferred-features.md](/docs/project/deferred-features.md).
 - `serde` integration for typed records — wire format and JSON aren't
   isomorphic; needs an explicit decision on unknown-tag representation.
   See [project/deferred-features.md](/docs/project/deferred-features.md).

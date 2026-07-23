@@ -83,15 +83,15 @@
 //!
 //! **Sibling-decoded nested local sets** — the tag's payload bytes are
 //! further parsed by a dedicated typed module, not just stored: tag 48
-//! (Security LS, via [`crate::klv::st0102`]), tag 74 (VMTI LS, via
-//! [`crate::klv::st0903`]), tag 94 (MIIS Core Identifier, via
-//! [`crate::klv::st1204`]).
+//! (Security LS, via [`crate::klv::st0102`]), tag 73 (RVT LS, via
+//! [`crate::klv::st0806`]), tag 74 (VMTI LS, via [`crate::klv::st0903`]),
+//! tag 94 (MIIS Core Identifier, via [`crate::klv::st1204`]).
 //!
 //! **Named nested-set byte fields** — a dedicated, named struct field
 //! (not folded into `unknown`), but the interior bytes are pass-through
-//! and not yet decoded: tag 73 (`rvt`, MISB ST 0806 RVT LS), tag 95
-//! (`sar_mi_local_set`, ST 1206), tag 97 (`range_image_local_set`, ST
-//! 1002), tag 98 (`geo_registration_local_set`, ST 1601), tag 99
+//! and not yet decoded: tag 95 (`sar_mi_local_set`, ST 1206), tag 97
+//! (`range_image_local_set`, ST 1002), tag 98
+//! (`geo_registration_local_set`, ST 1601), tag 99
 //! (`composite_imaging_local_set`, ST 1602), tags 100–101
 //! (`segment_local_set` / `amend_local_set`, ST 1607).
 //!
@@ -111,11 +111,12 @@
 //! - [`decode_strict_compliance`] — adds full ST 0107.5 conformance
 //!   checks (BER canonicality, no duplicate tags, etc.).
 //!
-//! **Deferred:** interior typing of the seven named-but-opaque nested
-//! local sets above (tags 73, 95, 97–101). Tag 73 (RVT / ST 0806) has a
-//! tracked entry in `docs/project/deferred-features.md`; the other six
-//! do not yet. Otherwise none — ST 0601 typed model is the
-//! most-complete of the 4 typed sets.
+//! **Deferred:** interior typing of the six remaining named-but-opaque
+//! nested local sets above (tags 95, 97–101). Tag 73 (RVT / ST 0806) is
+//! now typed via [`crate::klv::st0806`] and no longer on this list. Each
+//! of the six has a tracked entry in `docs/project/deferred-features.md`.
+//! Otherwise none — ST 0601 typed model is the most-complete of the
+//! typed sets.
 
 pub(crate) mod decode;
 pub(crate) mod encode;

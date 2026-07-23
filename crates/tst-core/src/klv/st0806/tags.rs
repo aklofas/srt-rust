@@ -1,6 +1,8 @@
 //! ST 0806.4 Table 8-1 tag schema. Tags 11/12/13 (nested sets) are
 //! dispatched explicitly in decode/encode; this table covers the scalar
-//! items and drives once-only duplicate detection.
+//! items, driving tag lookup/dispatch plus the name and wire encoding
+//! `decode`/`encode` use for each one. Decode is lenient last-wins on a
+//! repeated scalar tag — this table plays no part in duplicate detection.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum RvtEncoding {

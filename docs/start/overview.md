@@ -39,7 +39,7 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 
 - **MPEG-TS mux + demux** — the Rust core (`tst-core`, `tst-pipeline`, `tst-srt`). Single-program or multi-program TS; auto-PCR insertion; PAT/PMT generation; the full ST 1402 KLV-in-TS multiplexing pipeline.
 - **Transports** — SRT (vendored libsrt 1.5.5; mbedTLS 3.6.x LTS encryption ON by default with AES-128/192/256), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist). A supported HLS publisher (segmenter + optional built-in HTTP server) ships too — see the [HLS guide](/docs/guides/hls.md).
-- **MISB KLV** — typed encode + decode for ST 0601 (Full Motion Video FMV), ST 0102 (Security Metadata), ST 0605 (Amend Tags), ST 0903 (VMTI per-target detections). H.222.0 §2.12.4.2 Metadata AU cell wrapping for synchronous KLV streams.
+- **MISB KLV** — typed encode + decode for ST 0601 (Full Motion Video FMV), ST 0102 (Security Metadata), ST 0605 (Amend Tags), ST 0903 (VMTI per-target detections), ST 0806 (RVT), ST 1010 (SDCC error covariance); plus a one-way ST 0805 KLV→Cursor-on-Target conversion layer. H.222.0 §2.12.4.2 Metadata AU cell wrapping for synchronous KLV streams.
 - **Video codecs** — H.264, H.265, H.266/VVC, AV1. NAL/OBU parsers; SPS/PPS/VPS extraction; slice-header-light parsers for resolution + profile.
 - **Audio codecs** — AAC (ADTS full; LATM carriage + sync validation, full decode deferred), MPEG-2 Audio (MP2/MP3), AC-3. Frame-level parsers expose sample rate / channel count.
 - **Subtitles** — DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS.
@@ -61,7 +61,8 @@ well-worn companion tool:
   (segmenter + optional built-in HTTP server — see the
   [HLS guide](/docs/guides/hls.md)). RTMP and WebRTC aren't planned — front
   with a media server (e.g. MediaMTX) where you need those endpoints.
-- **Metadata: MISB KLV** (ST 0601 / 0102 / 0605 / 0903 / 1204). Other schemas
+- **Metadata: MISB KLV** (ST 0601 / 0102 / 0605 / 0903 / 1204 / 0806 / 1010),
+  plus a ST 0805 KLV→CoT conversion layer. Other schemas
   ride as opaque private data; see
   [`project/deferred-features.md`](/docs/project/deferred-features.md).
 - **Codec work stays outside.** Bring encoded NAL units / OBU frames from

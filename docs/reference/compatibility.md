@@ -317,7 +317,7 @@ coarser grain to avoid drifting per-tag detail out of sync).
 | 96, 103–105, 109, 112–114, 117–120, 132, 134 | Extended-range items (ST 1201.5 IMAPB) | ✅ Full — out-of-range values under `OutOfRangePolicy::Indicator` and producer specials round-trip via `imapb_specials` |
 | 110–111, 123–126, 131, 133, 136–137, 139 | Var-length int/enum items (incl. `PlatformStatus`, `SensorControlMode`) | ✅ Full |
 | 47 | Generic flag bitfield | ✅ Full |
-| 81, 102, 115–116, 121–122, 127–128, 130, 138, 140–143 | Pack & list items (Appendix Table C1 — `ImageHorizonPixels`, `SdccFlpField`, `ControlCommand`, id lists, `CountryCodes`, `WavelengthRecord`, `AirbaseLocations`, `PayloadList`, `WeaponsStore`, `Waypoint`, `ViewDomain`, `MetadataSubstreamId`) | ✅ Full |
+| 81, 102, 115–116, 121–122, 127–128, 130, 138, 140–143 | Pack & list items (Appendix Table C1 — `ImageHorizonPixels`, `SdccFlpField`, `ControlCommand`, id lists, `CountryCodes`, `WavelengthRecord`, `AirbaseLocations`, `PayloadList`, `WeaponsStore`, `Waypoint`, `ViewDomain`, `MetadataSubstreamId`) | ✅ Full — item 102's `SdccFlpField.bytes` is a sibling-decoded raw pack, parsed via `klv::st1010::decode_sdcc_flp` |
 | 48, 73, 74, 94 | Sibling-decoded nested local sets | ✅ Bytes pass-through; typed via `klv::st0102`/`klv::st0806`/`klv::st0903`/`klv::st1204` |
 | 95, 97–101 | Named nested-set byte fields (SAR MI / Range Image / Geo-Registration / Composite Imaging / Segment / Amend) | 🔁 Pass-through — dedicated struct field, interior bytes not yet decoded |
 | 66 | (deprecated placeholder) | 🔁 Pass-through via `unknown` (permanently, by design) |
@@ -599,7 +599,8 @@ covers.
 | **MISB ST 0604.6** | Time Stamping & Transport in MISB Motion Imagery | ⚙️ Opt-in — `Muxer::push_video_misp_to` / `MuxSender::send_video_misp_to` splice the MISP SEI (H.264 + H.265); `codec::misp_time::extract` recovers it. Commercial Time Stamp (UTC wall-clock SEI) and H.262/AV1/H.266 variants deferred. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 0605.10** | Encoding & Inserting Time Codes / Stamps | ✅ Precision Time Stamp Pack |
 | **MISB ST 0607.5** | UAS Datalink LS Time-Stamped Records | 🔁 Pass-through; not exercised by corpus |
-| **MISB ST 0805.1** | KLV Metadata over RTP | ❌ Out of scope (we transport over SRT/MPEG-TS) |
+| **MISB ST 0805.1** | KLV to Cursor-on-Target (CoT) Conversions | ✅ `klv::st0805::{platform_position_xml, sensor_point_of_interest_xml}` — Platform Position + Sensor Point of Interest CoT events from a decoded ST 0601 LS; deterministic `uid`s (`platform_uid`/`spi_uid`) and fixed attribute order for byte-stable replay. Rust, Python, and JVM (the C ABI carries raw KLV but exposes no typed KLV APIs). |
+| **MISB ST 0806.4** | Remote Video Terminal (RVT) Local Set | ✅ `klv::st0806::{decode, decode_standalone, encode_to_vec, encode_to_vec_standalone}` — RVT LS + POI/AOI/User-Defined nested LSs; embedded via ST 0601 Tag 73 and standalone UL + CRC-32/MPEG-2 form. Rust, Python, and JVM (the C ABI carries raw KLV but exposes no typed KLV APIs). |
 | **MISB ST 0807.27** | KLV Metadata Registry | ⚙️ Used as canonical source for UL constants |
 | **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ⚙️ Opt-in validator — `klv::st0601::validate_mismms` returns a `Vec<MismmsViolation>` per record; stream-level cadence tracker deferred. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ✅ LS form — typed top-level (`VmtiLs`) + per-target (`VTargetPack`) decode + encode (`klv::st0903`); 7 nested/sibling LSes pass-through (typed layers deferred); Universal Set form deferred |
@@ -628,11 +629,11 @@ covers.
 | Crate | Status | Target |
 | --- | --- | --- |
 | `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.5; encryption via mbedTLS. |
-| `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903), codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
+| `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903 / 0806 / 1010 / 1204) + the ST 0805 KLV→CoT conversion layer, codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
 | `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.19** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
-| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.3.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; TLS variants ship in the wheels (`tcps://` caller + listener, `rtsps://` client + server, HTTPS HLS) as does RIST PSK encryption; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
+| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.3.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for the core MISB sets (ST 0601 / 0102 / 0605 / 0903) plus ST 0806 / 1010 / 1204 and the ST 0805 KLV→CoT conversion layer; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; TLS variants ship in the wheels (`tcps://` caller + listener, `rtsps://` client + server, HTTPS HLS) as does RIST PSK encryption; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
 | `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); RTP (incl. RTSP client + server) + SRT transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 

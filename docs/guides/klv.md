@@ -1,15 +1,16 @@
 # KLV Codec Guide
 
 
-> **Who this is for:** You need to encode or decode MISB KLV metadata (ST 0601 FMV, ST 0102 security, ST 0605 amend tags, ST 0903 VMTI) — typed Rust structs in, bytes out, or the inverse.
+> **Who this is for:** You need to encode or decode MISB KLV metadata (ST 0601 FMV, ST 0102 security, ST 0605 amend tags, ST 0903 VMTI, ST 0806 RVT, ST 1010 SDCC error covariance, ST 0805 KLV→CoT conversion) — typed Rust structs in, bytes out, or the inverse.
 
 > **You will learn:**
 > - The substrate: SMPTE UL tags, BER length, the encode/decode round-trip
-> - How typed `St0601Record` / `St0102Record` / `St0605Record` / `St0903Record` map to the wire format
+> - How typed `UasDatalinkLs` / `SecurityLs` / `PrecisionTimeStampPack` / `VmtiLs` map to the wire format
 > - The non-conformant-issue model (lenient decode + diagnostics) vs strict mode
 > - How `KlvStreamType::SynchronousMetadata` wraps your KLV in H.222.0 §2.12.4.2 AU cells (and what to pass — raw KLV, not pre-wrapped)
 > - VTargetPack inner structure for ST 0903
 > - How to encode strict-compliance ST 0601 with `encode_strict_compliance`
+> - The ST 0601 long tail, RVT (ST 0806), SDCC error covariance (ST 1010), and the ST 0805 KLV→CoT conversion layer
 
 ## Introduction
 
@@ -40,6 +41,9 @@ the published ST 0601 mandatory-field rules.
 ```
 typed:    klv::st0601 (UAS Datalink LS, 142 of 143 items typed or structured)
           klv::st0605 (Precision Time Stamp Pack)
+          klv::st0806 (RVT — Remote Video Terminal Local Set)
+          klv::st0805 (KLV → Cursor-on-Target conversion)
+          klv::st1010 (SDCC-FLP — error covariance pack)
 
 substrate: klv::pack            (Iter, RawField, OwnedRawField)
            klv::length          (BER short/long, BER-OID)
@@ -187,7 +191,7 @@ caller doesn't have to spell out the partial-presence cases.
 > **Python:** the typed sets are frozen dataclasses — attribute
 > assignment raises `FrozenInstanceError`. Use
 > `record.with_(sensor_lat_deg=33.5)` to get an updated copy (a thin
-> `dataclasses.replace` wrapper on all four sets; unknown names raise
+> `dataclasses.replace` wrapper on the core four sets plus `RvtLs`; unknown names raise
 > `TypeError` and construction-time validation re-runs on the copy).
 > To stream typed ST 0601 records straight from a file with their PTS,
 > use `tstrans.io.iter_uas_datalink(path)`; on a `DemuxEvent.Metadata`
@@ -229,6 +233,38 @@ producing a new one should prefer the extended field. Item 69 (Alternate
 Platform Altitude) is a related but distinct plain-altitude item with no
 IMAPB twin of its own; see its rustdoc for the disambiguation from the
 76/105 ellipsoid-height pair.
+
+### The ST 0601 long tail
+
+The MISB full-tag-compliance arc took `UasDatalinkLs` from 52 to 142 of
+the 143 active ST 0601.19 items. The newly-typed field families:
+atmospheric/wind (Items 35–38, 49, 53–55), target location plus error
+estimates (Items 40–46), extended platform state (51–52, 56–58, 64,
+92–93), alternate platform (67–69, 71, 76, 105), sensor velocity
+(79–80), coded enums with an `Other(code)` fallback (`IcingDetected`,
+`SensorFovName`, `OperationalMode` — Items 34, 63, 77), var-length
+int/enum items (Items 110–111, 123–126, 131, 133, 136–137, 139), and
+the ST 1201.5 IMAPB extended-range twins (Items 96, 103–105, 109,
+112–114, 117–120, 132, 134) — see the extended-range precedence rule
+above. Full per-tag table: [reference/compatibility.md](/docs/reference/compatibility.md).
+
+```rust,no_run
+use tst_core::klv::st0601::{decode, UasDatalinkLs};
+
+fn long_tail_fields(buf: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let ls: UasDatalinkLs = decode(buf)?;
+    if let Some(w) = ls.wind_speed {
+        println!("wind speed: {w:.1} m/s (Item 36)");
+    }
+    if let Some(ce) = ls.target_error_ce90_m {
+        println!("target CE90: {ce:.1} m (Item 45)");
+    }
+    if let Some(course) = ls.platform_course_angle_deg {
+        println!("platform course: {course:.1}° (Item 112, IMAPB)");
+    }
+    Ok(())
+}
+```
 
 ## Encoding
 
@@ -509,6 +545,107 @@ for all spec-conformant input (modulo IMAPB quantization).
 ### Universal Set form
 
 Out of scope — see [`deferred-features.md`](/docs/project/deferred-features.md).
+
+## RVT (ST 0806)
+
+MISB ST 0806.4 defines the Remote Video Terminal (RVT) Local Set — ground
+receiver telemetry (video data rate, airspeed, aircraft/frame-center MGRS
+position) plus three nested repeatable sets: Point of Interest (`RvtPoi`),
+Area of Interest (`RvtAoi`), and User Defined (`RvtUserData`). `klv::st0806`
+is a sibling-layer module, same pattern as `klv::st0102`/`klv::st0903`:
+`UasDatalinkLs::rvt` carries the pass-through bytes (ST 0601 Tag 73); call
+`klv::st0806::decode` on them for the typed `RvtLs`.
+
+RVT is also standalone-capable: its own 16-byte Universal Label
+(`RVT_LS_UL`) plus a Tag 1 CRC-32/MPEG-2 checksum. `decode_standalone`
+parses the UL-framed wire form and verifies the CRC when present; the
+embedded (Tag 73) body form is not required to carry Tag 1, and `decode`
+(the body-only entry point) never verifies it even when present.
+
+```rust
+use tst_core::klv::{st0601, st0806};
+
+fn dump_rvt(record_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = st0601::decode(record_bytes)?;
+    if let Some(bytes) = parent.rvt.as_deref() {
+        let rvt = st0806::decode(bytes)?;
+        println!("airspeed: {:?} m/s", rvt.platform_true_airspeed);
+        for poi in &rvt.points_of_interest {
+            println!("  POI #{:?}: {:?}", poi.number, poi.text);
+        }
+    }
+    Ok(())
+}
+```
+
+## Cursor-on-Target (ST 0805)
+
+MISB ST 0805.1 is a one-way KLV→CoT conversion, not a KLV wire format:
+`klv::st0805` turns a decoded `UasDatalinkLs` into two CoT XML events —
+Platform Position (the platform's own position) and Sensor Point of
+Interest, or SPI (the sensor's ground aimpoint) — linked together via
+`detail/link`: the SPI event's `uid` is `spi_uid(ls)`
+(`"{tag10}_{tag3}_{tag11}"`), and it references the platform event's
+`uid` (`platform_uid(ls)`, `"{tag10}_{tag3}"`) so a CoT consumer can
+join the two.
+
+Both conversions take an explicit `generated_us` argument (POSIX epoch
+microseconds) rather than sampling the wall clock internally — per §1,
+CoT generated from a replayed file must be byte-identical to CoT
+generated live, so nothing about the output may depend on when the
+conversion runs. `CotConfig` carries the configurable pieces (platform
+`type`, `producer` XML-attribute name, `how`, geoid undulation).
+
+```rust
+use tst_core::klv::st0601::UasDatalinkLs;
+use tst_core::klv::st0805::{CotConfig, platform_position_xml, sensor_point_of_interest_xml};
+
+fn to_cot(ls: &UasDatalinkLs, generated_us: u64) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let cfg = CotConfig::default(); // platform_type "a-f-A-M-F", how "m-p"
+    let platform_xml = platform_position_xml(ls, &cfg, generated_us)?;
+    let spi_xml = sensor_point_of_interest_xml(ls, &cfg, generated_us)?;
+    Ok((platform_xml, spi_xml))
+}
+```
+
+```python
+from tstrans.klv import platform_position_xml, sensor_point_of_interest_xml
+
+platform_xml = platform_position_xml(record, generated_us=generated_us)
+spi_xml = sensor_point_of_interest_xml(record, generated_us=generated_us)
+```
+
+## SDCC error covariance (ST 1010)
+
+MISB ST 1010.3 SDCC-FLP is a general-purpose standard-deviation +
+correlation-coefficient pack — `klv::st1010` knows nothing about ST 0601;
+ST 0601 Tag 102 embeds one SDCC-FLP occurrence per `sdcc_flps` entry
+(`UasDatalinkLs::sdcc_flps: Vec<SdccFlpField>`), each carrying the raw
+pack bytes plus the wire-order tags that preceded it. Call
+`decode_sdcc_flp` on `SdccFlpField::bytes` for the typed `SdccFlp`
+(N×N symmetric: `std_devs` on the diagonal, `correlations` the upper
+triangle — `SdccFlp::correlation(i, j)` indexes either).
+
+Decode handles both wire modes: Mode 1 (one-byte Parse Control; ST 0601
+never emits it) and Mode 2 (two-byte Parse Control; mandatory for
+ST 0601 per ST 0601.10-22). `encode_sdcc_flp_mode2` is Mode-2-only —
+the only mode ST 0601 permits — and picks the sparse Bit Vector
+encoding automatically per the spec's Appendix A cost model.
+
+```rust
+use tst_core::klv::st0601::UasDatalinkLs;
+use tst_core::klv::st1010::decode_sdcc_flp;
+
+fn dump_covariance(ls: &UasDatalinkLs) -> Result<(), Box<dyn std::error::Error>> {
+    for field in &ls.sdcc_flps {
+        let m = decode_sdcc_flp(&field.bytes)?;
+        for i in 0..m.matrix_size as usize {
+            println!("sigma[{i}] = {:.3}", m.correlation(i, i));
+        }
+    }
+    Ok(())
+}
+```
 
 ## Sync metadata AU cell carriage
 

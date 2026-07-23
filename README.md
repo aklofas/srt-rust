@@ -72,7 +72,7 @@ ships in Python (`tstrans`), C (`tstrans.h`), and the JVM (`org.tstrans`).
 | **Video** | H.264, H.265, H.266 / VVC, AV1 |
 | **Audio** | AAC (ADTS + LATM), MPEG-2 Audio (MP2 / MP3), AC-3 |
 | **Subtitles** | DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS |
-| **Metadata** | MISB ST 0601 (FMV), ST 0102 (security), ST 0605 (amend tags), ST 0903 (VMTI), ST 1204 (Core ID); ST 1402 carriage, H.222.0 §2.12.4.2 Metadata AU cells, ST 0604 MISP timestamps |
+| **Metadata** | MISB ST 0601 (FMV), ST 0102 (security), ST 0605 (amend tags), ST 0903 (VMTI), ST 1204 (Core ID), ST 0806 (RVT), ST 1010 (SDCC error covariance), ST 0805 (KLV→CoT conversion); ST 1402 carriage, H.222.0 §2.12.4.2 Metadata AU cells, ST 0604 MISP timestamps |
 | **Transport** | UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT 1.5 (Haivision libsrt, vendored), RIST (VideoLAN librist), and an HLS publisher (segmenter + optional built-in HTTP server) — all shipping. See the [HLS guide](docs/guides/hls.md). |
 | **Encryption** | AES-128 / 192 / 256 over SRT via vendored mbedTLS 3.6 LTS, on by default |
 

@@ -50,6 +50,12 @@ pub enum KlvDecodeError {
     #[error("checksum mismatch: declared {expected:#06x}, computed {found:#06x}")]
     ChecksumMismatch { expected: u16, found: u16 },
 
+    /// ST 0806.4 RVT Local Set standalone-form checksum (Tag 1) — CRC-32
+    /// with the MPEG-2 (ISO/IEC 13818-1) parameters, distinct from the
+    /// ST 0601 16-bit running-sum above. See `klv::st0806::decode_standalone`.
+    #[error("CRC-32 mismatch: declared {expected:#010x}, computed {found:#010x}")]
+    Crc32Mismatch { expected: u32, found: u32 },
+
     #[error("duplicate tag {tag} at offset {offset}")]
     DuplicateTag { tag: u32, offset: usize },
 

@@ -1261,6 +1261,9 @@ pub tst_core::error::KlvDecodeError::BadTimeStampPackLength::got: usize
 pub tst_core::error::KlvDecodeError::ChecksumMismatch
 pub tst_core::error::KlvDecodeError::ChecksumMismatch::expected: u16
 pub tst_core::error::KlvDecodeError::ChecksumMismatch::found: u16
+pub tst_core::error::KlvDecodeError::Crc32Mismatch
+pub tst_core::error::KlvDecodeError::Crc32Mismatch::expected: u32
+pub tst_core::error::KlvDecodeError::Crc32Mismatch::found: u32
 pub tst_core::error::KlvDecodeError::DuplicateTag
 pub tst_core::error::KlvDecodeError::DuplicateTag::offset: usize
 pub tst_core::error::KlvDecodeError::DuplicateTag::tag: u32
@@ -2957,6 +2960,8 @@ pub const tst_core::klv::st0806::RVT_AOI_LS_UL: tst_core::klv::universal_label::
 pub const tst_core::klv::st0806::RVT_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::st0806::RVT_POI_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::st0806::RVT_USER_DEFINED_LS_UL: tst_core::klv::universal_label::UniversalLabel
+pub fn tst_core::klv::st0806::decode(&[u8]) -> core::result::Result<tst_core::klv::RvtLs, tst_core::error::KlvDecodeError>
+pub fn tst_core::klv::st0806::decode_standalone(&[u8]) -> core::result::Result<tst_core::klv::RvtLs, tst_core::error::KlvDecodeError>
 pub mod tst_core::klv::st0903
 #[non_exhaustive] pub enum tst_core::klv::st0903::VTargetPackError
 pub tst_core::klv::st0903::VTargetPackError::InvalidLength
@@ -7011,6 +7016,9 @@ pub tst_core::KlvDecodeError::BadTimeStampPackLength::got: usize
 pub tst_core::KlvDecodeError::ChecksumMismatch
 pub tst_core::KlvDecodeError::ChecksumMismatch::expected: u16
 pub tst_core::KlvDecodeError::ChecksumMismatch::found: u16
+pub tst_core::KlvDecodeError::Crc32Mismatch
+pub tst_core::KlvDecodeError::Crc32Mismatch::expected: u32
+pub tst_core::KlvDecodeError::Crc32Mismatch::found: u32
 pub tst_core::KlvDecodeError::DuplicateTag
 pub tst_core::KlvDecodeError::DuplicateTag::offset: usize
 pub tst_core::KlvDecodeError::DuplicateTag::tag: u32

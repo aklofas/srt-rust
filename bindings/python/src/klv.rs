@@ -89,7 +89,9 @@ pub(crate) fn klv_decode_error_to_pyerr(py: Python<'_>, e: KlvDecodeError) -> Py
         | KlvDecodeError::MalformedLength { .. }
         | KlvDecodeError::LengthOverflow { .. } => "TRUNCATED_SET",
         KlvDecodeError::UnexpectedUniversalLabel { .. } => "BAD_UNIVERSAL_LABEL",
-        KlvDecodeError::ChecksumMismatch { .. } => "CHECKSUM_MISMATCH",
+        KlvDecodeError::ChecksumMismatch { .. } | KlvDecodeError::Crc32Mismatch { .. } => {
+            "CHECKSUM_MISMATCH"
+        }
         KlvDecodeError::DuplicateTag { .. } => "DUPLICATE_TAG",
         KlvDecodeError::Tag2NotFirst
         | KlvDecodeError::Tag1NotLast

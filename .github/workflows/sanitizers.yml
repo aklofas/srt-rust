@@ -27,10 +27,6 @@ jobs:
   asan:
     name: ASan (tst-core + tst-pipeline, nightly)
     runs-on: ubuntu-latest
-    # Phase-in: allow soft-failure for the first ~2-3 weeks. Tighten to
-    # hard-fail (delete this line) once the suppression file is settled
-    # and the badge would be a reliable regression signal.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:
@@ -81,7 +77,6 @@ jobs:
   tsan:
     name: TSan (tst-core + tst-pipeline, nightly)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:

@@ -18,7 +18,7 @@ pub mod transport_negotiation;
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -118,15 +118,29 @@ pub struct RtspClient {
     pub(crate) cancel: Arc<AtomicBool>,
     /// Last RTSP version observed in a server response.
     pub(crate) last_server_version: RtspVersion,
-    /// Shared flag the [keepalive](crate::rtsp::client::keepalive) thread
-    /// flips when a control-TCP write fails — the main thread polls this
-    /// to detect server-side session death. `None` until
+    /// Shared flag flipped when a keepalive observes session death: the
+    /// [keepalive](crate::rtsp::client::keepalive) thread sets it when a
+    /// control-TCP write fails, and the read sites (interleaved pump /
+    /// non-pump `send_and_read`) set it when a keepalive ping is answered
+    /// with `454 Session Not Found`. The main thread polls it via
+    /// [`Self::is_session_alive`]. `None` until
     /// [`Self::spawn_keepalive_if_needed`] runs.
     pub(crate) session_dead: Option<Arc<AtomicBool>>,
     /// Shared cell the main thread updates after SETUP so the keepalive
     /// thread can emit `Session: <id>` headers. `None` until
     /// [`Self::spawn_keepalive_if_needed`] runs.
     pub(crate) session_id_shared: Option<Arc<std::sync::Mutex<Option<String>>>>,
+    /// Keepalive ping cadence in milliseconds, shared with the running
+    /// keepalive thread (which re-reads it at every wake). SETUP retunes
+    /// it to the server-advertised `Session: <id>;timeout=N` unless the
+    /// caller supplied an explicit interval override. `None` until
+    /// [`Self::spawn_keepalive_if_needed`] runs.
+    pub(crate) keepalive_interval_shared: Option<Arc<AtomicU64>>,
+    /// True when the keepalive was spawned with a caller-supplied
+    /// interval override ([`crate::RtspClientBuilder::keepalive_interval`])
+    /// — SETUP must not clobber an explicit override with the cadence
+    /// derived from the server-advertised timeout.
+    pub(crate) keepalive_interval_overridden: bool,
     /// Value sent in the `User-Agent:` header on every outbound request.
     /// Set at connect time from `RtspClientBuilder::user_agent`; defaults
     /// to `"tst-rtp/0.1"` when using the bare `connect`/`connect_with`
@@ -150,6 +164,19 @@ pub struct RtspClient {
     /// gortsplib / MediaMTX require auth on every method and reject an
     /// unauthenticated SETUP even after an authenticated DESCRIBE.
     pub(crate) auth: Arc<Mutex<AuthState>>,
+    /// Stream-write hand-off gate, shared by every writer that contends
+    /// with the interleaved pump for the stream mutex: the count of
+    /// writers currently waiting for (or holding) the lock. A writer
+    /// `fetch_add(1)`s before locking and `fetch_sub(1)`s after
+    /// releasing; the pump skips its blocking read while the count is
+    /// nonzero, so a writer acquires within at most one in-flight read
+    /// cycle. A counter (not a bool) because two writers — a control
+    /// request on the main thread and a keepalive ping — can overlap,
+    /// and a bool cleared by whichever finishes first would drop the
+    /// other's yield request. Created at connect time (before the pump
+    /// exists) so the keepalive thread can hold a clone from its spawn;
+    /// gate traffic is harmless while no pump is running.
+    pub(crate) write_gate: Arc<AtomicUsize>,
 }
 
 /// `WWW-Authenticate` challenge cache + `qop=auth` nonce-count pair.
@@ -169,6 +196,20 @@ pub(crate) struct AuthState {
     pub(crate) nc: u32,
 }
 
+impl AuthState {
+    /// Cache `www_auth` as the current challenge, resetting the
+    /// nonce-count when the challenge changed (a new nonce restarts the
+    /// count at 1 — RFC 7616 §3.4). Shared by the main-thread 401 path
+    /// ([`RtspClient::cache_auth_challenge`]) and the keepalive-response
+    /// handler ([`keepalive::handle_keepalive_response`]).
+    pub(crate) fn cache_challenge(&mut self, www_auth: String) {
+        if self.challenge.as_deref() != Some(www_auth.as_str()) {
+            self.nc = 0;
+        }
+        self.challenge = Some(www_auth);
+    }
+}
+
 /// State the main thread keeps about the interleaved producer thread.
 ///
 /// Owned by [`RtspClient`] (one pump per client, since one TCP control
@@ -179,13 +220,11 @@ pub(crate) struct InterleavedPumpState {
     /// can stop the pump without stopping the rest of the client; in
     /// practice they're flipped together at `Drop`).
     pub(crate) cancel: Arc<AtomicBool>,
-    /// Control-write hand-off gate. A control-path writer
-    /// ([`RtspClient::send_and_read_via_pump_with_deadline`]) sets this
-    /// before acquiring the stream mutex to write a request; the pump
-    /// skips its read while it is set so the writer is not starved by the
-    /// pump's per-read re-locking. Cleared by the writer after it releases
-    /// the lock.
-    pub(crate) write_gate: Arc<AtomicBool>,
+    /// Control-write hand-off gate — clone of [`RtspClient::write_gate`]
+    /// (see its doc for the counter protocol). Kept here so the pump
+    /// thread and the send path resolve it without reaching back into
+    /// the client.
+    pub(crate) write_gate: Arc<AtomicUsize>,
     /// Receiver for RTSP responses parsed by the pump. The pump pushes
     /// each `CRLFCRLF`+body-bounded RTSP response here; `send_and_read`
     /// polls this matching by CSeq once pump mode is active.
@@ -360,10 +399,13 @@ impl RtspClient {
             last_server_version: RtspVersion::V1_0,
             session_dead: None,
             session_id_shared: None,
+            keepalive_interval_shared: None,
+            keepalive_interval_overridden: false,
             user_agent: params.user_agent,
             keepalive_thread: None,
             pump_state: None,
             auth: Arc::new(Mutex::new(AuthState::default())),
+            write_gate: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -388,11 +430,15 @@ impl RtspClient {
     ///
     /// `override_interval` lets callers force a specific cadence
     /// (typically supplied by `RtspClientBuilder::keepalive_interval`);
-    /// when `None`, the cadence is `session_timeout / 2`.
+    /// when `None`, the cadence starts at `session_timeout / 2` and is
+    /// retuned in place when SETUP learns the server-advertised timeout
+    /// (the thread re-reads the shared interval cell at every wake, so
+    /// there is never a reason to respawn).
     ///
-    /// Idempotent — calling twice will replace the prior handle (any
-    /// outstanding thread sees the `cancel` flag and exits at its next
-    /// 200 ms wake).
+    /// Call at most once per client: replacing the handle does NOT stop
+    /// the prior thread (only close/`Drop` flips the shared `cancel`
+    /// flag), so a second spawn would leave two pingers running until
+    /// the client closes.
     //
     // Exposed `#[doc(hidden)] pub` so the integration test in
     // `tests/rtsp_client_keepalive.rs` can drive it without going
@@ -410,6 +456,13 @@ impl RtspClient {
         override_interval: Option<Duration>,
     ) -> Result<(), RtspError> {
         let interval = override_interval.unwrap_or(self.session_timeout / 2);
+        // The cadence lives in a shared cell the thread re-reads at every
+        // wake: SETUP retunes it to the server-advertised session timeout
+        // (unless `override_interval` pinned it), because at spawn time —
+        // the connect path — only the 60 s default is known.
+        let interval_ms = Arc::new(AtomicU64::new((interval.as_millis() as u64).max(1)));
+        self.keepalive_interval_shared = Some(interval_ms.clone());
+        self.keepalive_interval_overridden = override_interval.is_some();
         // Share the same `Arc<Mutex<Stream>>` with the keepalive thread.
         // Per-ping the thread locks the mutex, writes the OPTIONS bytes,
         // unlocks. Works uniformly for `Stream::Plain` AND `Stream::Tls`
@@ -430,7 +483,7 @@ impl RtspClient {
             write_half,
             cancel,
             session_dead,
-            interval,
+            interval_ms,
             self.url.render_no_credentials(),
             self.url.rtsp_version,
             session_id,
@@ -438,6 +491,7 @@ impl RtspClient {
             self.auth.clone(),
             self.url.username.clone(),
             self.url.password.clone(),
+            self.write_gate.clone(),
         )
         .map_err(|e| RtspError::Io(e.kind()))?;
         self.keepalive_thread = Some(handle);
@@ -495,7 +549,9 @@ impl RtspClient {
         let (rtcp_tx, rtcp_rx) = mpsc::sync_channel::<Bytes>(interleaved_pump::RTCP_QUEUE_BOUND);
         let (ctrl_tx, ctrl_rx) = mpsc::sync_channel::<Bytes>(interleaved_pump::CTRL_QUEUE_BOUND);
         let pump_cancel = Arc::new(AtomicBool::new(false));
-        let write_gate = Arc::new(AtomicBool::new(false));
+        // Shared with the keepalive thread (which got its clone at spawn,
+        // possibly before this pump existed) and the control send path.
+        let write_gate = self.write_gate.clone();
         let stats = Arc::new(interleaved_pump::PumpStats::default());
 
         let reader = interleaved_pump::SharedStreamReader::new(self.stream.clone());
@@ -507,6 +563,13 @@ impl RtspClient {
             channels,
             pump_cancel.clone(),
             write_gate.clone(),
+            // Shared with the main thread + keepalive thread: the pump
+            // consumes keepalive responses, and a 401 among them must
+            // refresh the same challenge cache the next ping signs with.
+            self.auth.clone(),
+            // `Some` iff the keepalive was spawned (its death flag) — the
+            // pump flips it on a 454 keepalive response.
+            self.session_dead.clone(),
             stats.clone(),
         )
         .map_err(|e| RtspError::Io(e.kind()))?;
@@ -522,9 +585,10 @@ impl RtspClient {
         Ok((data_rx, rtcp_rx))
     }
 
-    /// Returns false if the background keepalive thread has flipped the
-    /// session-dead flag (a control-TCP write failed). Returns true when
-    /// keepalive hasn't been started or hasn't observed a failure.
+    /// Returns false once a keepalive has observed session death — a
+    /// control-TCP write failed, or the server answered a keepalive ping
+    /// with `454 Session Not Found`. Returns true when keepalive hasn't
+    /// been started or hasn't observed a failure.
     pub fn is_session_alive(&self) -> bool {
         match &self.session_dead {
             Some(flag) => !flag.load(Ordering::Relaxed),

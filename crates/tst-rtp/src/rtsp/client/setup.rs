@@ -142,6 +142,30 @@ impl RtspClient {
             self.session_timeout = std::time::Duration::from_secs(t);
         }
         self.session_id = Some(sid.clone());
+        // Bind the running keepalive thread (spawned at connect time,
+        // before any of this was known) to the negotiated session:
+        //
+        // - Hand it the session id — its OPTIONS pings must carry
+        //   `Session: <id>` to refresh the server's session timer
+        //   (RFC 7826 §10.5 defines keep-alive in terms of a request
+        //   carrying the session identifier; an un-bound OPTIONS keeps
+        //   nothing alive on a conforming server).
+        // - Retune its cadence to the server-advertised timeout (the
+        //   thread started against the 60 s default, and a server
+        //   advertising `timeout < 60` would otherwise expire the
+        //   session between 30 s pings). A caller-supplied interval
+        //   override outranks the derived cadence. The 100 ms floor
+        //   guards against a degenerate `timeout=0` advertisement
+        //   turning the pinger into a busy loop.
+        if let Some(cell) = &self.session_id_shared {
+            *cell.lock().expect("session id mutex poisoned") = Some(sid.clone());
+        }
+        if !self.keepalive_interval_overridden {
+            if let Some(iv) = &self.keepalive_interval_shared {
+                let ms = ((self.session_timeout.as_millis() / 2) as u64).max(100);
+                iv.store(ms, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
 
         // Construct RtspSession with the negotiated transport.
         let session = match transport.kind {

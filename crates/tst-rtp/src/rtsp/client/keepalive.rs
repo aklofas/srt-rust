@@ -1,17 +1,22 @@
-//! Background thread sending OPTIONS at `session_timeout / 2` intervals.
+//! Background thread sending OPTIONS at `session_timeout / 2` intervals
+//! (retuned in place when SETUP learns the server-advertised timeout).
 //!
 //! - Holds an `Arc<Mutex<Stream>>` clone — the SAME stream the main
 //!   thread uses (since T21). Works uniformly for plain TCP and TLS;
 //!   the pre-T21 path tried to `try_clone` the stream FD which failed
 //!   on rustls `ClientConnection` (silently disabling keepalive for
 //!   `rtsps://` sessions).
+//! - This thread only WRITES. Responses to its pings are consumed at
+//!   whichever site owns reads in the current mode (interleaved pump or
+//!   the main thread's `send_and_read`), classified by the CSeq range —
+//!   see `KEEPALIVE_CSEQ_BASE` and `handle_keepalive_response`.
 //! - On cancel (or write error), the thread exits.
-//! - On RTSP session timeout (server stops responding), the thread sets
-//!   a shared "session_dead" flag the main thread can poll via
-//!   `RtspClient::is_session_alive`.
+//! - The shared "session_dead" flag (polled via
+//!   `RtspClient::is_session_alive`) flips when a ping write fails, or
+//!   when a read site sees a ping answered `454 Session Not Found`.
 
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -21,6 +26,60 @@ use secrecy::SecretString;
 use crate::rtsp::client::{AuthState, Stream};
 use crate::rtsp::message::{RtspMethod, RtspRequest};
 use crate::url::RtspVersion;
+
+/// First CSeq value used by the keepalive thread — far above the main
+/// thread's counter (which starts at 1 and increments per request), so a
+/// response's CSeq classifies it: `>= KEEPALIVE_CSEQ_BASE` means it
+/// answers a keepalive ping and is consumed at the read site (never
+/// surfaced to callers), anything below belongs to a main-thread request.
+pub(crate) const KEEPALIVE_CSEQ_BASE: u32 = 1_000_000;
+
+/// Act on a response to a keepalive OPTIONS ping.
+///
+/// Called by whichever read site owns the stream in the current mode —
+/// the interleaved pump (post-SETUP TCP) or the main thread's
+/// `send_and_read` (UDP / pre-SETUP) — after classifying the response by
+/// its CSeq (`>= KEEPALIVE_CSEQ_BASE`). The response is consumed either
+/// way; this decides whether it also carries a signal:
+///
+/// - **401**: the server rotated or expired the nonce mid-session
+///   (RFC 7616 §3.3 `stale=true` and friends). Refresh the shared
+///   challenge cache so the NEXT ping — at most one interval away —
+///   signs against the fresh challenge. Without this every subsequent
+///   ping would re-sign the dead nonce and the session would silently
+///   die at the server timeout.
+/// - **454 Session Not Found**: the server no longer honors the session;
+///   flip `session_dead` so `RtspClient::is_session_alive` surfaces it.
+/// - anything else (200 OK in the normal case): nothing to do.
+pub(crate) fn handle_keepalive_response(
+    resp: &crate::rtsp::message::RtspResponse,
+    auth: &Mutex<AuthState>,
+    session_dead: Option<&AtomicBool>,
+) {
+    match resp.status {
+        401 => {
+            if let Some(www) = resp.headers.get("www-authenticate") {
+                tracing::debug!(
+                    target: "tst_rtp::client::keepalive",
+                    "keepalive ping got 401; refreshing cached auth challenge"
+                );
+                auth.lock()
+                    .expect("auth state mutex poisoned")
+                    .cache_challenge(www.clone());
+            }
+        }
+        454 => {
+            tracing::warn!(
+                target: "tst_rtp::client::keepalive",
+                "keepalive ping got 454 Session Not Found; marking session dead"
+            );
+            if let Some(flag) = session_dead {
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+        _ => {}
+    }
+}
 
 /// Spawn the rtsp-keepalive background thread.
 ///
@@ -32,8 +91,13 @@ use crate::url::RtspVersion;
 /// the main thread can poll it (via `RtspClient::is_session_alive`) and
 /// take recovery action.
 ///
-/// `interval` is the OPTIONS-ping cadence — typically
-/// `session_timeout / 2` (so a 60 s server timeout pings every 30 s).
+/// `interval_ms` is the OPTIONS-ping cadence in milliseconds, read anew
+/// at every wake — typically `session_timeout / 2` (so a 60 s server
+/// timeout pings every 30 s). SETUP retunes it in place when the server
+/// advertises its own `Session: <id>;timeout=N` (unless the caller
+/// supplied an explicit override), and the retune takes effect within
+/// one 200 ms poll step even if this thread is mid-wait toward a stale
+/// deadline.
 ///
 /// `session_id` is a shared cell the main thread updates when SETUP
 /// returns a new ID; the keepalive emits `Session: <id>` when present.
@@ -53,7 +117,7 @@ pub(crate) fn spawn(
     write_half: Arc<Mutex<Stream>>,
     cancel: Arc<AtomicBool>,
     session_dead: Arc<AtomicBool>,
-    interval: Duration,
+    interval_ms: Arc<AtomicU64>,
     url: String,
     version: RtspVersion,
     session_id: Arc<Mutex<Option<String>>>,
@@ -61,21 +125,33 @@ pub(crate) fn spawn(
     auth: Arc<Mutex<AuthState>>,
     username: Option<String>,
     password: Option<SecretString>,
+    write_gate: Arc<AtomicUsize>,
 ) -> std::io::Result<JoinHandle<()>> {
     std::thread::Builder::new()
         .name("rtsp-keepalive".to_string())
         .spawn(move || {
-            let mut cseq = 1_000_000u32; // far above main-thread cseqs to avoid collision
+            let mut cseq = KEEPALIVE_CSEQ_BASE; // see the const doc: classifies responses
             loop {
-                // Wake every 200 ms to check the cancel flag — keeps
-                // teardown latency bounded even when `interval` is large
-                // (e.g., 30 s for a default 60 s session timeout).
-                let deadline = std::time::Instant::now() + interval;
-                while std::time::Instant::now() < deadline {
+                // Wait out one interval, waking at least every 200 ms to
+                // check the cancel flag (bounds teardown latency even at a
+                // 30 s cadence) and re-reading the shared interval at every
+                // wake: SETUP retunes the cadence in place when the server
+                // advertises its own session timeout, and this thread may
+                // be mid-wait toward a stale — possibly 30 s — deadline
+                // when that happens. Sub-200 ms cadences are honored (the
+                // sleep step never exceeds the remaining wait).
+                let started = std::time::Instant::now();
+                loop {
                     if cancel.load(Ordering::Relaxed) {
                         return;
                     }
-                    std::thread::sleep(Duration::from_millis(200));
+                    let interval =
+                        Duration::from_millis(interval_ms.load(Ordering::Relaxed).max(1));
+                    let remaining = interval.saturating_sub(started.elapsed());
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    std::thread::sleep(remaining.min(Duration::from_millis(200)));
                 }
                 // One more cancel check before we burn the bytes on the wire.
                 if cancel.load(Ordering::Relaxed) {
@@ -133,17 +209,30 @@ pub(crate) fn spawn(
                     session_dead.store(true, Ordering::Relaxed);
                     return;
                 };
+                // Announce this write on the hand-off gate so an active
+                // interleaved pump yields the stream mutex promptly —
+                // the pump holds the lock across each blocking socket
+                // read, and without the gate a hot data stream can
+                // starve keepalive writes for many read cycles (see
+                // `RtspClient::write_gate`).
+                write_gate.fetch_add(1, Ordering::Relaxed);
                 // If the stream mutex is poisoned the main thread
                 // panicked mid-request — propagate by panicking the
                 // keepalive thread too (per T21 policy).
-                let mut g = write_half.lock().expect("stream mutex poisoned");
-                if g.write_all(&bytes).is_err() {
+                let write_result = {
+                    let mut g = write_half.lock().expect("stream mutex poisoned");
+                    g.write_all(&bytes)
+                };
+                write_gate.fetch_sub(1, Ordering::Relaxed);
+                if write_result.is_err() {
                     session_dead.store(true, Ordering::Relaxed);
                     return;
                 }
-                // The main thread's `read_response` loop will pick up
-                // the 200 OK response from this keepalive (interleaved
-                // with any other in-flight responses by CSeq matching).
+                // The response is consumed wherever reads happen in the
+                // current mode: the interleaved pump (post-SETUP TCP) or
+                // the main thread's next `send_and_read` (UDP/pre-SETUP)
+                // recognizes the keepalive CSeq range and handles the
+                // response without surfacing it to callers.
             }
         })
 }

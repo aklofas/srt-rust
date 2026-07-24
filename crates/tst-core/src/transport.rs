@@ -24,8 +24,8 @@ use thiserror::Error;
 /// **Per-transport mapping documentation:** each concrete `Transport` impl
 /// documents the source of each field in its own rustdoc — see
 /// [`SrtTransport`](https://docs.rs/tst-srt/latest/tst_srt/transport/struct.SrtTransport.html)
-/// for the libsrt `CBytePerfMon` mapping; future `RtpTransport` will
-/// document its RTCP-derived sources.
+/// for the libsrt `CBytePerfMon` mapping and `RtpTransport` (in `tst-rtp`)
+/// for its per-field mapping table.
 ///
 /// Pre-1.0 the struct is `#[non_exhaustive]` so adding a field is not a
 /// breaking change.
@@ -115,8 +115,9 @@ pub enum TransportError {
     /// the code space:
     /// - `SrtTransport` uses the libsrt major-category error code (see
     ///   `tst-srt` docs for the full code table).
-    /// - `RtpTransport` (forthcoming) uses the OS `errno` from the
-    ///   underlying `sendto`/`recvfrom` call.
+    /// - `RtpTransport` does not produce `Backpressure` at all (UDP either
+    ///   accepts the datagram or surfaces an error); its OS-`errno` codes
+    ///   ride [`Self::Broken`].
     /// - Test mocks and in-memory channels pass `None`.
     ///
     /// Surfaced as a typed-source aid for binding-crate consumers
@@ -160,23 +161,21 @@ pub enum TransportError {
     /// shell that owns it). Distinguished from [`Self::Closed`] which means
     /// "peer closed the connection / end-of-stream observed on the wire."
     ///
-    /// **Producer:** today this variant is produced exclusively by
-    /// `ManagedRecvTransport::recv_bytes` when its own cancel signal has
-    /// fired (Plan B wires this). Bare transports (`SrtTransport`) do not
-    /// currently produce this variant — they map both caller-close and
-    /// peer-EOS to [`Self::Closed`] because the libsrt-level distinction
-    /// isn't reliably observable. The pipeline-shell layer treats the two
-    /// the same on the send side (`Closed` is always caller-initiated for
+    /// **Producers:** `ManagedRecvTransport::recv_bytes` when its own
+    /// cancel signal has fired, and cancel-aware bare transports — the RTP
+    /// transports (`RtpTransport` / `RtpRecvTransport` in `tst-rtp`)
+    /// return it once their cancel handle fires. `SrtTransport` does not
+    /// produce this variant — it maps both caller-close and peer-EOS to
+    /// [`Self::Closed`] because the libsrt-level distinction isn't
+    /// reliably observable. The pipeline-shell layer treats the two the
+    /// same on the send side (`Closed` is always caller-initiated for
     /// senders) and only distinguishes on the receive side via
     /// `ManagedRecvTransport`'s extra tracking.
     ///
-    /// **Shell-layer mapping (Plan A `kind_from_transport`):**
+    /// **Shell-layer mapping (`kind_from_transport`):**
     /// - `ExplicitClose` → `ShellErrorKind::Closed` (caller-initiated)
     /// - `Closed` on a receiver shell → `ShellErrorKind::EndOfStream` (peer-initiated)
     /// - `Closed` on a sender shell → `ShellErrorKind::Closed` (caller-initiated; sender shells expose `close()` and produce this on post-close calls)
-    ///
-    /// See `docs/refactor-1/_wave-4-plan-design.md` Plan A architecture
-    /// section for the full peer-vs-caller-close routing rationale.
     #[error("transport explicitly closed by caller")]
     ExplicitClose,
 }

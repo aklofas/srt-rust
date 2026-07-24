@@ -2,8 +2,9 @@
 //!
 //! Provides the standard sender and receiver shells over the
 //! transport traits defined in [`tst_core`]. Concrete transport
-//! impls live in dedicated crates (`tst-srt` today; future
-//! `tst-udp`, `tst-rtp`, `tst-tcp`, `tst-rtsp`).
+//! impls live in dedicated crates: `tst-srt`, `tst-udp`, `tst-rtp`
+//! (which also carries the RTSP client/server), `tst-tcp`, and
+//! `tst-rist`.
 //!
 //! ## Quick start — push pre-muxed TS bytes through any [`Transport`]
 //!

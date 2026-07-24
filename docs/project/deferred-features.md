@@ -1856,58 +1856,53 @@ the trigger that would unblock it.
   and decide the telemetry story (count it in `forced_cuts` or a dedicated
   counter).
 
-## RTSP keepalive: no 401 reaction / session-dead detection on rejected pings
+## Python/JVM `tracing` diagnostics bridge + structured stream-end reason
 
-- **Status:** Since the uniform client auth work, the keepalive thread
-  signs its OPTIONS pings pre-emptively with the cached challenge
-  (snapshot + nonce-count allocated under one lock — see
-  `rtsp/client/keepalive.rs`). But the thread is fire-and-forget: it
-  never reads responses (the main thread's `read_response` loop / the
-  interleaved pump own all reads, and silently discard keepalive
-  responses by their `CSeq >= 1_000_000` band). A server that rejects a
-  ping with 401 therefore goes unnoticed — `session_dead` (polled via
-  `RtspClient::is_session_alive`) trips only on write failure or a
-  header-injection encode failure. Detection is delayed-but-eventual:
-  if the server tears the session down, the next ping's write (or the
-  next real request) fails and flips the flag.
-- **Why deferred:** Reacting to a 401 would mean the keepalive reading
-  its own responses, which fights the pump-owns-reads architecture
-  (single-reader contract on the control stream). Challenge rotation
-  mid-session is already handled where reads live: the main thread's
-  one-shot reactive 401 retry re-learns the challenge on the next real
-  request, and subsequent pings sign with the refreshed state. The
-  unhandled residue — a server that hard-rejects a stale-nonce OPTIONS
-  instead of re-challenging, between real requests — has no known
-  occurrence (gortsplib / MediaMTX / our own `RtspServer` all
-  re-challenge).
-- **Trigger to revisit:** a field report of credentialed sessions dying
-  between requests despite authenticated keepalives, or any rework that
-  gives background threads a sanctioned response channel (e.g.
-  TCP-aware RTCP ingest in the interleaved pump) — piggyback on that
-  routing rather than adding a second reader. Ship together with the
-  challenged-OPTIONS integration coverage below.
+- **Status:** The Rust core logs meaningful diagnostics via `tracing`
+  (the interleaved pump WARNs on read errors, malformed frames, queue
+  floods; the keepalive WARNs on 454), but the Python and JVM bindings
+  install no subscriber, so all of it vanishes in the bindings that most
+  integrators run. From Python, a dying RTSP session is largely
+  indistinguishable from a clean end of stream (`recv_au()` returns
+  `None` for both a server-side teardown and a pump failure), and
+  `RtspClient::is_session_alive` is not exposed through any binding. A
+  field integrator lost a diagnosis day to exactly this gap.
+- **Why deferred:** The right shape needs design: an opt-in stderr
+  bridge (e.g. `tracing-subscriber` fmt gated on a `TSTRANS_LOG` env
+  var, or `pyo3-log` into Python's `logging`) is easy, but the more
+  valuable piece is a structured "why did the stream end" surface on the
+  session/receiver objects (clean teardown vs read error vs session
+  expiry vs pump failure), which touches the public API of three
+  bindings and deserves its own pass rather than riding a bugfix PR.
+- **Trigger to revisit:** the next bindings-surface wave, or the next
+  field report where a Python/JVM integrator cannot tell why a stream
+  ended.
 
-## RTSP keepalive-auth integration coverage (challenged-OPTIONS loopback)
+## RTSP keepalive response handling — RESOLVED
 
-- **Status:** The keepalive's auth mechanism is unit-covered
-  (`build_authorization` for OPTIONS + the one-lock challenge/nc
-  snapshot), and
-  `rtsp_server/auth_digest.rs::digest_md5_full_session_authenticates_every_method`
-  drives a full session against the per-request digest `RtspServer` —
-  but only for main-thread methods. No integration test observes an
-  actual keepalive ping being challenged and accepted; the ping itself
-  is never exercised under auth.
-- **Why deferred:** A meaningful test needs a short keepalive cadence
-  (server advertising a small `Session: timeout=` so the ping fires
-  within test budget) plus a way to observe that the ping carried a
-  valid `Authorization` header — i.e. either a bespoke mock server that
-  challenges OPTIONS or new observability on `RtspServer`. That's a
-  heavier lift than the unit coverage it would duplicate, and
-  wall-clock-cadence tests are a known flake class on loaded CI
-  runners.
-- **Trigger to revisit:** the first regression touching keepalive auth,
-  or the 401-reaction work above (the same fixture serves both — build
-  it once, there).
+- **Status:** RESOLVED (was: "no 401 reaction / session-dead detection
+  on rejected pings" + "keepalive-auth integration coverage"). The
+  trigger fired — a field report of an interleaved receive session dying
+  mid-flight — and the investigation found the fire-and-forget design
+  was also the root cause of a hard session-death defect: keepalive
+  responses were queued into the interleaved pump's bounded control
+  queue, which nothing drains between main-thread requests, so every
+  TCP-interleaved receive session died after `CTRL_QUEUE_BOUND + 1`
+  pings (16.5 minutes at the default 30 s cadence), surfacing as a
+  clean EOS. Keepalive responses (CSeq ≥ `KEEPALIVE_CSEQ_BASE`) are now
+  consumed at whichever site owns reads — the interleaved pump, or the
+  main thread's non-pump read path (which previously could misattribute
+  a buffered keepalive 200 as the next request's response): a 401
+  refreshes the shared challenge cache so the next ping signs against
+  the rotated nonce, a 454 flips `session_dead` (surfaced via
+  `RtspClient::is_session_alive`), and anything else is dropped. The
+  keepalive cadence also now retunes to the server-advertised
+  `Session: <id>;timeout=N` at SETUP and binds pings to the session
+  (both were frozen at connect-time defaults before). The
+  challenged-OPTIONS loopback coverage shipped with it
+  (`keepalive_retune.rs::keepalive_pings_authenticate_against_challenged_options`
+  drives per-request-authenticated pings against the fixture's
+  `challenge_options` mode).
 
 ## Python `transmux`: payload substitution beyond KLV (`write_video` / `write_audio` / …)
 

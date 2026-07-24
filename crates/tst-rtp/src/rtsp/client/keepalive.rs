@@ -27,11 +27,13 @@ use crate::rtsp::client::{AuthState, Stream};
 use crate::rtsp::message::{RtspMethod, RtspRequest};
 use crate::url::RtspVersion;
 
-/// First CSeq value used by the keepalive thread — far above the main
-/// thread's counter (which starts at 1 and increments per request), so a
-/// response's CSeq classifies it: `>= KEEPALIVE_CSEQ_BASE` means it
-/// answers a keepalive ping and is consumed at the read site (never
-/// surfaced to callers), anything below belongs to a main-thread request.
+/// Lower bound of the keepalive thread's CSeq space — far above the main
+/// thread's counter (which starts at 1 and increments per request). The
+/// thread's counter starts here and increments BEFORE each ping, so
+/// emitted CSeqs are strictly greater than the base; a response
+/// classifies as answering a keepalive when its CSeq is
+/// `>= KEEPALIVE_CSEQ_BASE` (consumed at the read site, never surfaced
+/// to callers), anything below belongs to a main-thread request.
 pub(crate) const KEEPALIVE_CSEQ_BASE: u32 = 1_000_000;
 
 /// Act on a response to a keepalive OPTIONS ping.
@@ -130,7 +132,9 @@ pub(crate) fn spawn(
     std::thread::Builder::new()
         .name("rtsp-keepalive".to_string())
         .spawn(move || {
-            let mut cseq = KEEPALIVE_CSEQ_BASE; // see the const doc: classifies responses
+            // Incremented BEFORE each ping — emitted CSeqs are strictly
+            // above the base; see the const doc for the classification.
+            let mut cseq = KEEPALIVE_CSEQ_BASE;
             loop {
                 // Wait out one interval, waking at least every 200 ms to
                 // check the cancel flag (bounds teardown latency even at a

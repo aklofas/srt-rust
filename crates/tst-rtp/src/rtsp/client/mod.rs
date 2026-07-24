@@ -232,6 +232,15 @@ impl Drop for WriteGateGuard<'_> {
     }
 }
 
+/// Millisecond count of `d`, saturating at `u64::MAX`. A plain
+/// `as_millis() as u64` cast silently truncates for durations past
+/// ~584 million years — a hostile-but-spec-legal `Session: timeout=`
+/// near `u64::MAX` seconds would wrap the derived keepalive cadence
+/// into a tiny value and turn the pinger into a hot loop.
+pub(crate) fn duration_ms_saturating(d: Duration) -> u64 {
+    u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
+}
+
 /// State the main thread keeps about the interleaved producer thread.
 ///
 /// Owned by [`RtspClient`] (one pump per client, since one TCP control
@@ -486,7 +495,7 @@ impl RtspClient {
         // wake: SETUP retunes it to the server-advertised session timeout
         // (unless `override_interval` pinned it), because at spawn time —
         // the connect path — only the 60 s default is known.
-        let interval_ms = Arc::new(AtomicU64::new((interval.as_millis() as u64).max(1)));
+        let interval_ms = Arc::new(AtomicU64::new(duration_ms_saturating(interval).max(1)));
         self.keepalive_interval_shared = Some(interval_ms.clone());
         self.keepalive_interval_overridden = override_interval.is_some();
         // Share the same `Arc<Mutex<Stream>>` with the keepalive thread.
@@ -694,6 +703,18 @@ mod tests {
     fn rtsps_without_tls_feature_errors() {
         let e = RtspClient::connect("rtsps://localhost:322/test").unwrap_err();
         assert!(matches!(e, RtspError::Tls(_)));
+    }
+
+    /// A hostile-but-parseable `Session: timeout=` near `u64::MAX`
+    /// seconds must saturate, not wrap through `as u64` into a tiny
+    /// cadence (a hot ping loop).
+    #[test]
+    fn duration_ms_saturates_instead_of_truncating() {
+        assert_eq!(
+            duration_ms_saturating(Duration::from_secs(u64::MAX)),
+            u64::MAX
+        );
+        assert_eq!(duration_ms_saturating(Duration::from_secs(30)), 30_000);
     }
 
     /// The gate decrement must survive a panic between enter and the end

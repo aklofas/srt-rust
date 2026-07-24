@@ -150,6 +150,9 @@ Public API may change between pre-1.0 releases; everything is recorded in [`CHAN
 Issues and PRs welcome — see [`docs/reference/conventions.md`](docs/reference/conventions.md)
 for code style, commit-message rules, and the public-API workflow.
 
+Suspected security vulnerability? Please report it privately per
+[`SECURITY.md`](SECURITY.md) instead of opening a public issue.
+
 ## License
 
 Licensed under **MIT** ([`LICENSE-MIT`](LICENSE-MIT)) or **Apache-2.0** ([`LICENSE-APACHE`](LICENSE-APACHE)),

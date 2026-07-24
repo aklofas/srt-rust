@@ -40,6 +40,17 @@ pub struct FixtureConfig {
     /// If true, the server records all SETUP requests received.
     /// The count is exposed through the shared `setup_count` in `FixtureHandle`.
     pub track_setup: bool,
+    /// `Session:` header timeout advertised in the SETUP response —
+    /// `Some(t)` renders `Session: <id>;timeout=<t>`, `None` omits the
+    /// parameter (RFC 7826 §18.49 default of 60 s applies client-side).
+    pub setup_timeout_secs: Option<u64>,
+    /// When true, EVERY OPTIONS request is authenticated individually
+    /// (per-request, ignoring the connection's `auth_passed` latch) —
+    /// unauthorized ones get 401 + challenge and are NOT counted in the
+    /// OPTIONS counters. Models servers that challenge keepalive pings;
+    /// the default (false) mirrors our own `RtspServer`, which never
+    /// auth-gates OPTIONS (PR #82 lockout design).
+    pub challenge_options: bool,
 }
 
 impl Default for FixtureConfig {
@@ -62,6 +73,8 @@ a=control:trackID=0
             .to_vec(),
             play_data: Vec::new(),
             track_setup: false,
+            setup_timeout_secs: Some(60),
+            challenge_options: false,
         }
     }
 }
@@ -71,6 +84,13 @@ pub struct FixtureHandle {
     /// Number of SETUP requests the server has received (only tracked when
     /// `FixtureConfig::track_setup` is true).
     pub setup_count: Arc<std::sync::atomic::AtomicU32>,
+    /// Total OPTIONS requests received (always tracked — keepalive tests
+    /// observe the client's ping cadence through this).
+    pub options_total: Arc<std::sync::atomic::AtomicU32>,
+    /// OPTIONS requests that carried a `Session:` header (i.e. keepalives
+    /// bound to the SETUP-issued session, which is what actually refreshes
+    /// the server's session timer per RFC 7826 §10.5).
+    pub options_with_session: Arc<std::sync::atomic::AtomicU32>,
     shutdown: Arc<AtomicBool>,
     runtime: Option<tokio::runtime::Runtime>,
 }
@@ -81,6 +101,10 @@ impl FixtureHandle {
         let shutdown_clone = shutdown.clone();
         let setup_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let setup_count_clone = setup_count.clone();
+        let options_total = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let options_total_clone = options_total.clone();
+        let options_with_session = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let options_with_session_clone = options_with_session.clone();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -99,7 +123,15 @@ impl FixtureHandle {
                         match accept_res {
                             Ok((sock, peer)) => {
                                 let cfg = cfg_arc.lock().unwrap().clone();
-                                tokio::spawn(handle_client(sock, peer, cfg, shutdown_clone.clone(), setup_count_clone.clone()));
+                                tokio::spawn(handle_client(
+                                    sock,
+                                    peer,
+                                    cfg,
+                                    shutdown_clone.clone(),
+                                    setup_count_clone.clone(),
+                                    options_total_clone.clone(),
+                                    options_with_session_clone.clone(),
+                                ));
                             }
                             Err(_) => break,
                         }
@@ -114,6 +146,8 @@ impl FixtureHandle {
         Self {
             port,
             setup_count,
+            options_total,
+            options_with_session,
             shutdown,
             runtime: Some(runtime),
         }
@@ -143,6 +177,8 @@ impl Clone for FixtureConfig {
             sdp_body: self.sdp_body.clone(),
             play_data: self.play_data.clone(),
             track_setup: self.track_setup,
+            setup_timeout_secs: self.setup_timeout_secs,
+            challenge_options: self.challenge_options,
         }
     }
 }
@@ -153,6 +189,8 @@ async fn handle_client(
     cfg: FixtureConfig,
     shutdown: Arc<AtomicBool>,
     setup_count: Arc<std::sync::atomic::AtomicU32>,
+    options_total: Arc<std::sync::atomic::AtomicU32>,
+    options_with_session: Arc<std::sync::atomic::AtomicU32>,
 ) {
     let mut buf = vec![0u8; 8192];
     let mut accumulator = Vec::new();
@@ -186,22 +224,12 @@ async fn handle_client(
                 auth_passed = validate_auth(&cfg, &method, &auth_header);
             }
             if !auth_passed {
-                let challenge = match cfg.auth {
-                    AuthMode::Basic => r#"Basic realm="test""#.to_string(),
-                    AuthMode::DigestMd5 => {
-                        r#"Digest realm="test", nonce="abc123", algorithm=MD5"#.to_string()
-                    }
-                    AuthMode::DigestSha256 => {
-                        r#"Digest realm="test", nonce="abc123", algorithm=SHA-256, qop="auth""#
-                            .to_string()
-                    }
-                    AuthMode::None => unreachable!(),
-                };
                 let _ = sock
                     .write_all(
                         format!(
                             "RTSP/1.0 401 Unauthorized\r\nCSeq: {}\r\nWWW-Authenticate: {}\r\n\r\n",
-                            cseq, challenge,
+                            cseq,
+                            challenge_for(cfg.auth),
                         )
                         .as_bytes(),
                     )
@@ -213,6 +241,32 @@ async fn handle_client(
         // Route by method
         match method.as_str() {
             "OPTIONS" => {
+                // Per-request auth (deliberately NOT the per-connection
+                // `auth_passed` latch): each ping must carry its own valid
+                // Authorization, the way pre-emptive keepalive signing is
+                // meant to work against a challenging server.
+                if cfg.challenge_options {
+                    let authorized = extract_header(&request, "Authorization")
+                        .map(|h| validate_auth(&cfg, &method, &h))
+                        .unwrap_or(false);
+                    if !authorized {
+                        let _ = sock
+                            .write_all(
+                                format!(
+                                    "RTSP/1.0 401 Unauthorized\r\nCSeq: {}\r\nWWW-Authenticate: {}\r\n\r\n",
+                                    cseq,
+                                    challenge_for(cfg.auth),
+                                )
+                                .as_bytes(),
+                            )
+                            .await;
+                        continue;
+                    }
+                }
+                options_total.fetch_add(1, Ordering::Relaxed);
+                if extract_header(&request, "Session").is_some() {
+                    options_with_session.fetch_add(1, Ordering::Relaxed);
+                }
                 let _ = sock.write_all(format!(
                     "RTSP/1.0 200 OK\r\nCSeq: {}\r\nPublic: OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN\r\n\r\n",
                     cseq,
@@ -255,10 +309,19 @@ async fn handle_client(
                 } else {
                     "RTP/AVP/TCP;unicast;interleaved=0-1".to_string()
                 };
-                let _ = sock.write_all(format!(
-                    "RTSP/1.0 200 OK\r\nCSeq: {}\r\nSession: {};timeout=60\r\nTransport: {}\r\n\r\n",
-                    cseq, session_id, resp_transport,
-                ).as_bytes()).await;
+                let session_hdr = match cfg.setup_timeout_secs {
+                    Some(t) => format!("{session_id};timeout={t}"),
+                    None => session_id.clone(),
+                };
+                let _ = sock
+                    .write_all(
+                        format!(
+                            "RTSP/1.0 200 OK\r\nCSeq: {}\r\nSession: {}\r\nTransport: {}\r\n\r\n",
+                            cseq, session_hdr, resp_transport,
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
             }
             "PLAY" => {
                 let _ = sock.write_all(format!(
@@ -307,6 +370,19 @@ async fn handle_client(
 
 fn find_message_end(buf: &[u8]) -> Option<usize> {
     buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4)
+}
+
+/// The `WWW-Authenticate` challenge value for the configured auth mode.
+/// Panics on `AuthMode::None` (callers only challenge when auth is on).
+fn challenge_for(auth: AuthMode) -> String {
+    match auth {
+        AuthMode::Basic => r#"Basic realm="test""#.to_string(),
+        AuthMode::DigestMd5 => r#"Digest realm="test", nonce="abc123", algorithm=MD5"#.to_string(),
+        AuthMode::DigestSha256 => {
+            r#"Digest realm="test", nonce="abc123", algorithm=SHA-256, qop="auth""#.to_string()
+        }
+        AuthMode::None => unreachable!("challenge requested with auth disabled"),
+    }
 }
 
 fn extract_header(req: &str, name: &str) -> Option<String> {

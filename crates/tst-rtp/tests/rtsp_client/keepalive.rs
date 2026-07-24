@@ -68,3 +68,103 @@ fn keepalive_thread_pings_within_session_timeout() {
     drop(client);
     h.join().unwrap();
 }
+
+/// In non-pump mode (UDP transport / pre-SETUP) nothing drains the
+/// control TCP between requests, so a keepalive ping's 200 OK can sit in
+/// the socket buffer ahead of the next real exchange. The read path must
+/// consume it by its CSeq (≥ 1_000_000 = the keepalive range) and keep
+/// reading — returning it would misattribute it as the response to
+/// whatever request the caller just sent. Here the stale keepalive 200
+/// carries no `Public:` header, so pre-fix `options()` returned an empty
+/// method list from the wrong response.
+#[test]
+fn stale_keepalive_response_not_misattributed_in_non_pump_mode() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let h = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().unwrap();
+        // Unsolicited keepalive-CSeq 200 — lands in the client's socket
+        // buffer before its OPTIONS request's real response.
+        sock.write_all(b"RTSP/1.0 200 OK\r\nCseq: 1000005\r\n\r\n")
+            .unwrap();
+        // Read the client's OPTIONS request, echo its CSeq back.
+        sock.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .unwrap();
+        let mut buf = vec![0u8; 4096];
+        let mut total = String::new();
+        while !total.contains("\r\n\r\n") {
+            let n = sock.read(&mut buf).unwrap();
+            assert!(n > 0, "client hung up before sending OPTIONS");
+            total.push_str(std::str::from_utf8(&buf[..n]).unwrap_or(""));
+        }
+        let cseq = total
+            .to_ascii_lowercase()
+            .lines()
+            .find_map(|l| l.strip_prefix("cseq:").map(|v| v.trim().to_string()))
+            .expect("client request carries a CSeq header");
+        sock.write_all(
+            format!("RTSP/1.0 200 OK\r\nCseq: {cseq}\r\nPublic: OPTIONS, DESCRIBE\r\n\r\n")
+                .as_bytes(),
+        )
+        .unwrap();
+        // Hold the socket open until the client is done reading.
+        let _ = sock.read(&mut buf);
+    });
+
+    let url = format!("rtsp://127.0.0.1:{port}/test");
+    let mut client = tst_rtp::RtspClient::connect(&url).unwrap();
+    let opts = client.options().unwrap();
+    drop(client);
+    h.join().unwrap();
+    assert!(
+        opts.public_methods.iter().any(|m| m == "DESCRIBE"),
+        "options() must return the response matching its own CSeq, not the \
+         stale keepalive 200 sitting ahead of it (got Public: {:?})",
+        opts.public_methods
+    );
+}
+
+/// A sub-200 ms `keepalive_interval` override must be honored, not
+/// silently quantized up to the thread's cancel-poll granularity. The
+/// keepalive loop used to sleep a fixed 200 ms per cancel check, so any
+/// requested cadence below that floor degraded to ~200 ms — at a 25 ms
+/// request only ~7 pings fit in 1.5 s. Honoring the interval yields ~55;
+/// the ≥10 threshold separates the two regimes with wide margins on a
+/// loaded runner.
+#[test]
+fn keepalive_honors_sub_200ms_interval() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // Count OPTIONS pings until the client drops (read returns EOF).
+    // No responses are written — the keepalive is write-only and the
+    // count is the only observable this test needs.
+    let h = std::thread::spawn(move || -> usize {
+        let (mut sock, _) = listener.accept().unwrap();
+        let mut buf = vec![0u8; 4096];
+        let mut total = String::new();
+        loop {
+            match sock.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => total.push_str(std::str::from_utf8(&buf[..n]).unwrap_or("")),
+            }
+        }
+        total.matches("OPTIONS rtsp").count()
+    });
+
+    let url = format!("rtsp://127.0.0.1:{port}/test");
+    let mut client = tst_rtp::RtspClient::connect(&url).unwrap();
+    client
+        .spawn_keepalive_if_needed(Some(std::time::Duration::from_millis(25)))
+        .unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    drop(client);
+    let pings = h.join().unwrap();
+    assert!(
+        pings >= 10,
+        "expected ≥10 OPTIONS pings in 1.5 s at a 25 ms interval, saw {pings} \
+         (interval floor not honored)"
+    );
+}

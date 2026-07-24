@@ -13,7 +13,12 @@
 //!   ingest sink).
 //! - RTSP responses (`CRLFCRLF`-framed + `Content-Length` body): push to
 //!   `ctrl_tx`, which the main thread polls instead of reading the
-//!   `Stream` directly once interleaved-PLAY mode is active.
+//!   `Stream` directly once interleaved-PLAY mode is active — EXCEPT
+//!   responses to keepalive pings (CSeq ≥ `KEEPALIVE_CSEQ_BASE`), which
+//!   the pump consumes itself via
+//!   `keepalive::handle_keepalive_response`: nothing drains `ctrl_tx`
+//!   between main-thread requests, so queuing them would overflow the
+//!   bounded queue on any long receive-only session and fail it.
 //!
 //! Mirror of the server-side pump
 //! ([`crate::rtsp::server::interleaved_pump`]). Closes Phase 2 deferred
@@ -37,14 +42,17 @@
 use std::io::Read;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use bytes::Bytes;
 
 use crate::rtsp::client::Stream;
-use crate::rtsp::message::{content_length_from_header_text, pump_accumulation_exceeded};
+use crate::rtsp::client::keepalive::KEEPALIVE_CSEQ_BASE;
+use crate::rtsp::message::{
+    RtspResponse, content_length_from_header_text, pump_accumulation_exceeded,
+};
 
 /// Bounded depth of the media (RTP/data) hand-off queue.
 ///
@@ -73,7 +81,9 @@ pub(crate) const RTCP_QUEUE_BOUND: usize = 64;
 /// the main thread drains this almost immediately. 32 deep tolerates any
 /// legitimate interleaving slack; exceeding it means the peer is flooding
 /// unsolicited control responses, which is hostile — the pump fails the
-/// session.
+/// session. (Keepalive-ping responses never enter this queue — the pump
+/// consumes them — so the flood policy cannot be tripped by the client's
+/// own 30 s ping cadence on a long receive-only session.)
 pub(crate) const CTRL_QUEUE_BOUND: usize = 32;
 
 /// Stats observable from outside the pump thread.
@@ -105,6 +115,10 @@ pub(crate) struct PumpStats {
     /// writer). Used by the back-off regression test to assert the pump
     /// stops reading while `write_gate` is set.
     pub(crate) reads_attempted: AtomicU64,
+    /// Count of keepalive-ping responses (CSeq ≥
+    /// [`KEEPALIVE_CSEQ_BASE`](crate::rtsp::client::keepalive::KEEPALIVE_CSEQ_BASE))
+    /// consumed by the pump instead of being routed to `ctrl_tx`.
+    pub(crate) keepalive_responses: AtomicU64,
 }
 
 /// SETUP-allocated channel pair. The SETUP handler assigns these (the
@@ -135,17 +149,24 @@ pub(crate) struct InterleavedChannels {
 ///   the pump exits (fails the session) rather than dropping silently.
 /// - `ctrl_tx`: where RTSP response bytes go — main thread polls. Bounded
 ///   ([`CTRL_QUEUE_BOUND`]); an overflow is a hostile control-response
-///   flood and the pump exits (fails the session).
+///   flood and the pump exits (fails the session). Keepalive-ping
+///   responses (CSeq ≥ [`KEEPALIVE_CSEQ_BASE`]) never enter this queue —
+///   the pump consumes them (see `auth` / `session_dead` below).
 /// - `channels`: SETUP-allocated channel pair.
 /// - `cancel`: flipped by `RtspClient::drop` or
 ///   [`crate::rtsp::client::RtspCancelHandle::cancel`].
-/// - `write_gate`: set by a control-path writer
-///   ([`crate::rtsp::client::RtspClient::send_and_read_via_pump_with_deadline`])
-///   right before it acquires the stream mutex to write a request. While
-///   it is set, the pump skips its read (and so does not re-acquire the
-///   mutex), letting the writer in promptly. Without this the pump — which
-///   holds the mutex across each blocking ~100 ms read — monopolizes the
-///   lock and starves in-session writes on contended runners.
+/// - `write_gate`: count of writers (control-path requests, keepalive
+///   pings) currently waiting for or holding the stream mutex — see
+///   [`crate::rtsp::client::RtspClient::write_gate`] for the protocol.
+///   While it is nonzero, the pump skips its read (and so does not
+///   re-acquire the mutex), letting the writer in promptly. Without this
+///   the pump — which holds the mutex across each blocking ~100 ms read
+///   — monopolizes the lock and starves in-session writes on contended
+///   runners.
+/// - `auth`: shared challenge cache — a 401 answering a keepalive ping
+///   refreshes it so the next ping signs against the fresh challenge.
+/// - `session_dead`: keepalive death flag (`Some` iff the keepalive was
+///   spawned) — flipped when a keepalive ping is answered `454`.
 /// - `stats`: observable counters.
 ///
 /// The pump exits cleanly when:
@@ -172,7 +193,9 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
     ctrl_tx: mpsc::SyncSender<Bytes>,
     channels: InterleavedChannels,
     cancel: Arc<AtomicBool>,
-    write_gate: Arc<AtomicBool>,
+    write_gate: Arc<AtomicUsize>,
+    auth: Arc<Mutex<crate::rtsp::client::AuthState>>,
+    session_dead: Option<Arc<AtomicBool>>,
     stats: Arc<PumpStats>,
 ) -> std::io::Result<JoinHandle<()>> {
     std::thread::Builder::new()
@@ -190,7 +213,7 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                 // would starve the writer; skipping the read for one cycle
                 // (~1 ms) lets it acquire promptly. Bounds an in-session
                 // PLAY/PAUSE write to at most one in-flight read cycle.
-                if write_gate.load(Ordering::Relaxed) {
+                if write_gate.load(Ordering::Relaxed) > 0 {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     continue;
                 }
@@ -371,6 +394,29 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                         if buf.len() < msg_end {
                             break; // Need more bytes for the body.
                         }
+                        // Keepalive-ping responses are consumed HERE, never
+                        // queued: nothing drains ctrl_rx between main-thread
+                        // requests, so on a receive-only session (SETUP/PLAY
+                        // then only data) queued keepalive 200s would fill the
+                        // bounded queue and the flood policy below would fail
+                        // the session — at the default 30 s ping cadence that
+                        // killed every session at exactly 16.5 minutes
+                        // ((CTRL_QUEUE_BOUND + 1) × 30 s), surfacing as a
+                        // clean EOS. A parse failure falls through to the
+                        // normal routing (e.g. a server→client REQUEST is not
+                        // an `RtspResponse` and keeps its current handling).
+                        if let Ok((resp, _)) = RtspResponse::parse(&buf[..msg_end]) {
+                            if resp.cseq().is_some_and(|c| c >= KEEPALIVE_CSEQ_BASE) {
+                                stats.keepalive_responses.fetch_add(1, Ordering::Relaxed);
+                                crate::rtsp::client::keepalive::handle_keepalive_response(
+                                    &resp,
+                                    &auth,
+                                    session_dead.as_deref(),
+                                );
+                                buf.drain(..msg_end);
+                                continue;
+                            }
+                        }
                         stats.rtsp_messages_received.fetch_add(1, Ordering::Relaxed);
                         let msg = Bytes::copy_from_slice(&buf[..msg_end]);
                         // RTSP is not pipelined — the main thread drains ctrl_rx
@@ -449,6 +495,36 @@ mod tests {
     use crate::packet::{RTP_HEADER_LEN, RTP_PT_MP2T, RtpHeader};
     use std::io::Cursor;
 
+    use crate::rtsp::client::AuthState;
+
+    /// [`spawn_client_pump`] with a default (empty) auth state and no
+    /// `session_dead` flag — most pump tests don't exercise the
+    /// keepalive-response path; the ones that do call the real spawn.
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_test_pump<R: Read + Send + 'static>(
+        reader: R,
+        data_tx: mpsc::SyncSender<Bytes>,
+        rtcp_tx: mpsc::SyncSender<Bytes>,
+        ctrl_tx: mpsc::SyncSender<Bytes>,
+        channels: InterleavedChannels,
+        cancel: Arc<AtomicBool>,
+        write_gate: Arc<AtomicUsize>,
+        stats: Arc<PumpStats>,
+    ) -> std::io::Result<JoinHandle<()>> {
+        spawn_client_pump(
+            reader,
+            data_tx,
+            rtcp_tx,
+            ctrl_tx,
+            channels,
+            cancel,
+            write_gate,
+            Arc::new(Mutex::new(AuthState::default())),
+            None,
+            stats,
+        )
+    }
+
     #[allow(clippy::type_complexity)]
     fn make_args() -> (
         mpsc::SyncSender<Bytes>,
@@ -479,14 +555,14 @@ mod tests {
     fn spawn_returns_ok_on_happy_path() {
         let raw: Vec<u8> = Vec::new(); // empty → immediate EOF, pump exits.
         let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let result = spawn_client_pump(
+        let result = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         );
         let handle = result.expect("spawn must succeed on the happy path");
@@ -504,14 +580,14 @@ mod tests {
         raw.extend_from_slice(&header);
         raw.extend_from_slice(b"PAYLOAD!"); // 8 bytes.
         let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -529,14 +605,14 @@ mod tests {
         let mut raw = vec![b'$', 1u8, 0x00, 4];
         raw.extend_from_slice(b"\xDE\xAD\xBE\xEF");
         let (dt, _dr, rt, rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -556,14 +632,14 @@ mod tests {
         let mut raw = vec![b'$', 1u8, 0xFF, 0xFF];
         raw.extend(std::iter::repeat_n(0xABu8, 65535));
         let (dt, _dr, rt, rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -579,14 +655,14 @@ mod tests {
     fn rtsp_response_routed_to_ctrl_rx() {
         let raw = b"RTSP/1.0 200 OK\r\nCSeq: 1\r\n\r\n".to_vec();
         let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -597,12 +673,75 @@ mod tests {
         assert_eq!(stats.rtsp_messages_received.load(Ordering::Relaxed), 1);
     }
 
-    /// RTSP response with a `Content-Length: N` body — the pump must
-    /// wait for the body bytes before considering the message complete.
+    /// Regression (field report 2026-07-24): responses to keepalive
+    /// OPTIONS pings (CSeq ≥ [`KEEPALIVE_CSEQ_BASE`]) must be consumed by
+    /// the pump, NOT routed to the bounded ctrl queue — nothing drains
+    /// that queue between main-thread requests, so on a receive-only
+    /// session the queued pings overflowed it after `CTRL_QUEUE_BOUND + 1`
+    /// responses (16.5 minutes at the default 30 s cadence) and the flood
+    /// policy below killed the session, surfacing as a clean EOS. Feeding
+    /// more responses than the queue can hold with NO consumer draining it
+    /// proves the pump no longer queues them.
     #[test]
-    fn rtsp_response_with_body_routed_to_ctrl_rx() {
-        let raw = b"RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Length: 5\r\n\r\nHELLO".to_vec();
+    fn keepalive_responses_consumed_not_queued() {
+        let n = CTRL_QUEUE_BOUND + 8;
+        let mut raw = Vec::new();
+        for i in 0..n {
+            raw.extend_from_slice(
+                format!(
+                    "RTSP/1.0 200 OK\r\nCSeq: {}\r\n\r\n",
+                    KEEPALIVE_CSEQ_BASE as usize + 1 + i
+                )
+                .as_bytes(),
+            );
+        }
         let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
+        let handle = spawn_test_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicUsize::new(0)),
+            stats.clone(),
+        )
+        .unwrap();
+        // Pre-fix the pump exited via the flood policy at response #33;
+        // post-fix it consumes all of them and exits at EOF.
+        let _ = handle.join();
+        assert_eq!(
+            cr.try_iter().count(),
+            0,
+            "keepalive responses must not reach ctrl_rx"
+        );
+        assert_eq!(stats.keepalive_responses.load(Ordering::Relaxed), n as u64);
+        assert_eq!(stats.rtsp_messages_received.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 0);
+    }
+
+    /// A mid-session 401 on a keepalive ping (nonce rotated or expired —
+    /// RFC 7616 §3.3 `stale=true` and friends) must refresh the SHARED
+    /// challenge cache so the next ping, at most one interval later,
+    /// signs against the fresh challenge. Before the fix nothing read
+    /// keepalive responses at all, so every subsequent ping re-signed
+    /// the dead nonce and the session silently died at the server
+    /// timeout with no client-side signal.
+    #[test]
+    fn keepalive_401_refreshes_shared_auth_challenge() {
+        let raw = format!(
+            "RTSP/1.0 401 Unauthorized\r\nCSeq: {}\r\nWWW-Authenticate: \
+             Digest realm=\"cam\", nonce=\"rotated\", stale=true\r\n\r\n",
+            KEEPALIVE_CSEQ_BASE + 7
+        )
+        .into_bytes();
+        let auth = Arc::new(Mutex::new(AuthState::default()));
+        {
+            let mut g = auth.lock().unwrap();
+            g.challenge = Some(r#"Digest realm="cam", nonce="old""#.into());
+            g.nc = 41;
+        }
+        let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
         let handle = spawn_client_pump(
             Cursor::new(raw),
             dt,
@@ -610,7 +749,71 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
+            auth.clone(),
+            None,
+            stats.clone(),
+        )
+        .unwrap();
+        let _ = handle.join();
+        let g = auth.lock().unwrap();
+        assert!(
+            g.challenge
+                .as_deref()
+                .is_some_and(|c| c.contains("rotated")),
+            "shared challenge must be refreshed from the keepalive 401, got {:?}",
+            g.challenge
+        );
+        assert_eq!(g.nc, 0, "nonce-count must reset for the new challenge");
+    }
+
+    /// 454 Session Not Found answering a keepalive ping means the server
+    /// no longer honors the session — the pump must flip `session_dead`
+    /// so `RtspClient::is_session_alive` surfaces the expiry (the flag
+    /// previously only tracked control-TCP write failures).
+    #[test]
+    fn keepalive_454_flips_session_dead() {
+        let raw = format!(
+            "RTSP/1.0 454 Session Not Found\r\nCSeq: {}\r\n\r\n",
+            KEEPALIVE_CSEQ_BASE + 3
+        )
+        .into_bytes();
+        let session_dead = Arc::new(AtomicBool::new(false));
+        let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicUsize::new(0)),
+            Arc::new(Mutex::new(AuthState::default())),
+            Some(session_dead.clone()),
+            stats.clone(),
+        )
+        .unwrap();
+        let _ = handle.join();
+        assert!(
+            session_dead.load(Ordering::Relaxed),
+            "a 454 keepalive response must flip session_dead"
+        );
+    }
+
+    /// RTSP response with a `Content-Length: N` body — the pump must
+    /// wait for the body bytes before considering the message complete.
+    #[test]
+    fn rtsp_response_with_body_routed_to_ctrl_rx() {
+        let raw = b"RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Length: 5\r\n\r\nHELLO".to_vec();
+        let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
+        let handle = spawn_test_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -633,14 +836,14 @@ mod tests {
         ] {
             let raw = header.as_bytes().to_vec();
             let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
-            let handle = spawn_client_pump(
+            let handle = spawn_test_pump(
                 Cursor::new(raw),
                 dt,
                 rt,
                 ct,
                 InterleavedChannels { rtp: 0, rtcp: 1 },
                 cancel.clone(),
-                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicUsize::new(0)),
                 stats.clone(),
             )
             .unwrap();
@@ -670,14 +873,14 @@ mod tests {
         // 64 KiB cap. Starts with a non-`$` byte so it's parsed as RTSP text.
         let raw = vec![b'A'; 128 * 1024];
         let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -700,14 +903,14 @@ mod tests {
     fn unknown_channel_frame_counted_and_dropped() {
         let raw = vec![b'$', 7u8, 0x00, 2, 0xAB, 0xCD];
         let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -723,14 +926,14 @@ mod tests {
     fn undersized_rtp_frame_counted_and_dropped() {
         let raw = vec![b'$', 0u8, 0x00, 4, 0x00, 0x00, 0x00, 0x00];
         let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -784,14 +987,14 @@ mod tests {
 
         let raw = interleaved_frame(0, &rtp);
         let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -817,14 +1020,14 @@ mod tests {
         let rtp = vec![0x90, RTP_PT_MP2T, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let raw = interleaved_frame(0, &rtp);
         let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -861,14 +1064,14 @@ mod tests {
             raw.extend(rtp_frame(0, 8));
         }
         let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -916,14 +1119,14 @@ mod tests {
         }
         let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
         // _rr kept alive → channel not Disconnected → overflow is `Full`.
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -952,14 +1155,14 @@ mod tests {
         }
         let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
         // _cr kept alive but never drained → overflow is `Full`, not closed.
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -988,14 +1191,14 @@ mod tests {
         let raw = Vec::<u8>::new();
         let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
         cancel.store(true, Ordering::Relaxed);
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             Cursor::new(raw),
             dt,
             rt,
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
             stats.clone(),
         )
         .unwrap();
@@ -1040,10 +1243,10 @@ mod tests {
         let (rt, _rr) = mpsc::sync_channel(RTCP_QUEUE_BOUND);
         let (ct, _cr) = mpsc::sync_channel(CTRL_QUEUE_BOUND);
         let cancel = Arc::new(AtomicBool::new(false));
-        let write_gate = Arc::new(AtomicBool::new(false));
+        let write_gate = Arc::new(AtomicUsize::new(0));
         let stats = Arc::new(PumpStats::default());
         let reader = SharedStreamReader::new(stream.clone());
-        let handle = spawn_client_pump(
+        let handle = spawn_test_pump(
             reader,
             dt,
             rt,
@@ -1059,7 +1262,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
         // Ask it to yield, then wait past one in-flight read (100 ms) so any
         // read in progress when we set the gate has drained.
-        write_gate.store(true, Ordering::Relaxed);
+        write_gate.fetch_add(1, Ordering::Relaxed);
         std::thread::sleep(Duration::from_millis(200));
         let baseline = stats.reads_attempted.load(Ordering::Relaxed);
         // Over the next 300 ms (~3 read cycles) the pump must not read.
@@ -1074,7 +1277,7 @@ mod tests {
         let lock_wait = t0.elapsed();
 
         cancel.store(true, Ordering::Relaxed);
-        write_gate.store(false, Ordering::Relaxed);
+        write_gate.fetch_sub(1, Ordering::Relaxed);
         done.store(true, Ordering::Relaxed);
         let _ = handle.join();
         let _ = server.join();

@@ -241,7 +241,10 @@ impl RtspClientBuilder {
     }
 
     /// Override the keepalive interval. Default: `session_timeout / 2`
-    /// as derived from the server's `Session: ...;timeout=N` header.
+    /// as derived from the server's `Session: ...;timeout=N` header
+    /// (starting from the 60 s RFC default, retuned when SETUP learns
+    /// the advertised value). An explicit override pins the cadence —
+    /// the SETUP retune never clobbers it.
     pub fn keepalive_interval(mut self, t: Duration) -> Self {
         self.keepalive_interval_override = Some(t);
         self
@@ -285,11 +288,12 @@ impl RtspClientBuilder {
 
     /// Connect, returning the live client.
     ///
-    /// For v1, the builder delegates to
-    /// [`RtspClient::connect_with`]. Task 17 will wire the
-    /// `keepalive_interval_override` field into the keepalive thread
-    /// spawn; for now the override field is stored but the spawn stub
-    /// is a no-op.
+    /// Unless [`Self::no_auto_keepalive`] was set, the background
+    /// OPTIONS-pinger is spawned here with the
+    /// [`Self::keepalive_interval`] override when one was supplied
+    /// (otherwise the cadence derives from the session timeout — the
+    /// 60 s default now, retuned when SETUP learns the
+    /// server-advertised value).
     ///
     /// # Errors
     ///

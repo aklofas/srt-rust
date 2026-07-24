@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 
 use crate::error::RtspError;
 use crate::rtsp::client::RtspClient;
+use crate::rtsp::client::keepalive::{KEEPALIVE_CSEQ_BASE, handle_keepalive_response};
 use crate::rtsp::message::{RtspFraming, RtspMethod, RtspRequest, RtspResponse};
 use crate::sdp::Sdp;
 
@@ -187,11 +188,10 @@ impl RtspClient {
     /// updated under the same lock the keepalive thread reads them with, so
     /// the rotation is atomic (see `AuthState`).
     pub(crate) fn cache_auth_challenge(&mut self, www_auth: String) {
-        let mut auth = self.auth.lock().expect("auth state mutex poisoned");
-        if auth.challenge.as_deref() != Some(www_auth.as_str()) {
-            auth.nc = 0;
-        }
-        auth.challenge = Some(www_auth);
+        self.auth
+            .lock()
+            .expect("auth state mutex poisoned")
+            .cache_challenge(www_auth);
     }
 
     /// Send `method` at `uri` with `extra_headers`, attaching cached
@@ -302,21 +302,41 @@ impl RtspClient {
                     // toward EOF. A legitimate body up to 1 MiB is awaited in
                     // full (the exact header + 4 + content_length ceiling bounds
                     // a peer dribbling past its declared body forever).
-                    match crate::rtsp::message::rtsp_frame_decision(&buf) {
-                        RtspFraming::NeedMore => continue, // bounded; read more
-                        RtspFraming::HeadersTooLong => {
-                            return Err(RtspError::BadResponse {
-                                detail: "RTSP response headers exceed maximum",
-                            });
-                        }
-                        RtspFraming::BadContentLength(detail) => {
-                            return Err(RtspError::BadResponse { detail });
-                        }
-                        RtspFraming::Complete { total_len } => {
-                            // Full message present — parse + return. `total_len`
-                            // is the exact byte length of this message.
-                            let (resp, _consumed) = RtspResponse::parse(&buf[..total_len])?;
-                            return Ok(resp);
+                    //
+                    // Inner loop (not a single decision): a keepalive ping's
+                    // response can sit in the buffer AHEAD of this request's
+                    // response — the keepalive thread never reads, and in
+                    // non-pump mode nothing else drains the stream between
+                    // requests. Such a message (CSeq in the keepalive range)
+                    // is consumed here — never surfaced as the caller's
+                    // response — and parsing continues on the bytes already
+                    // buffered rather than waiting for another read.
+                    loop {
+                        match crate::rtsp::message::rtsp_frame_decision(&buf) {
+                            RtspFraming::NeedMore => break, // bounded; read more
+                            RtspFraming::HeadersTooLong => {
+                                return Err(RtspError::BadResponse {
+                                    detail: "RTSP response headers exceed maximum",
+                                });
+                            }
+                            RtspFraming::BadContentLength(detail) => {
+                                return Err(RtspError::BadResponse { detail });
+                            }
+                            RtspFraming::Complete { total_len } => {
+                                // Full message present — parse. `total_len` is
+                                // the exact byte length of this message.
+                                let (resp, _consumed) = RtspResponse::parse(&buf[..total_len])?;
+                                if resp.cseq().is_some_and(|c| c >= KEEPALIVE_CSEQ_BASE) {
+                                    handle_keepalive_response(
+                                        &resp,
+                                        &self.auth,
+                                        self.session_dead.as_deref(),
+                                    );
+                                    buf.drain(..total_len);
+                                    continue;
+                                }
+                                return Ok(resp);
+                            }
                         }
                     }
                 }
@@ -370,7 +390,7 @@ impl RtspClient {
             .expect("pump_state is Some — checked by caller")
             .write_gate
             .clone();
-        write_gate.store(true, std::sync::atomic::Ordering::Relaxed);
+        write_gate.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let write_result = {
             let mut s = self.stream.lock().expect("stream mutex poisoned");
             let r = s
@@ -379,7 +399,7 @@ impl RtspClient {
             drop(s);
             r
         };
-        write_gate.store(false, std::sync::atomic::Ordering::Relaxed);
+        write_gate.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         write_result?;
         let pump = self
             .pump_state

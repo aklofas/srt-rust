@@ -19,6 +19,10 @@ mod fallback;
 mod interleaved_e2e;
 #[path = "rtsp_client/keepalive.rs"]
 mod keepalive;
+#[path = "rtsp_client/keepalive_overflow.rs"]
+mod keepalive_overflow;
+#[path = "rtsp_client/keepalive_retune.rs"]
+mod keepalive_retune;
 #[path = "rtsp_client/setup_play.rs"]
 mod setup_play;
 #[path = "rtsp_client/teardown.rs"]

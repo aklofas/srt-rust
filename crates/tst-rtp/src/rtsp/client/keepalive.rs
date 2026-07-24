@@ -214,16 +214,18 @@ pub(crate) fn spawn(
                 // the pump holds the lock across each blocking socket
                 // read, and without the gate a hot data stream can
                 // starve keepalive writes for many read cycles (see
-                // `RtspClient::write_gate`).
-                write_gate.fetch_add(1, Ordering::Relaxed);
+                // `RtspClient::write_gate`). RAII guard: the decrement
+                // must survive the poisoned-mutex panic below, or the
+                // pump would skip reads forever.
+                //
                 // If the stream mutex is poisoned the main thread
                 // panicked mid-request — propagate by panicking the
                 // keepalive thread too (per T21 policy).
                 let write_result = {
+                    let _gate = crate::rtsp::client::WriteGateGuard::enter(&write_gate);
                     let mut g = write_half.lock().expect("stream mutex poisoned");
                     g.write_all(&bytes)
                 };
-                write_gate.fetch_sub(1, Ordering::Relaxed);
                 if write_result.is_err() {
                     session_dead.store(true, Ordering::Relaxed);
                     return;

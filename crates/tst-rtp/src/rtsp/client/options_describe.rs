@@ -390,8 +390,11 @@ impl RtspClient {
             .expect("pump_state is Some — checked by caller")
             .write_gate
             .clone();
-        write_gate.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // RAII guard (not a manual increment/decrement pair): the
+        // decrement must survive the poisoned-mutex panic below, or the
+        // pump would skip reads forever with the gate stuck nonzero.
         let write_result = {
+            let _gate = crate::rtsp::client::WriteGateGuard::enter(&write_gate);
             let mut s = self.stream.lock().expect("stream mutex poisoned");
             let r = s
                 .write_all(request_bytes)
@@ -399,7 +402,6 @@ impl RtspClient {
             drop(s);
             r
         };
-        write_gate.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         write_result?;
         let pump = self
             .pump_state

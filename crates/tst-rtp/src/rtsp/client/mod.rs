@@ -210,6 +210,28 @@ impl AuthState {
     }
 }
 
+/// RAII participant in [`RtspClient::write_gate`]: increments the
+/// waiting-writers count on construction, decrements on drop — INCLUDING
+/// panic unwind. A writer that panics between increment and decrement
+/// (e.g. `.expect()` on a poisoned stream mutex) would otherwise leave
+/// the gate stuck nonzero, and the pump — which skips its read while the
+/// gate is nonzero — would spin forever without ever touching the mutex,
+/// wedging the session instead of failing it.
+pub(crate) struct WriteGateGuard<'a>(&'a AtomicUsize);
+
+impl<'a> WriteGateGuard<'a> {
+    pub(crate) fn enter(gate: &'a AtomicUsize) -> Self {
+        gate.fetch_add(1, Ordering::Relaxed);
+        Self(gate)
+    }
+}
+
+impl Drop for WriteGateGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 /// State the main thread keeps about the interleaved producer thread.
 ///
 /// Owned by [`RtspClient`] (one pump per client, since one TCP control
@@ -435,10 +457,11 @@ impl RtspClient {
     /// (the thread re-reads the shared interval cell at every wake, so
     /// there is never a reason to respawn).
     ///
-    /// Call at most once per client: replacing the handle does NOT stop
-    /// the prior thread (only close/`Drop` flips the shared `cancel`
-    /// flag), so a second spawn would leave two pingers running until
-    /// the client closes.
+    /// Idempotent: a no-op once a pinger is running. Spawning another
+    /// thread would NOT stop the first (only close/`Drop` flips the
+    /// shared `cancel` flag), so a second spawn would otherwise leave
+    /// two pingers running — duplicate OPTIONS traffic — until the
+    /// client closes; the first spawn's cadence therefore wins.
     //
     // Exposed `#[doc(hidden)] pub` so the integration test in
     // `tests/rtsp_client_keepalive.rs` can drive it without going
@@ -455,6 +478,9 @@ impl RtspClient {
         &mut self,
         override_interval: Option<Duration>,
     ) -> Result<(), RtspError> {
+        if self.keepalive_thread.is_some() {
+            return Ok(());
+        }
         let interval = override_interval.unwrap_or(self.session_timeout / 2);
         // The cadence lives in a shared cell the thread re-reads at every
         // wake: SETUP retunes it to the server-advertised session timeout
@@ -668,6 +694,56 @@ mod tests {
     fn rtsps_without_tls_feature_errors() {
         let e = RtspClient::connect("rtsps://localhost:322/test").unwrap_err();
         assert!(matches!(e, RtspError::Tls(_)));
+    }
+
+    /// The gate decrement must survive a panic between enter and the end
+    /// of the write scope (e.g. `.expect()` on a poisoned stream mutex) —
+    /// a stuck-nonzero gate makes the pump skip reads forever without
+    /// ever observing the poison itself, wedging the session instead of
+    /// failing it.
+    #[test]
+    fn write_gate_guard_decrements_on_panic() {
+        let gate = AtomicUsize::new(0);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _gate = WriteGateGuard::enter(&gate);
+            assert_eq!(gate.load(Ordering::Relaxed), 1);
+            panic!("simulated poisoned-mutex expect");
+        }));
+        assert!(result.is_err());
+        assert_eq!(
+            gate.load(Ordering::Relaxed),
+            0,
+            "gate must be released on unwind"
+        );
+    }
+
+    /// A second spawn while a pinger is already running must be a no-op —
+    /// replacing the JoinHandle would NOT stop the first thread (only
+    /// close/Drop flips the shared cancel flag), so two pingers would
+    /// run until the client closes. Observable via the interval cell:
+    /// the first spawn's cadence wins.
+    #[test]
+    fn spawn_keepalive_if_needed_is_noop_when_already_running() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let _ = listener.accept();
+        });
+        let url = format!("rtsp://127.0.0.1:{}/test", port);
+        let mut c = RtspClient::connect(&url).unwrap();
+        c.spawn_keepalive_if_needed(Some(Duration::from_secs(2)))
+            .unwrap();
+        c.spawn_keepalive_if_needed(Some(Duration::from_secs(5)))
+            .unwrap();
+        let iv = c
+            .keepalive_interval_shared
+            .as_ref()
+            .expect("interval cell set by the first spawn");
+        assert_eq!(
+            iv.load(Ordering::Relaxed),
+            2000,
+            "second spawn must not replace the running pinger or its cadence"
+        );
     }
 
     #[test]

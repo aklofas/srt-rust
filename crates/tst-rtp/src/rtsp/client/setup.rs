@@ -162,7 +162,8 @@ impl RtspClient {
         }
         if !self.keepalive_interval_overridden {
             if let Some(iv) = &self.keepalive_interval_shared {
-                let ms = ((self.session_timeout.as_millis() / 2) as u64).max(100);
+                let ms =
+                    crate::rtsp::client::duration_ms_saturating(self.session_timeout / 2).max(100);
                 iv.store(ms, std::sync::atomic::Ordering::Relaxed);
             }
         }

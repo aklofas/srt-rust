@@ -9,6 +9,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### RTSP client keepalive overhaul: session-killing response overflow + frozen cadence (PR #122)
+
+No public API changes — all fixes are internal to `tst-rtp`'s RTSP
+client, and the Python/JVM/C bindings inherit them as built.
+
+#### Fixed
+
+- **Every TCP-interleaved receive session died at 16.5 minutes with what
+  looked like a clean end of stream.** The keepalive thread never reads
+  responses, and the interleaved pump routed every RTSP response — the
+  keepalive's own 200 OKs included — into its bounded 32-deep control
+  queue, which nothing drains between main-thread requests. On a
+  receive-only session (SETUP/PLAY, then only data) the 33rd keepalive
+  response overflowed the queue at the default 30 s ping cadence and the
+  pump's control-flood policy failed the session, surfacing to receivers
+  as a clean EOS. The pump now consumes keepalive responses (classified
+  by the `CSeq ≥ 1_000_000` keepalive band) instead of queuing them.
+  Affects every prior release; diagnosed from a field report of an
+  RTSPS session dropping mid-flight at exactly this mark.
+- **The keepalive cadence was frozen before SETUP.** The pinger spawns
+  at connect time with its interval derived from the 60 s RFC 7826
+  default; a server-advertised `Session: <id>;timeout=N` parsed at
+  SETUP updated the client but never the running thread, so a server
+  advertising `timeout < 60` expired the session between 30 s pings.
+  The thread now re-reads a shared interval cell at every wake and
+  SETUP retunes it in place; an explicit
+  `RtspClientBuilder::keepalive_interval` override stays pinned.
+- **Keepalive pings never carried a `Session:` header.** The session-id
+  cell shared with the pinger was never written after SETUP, so pings
+  were not bound to the session — and an un-bound OPTIONS refreshes
+  nothing on a conforming server (RFC 7826 §10.5 defines keep-alive in
+  terms of a request carrying the session identifier). SETUP now binds
+  the running pinger to the negotiated session id.
+- **A buffered keepalive response could be misattributed as the next
+  request's response** in non-pump mode (UDP transport / pre-SETUP),
+  where the read path returned the first complete message off the
+  socket without CSeq classification — e.g. `options()` could return a
+  keepalive 200 with no `Public:` header. The read path now consumes
+  keepalive-band responses and keeps reading for the caller's actual
+  response.
+- **A mid-session 401 answering a keepalive ping now refreshes the
+  shared challenge cache** (nonce rotation / RFC 7616 `stale=true`), so
+  the next ping — at most one interval later — signs against the fresh
+  challenge instead of every subsequent ping silently failing until the
+  server timeout; a `454 Session Not Found` now flips the session-dead
+  flag surfaced by `RtspClient::is_session_alive`.
+- **Sub-200 ms keepalive intervals are honored** (previously any
+  requested cadence below the thread's 200 ms cancel-poll floor was
+  silently quantized up to it), and keepalive writes participate in the
+  interleaved pump's write-gate hand-off — now a waiting-writers
+  counter rather than a single flag — so a hot data stream cannot
+  starve ping writes on the shared stream mutex.
+
 ### MISB full-tag-compliance arc: ST 0601 exhaustive coverage, `klv::st0806`, `klv::st0805` (PRs #116–#120)
 
 MISB ST 0601 is now typed end to end: 142 of the 143 UAS Datalink LS spec

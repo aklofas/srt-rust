@@ -257,7 +257,8 @@ pub(crate) fn global_logging_ptr() -> *mut rist_sys::rist_logging_settings {
 }
 
 /// Apply [`RistConfig`] overlays onto the parsed `rist_peer_config`. Shared
-/// by [`RistTransport::connect_with_config`] and (forthcoming) the receiver.
+/// by [`RistTransport::connect_with_config`] and the receiver
+/// (`RistRecvTransport`).
 pub(crate) fn apply_peer_overrides(
     peer_config: *mut rist_sys::rist_peer_config,
     cfg: &RistConfig,

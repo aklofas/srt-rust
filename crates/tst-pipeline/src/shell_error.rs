@@ -5,9 +5,6 @@
 //! type. Bindings categorize failures by matching on `err.kind()` (6
 //! variants, 1:1 with TST_E codes); power users `match err.source` for the
 //! full inner-error variant set.
-//!
-//! See `docs/refactor-1/_wave-4-plan-design.md` Plan A for the design
-//! decisions behind this shape.
 
 use tst_core::error::{DemuxError, MuxError};
 use tst_core::transport::TransportError;

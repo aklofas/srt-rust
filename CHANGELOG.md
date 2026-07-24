@@ -9,6 +9,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security policy + rustdoc staleness sweep
+
+#### Added
+
+- `SECURITY.md` — vulnerability disclosure policy: private reporting
+  channels (GitHub private vulnerability reporting, email fallback),
+  pre-1.0 supported-versions statement, and response expectations.
+  Linked from the README and the docs landing page.
+
+#### Documentation
+
+- Rustdoc staleness sweep: references to `RtpTransport` and the RIST
+  receiver as "future"/"forthcoming" surfaces corrected to describe the
+  shipped implementations (`tst-core` transport traits, `tst-pipeline`
+  crate docs, `tst-rist` internals), including the stale claim that
+  `TransportError::ExplicitClose` is produced only by
+  `ManagedRecvTransport` (the RTP transports produce it on cancel) and
+  the wrong variant attribution for `RtpTransport`'s OS-`errno` codes
+  (they ride `Broken`, not `Backpressure`). Two module docs no longer
+  point at internal design documents that are not part of this
+  repository.
+
 ### RTSP client keepalive overhaul: session-killing response overflow + frozen cadence (PR #122)
 
 No public API changes — all fixes are internal to `tst-rtp`'s RTSP

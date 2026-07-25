@@ -128,6 +128,13 @@ tasks.test {
     dependsOn(copyNative) // dev-mode native; assemble job runs `jar`, not `test`.
     useJUnitPlatform()
     testLogging { showStandardStreams = true }
+    // -Xcheck:jni: HotSpot's built-in JNI verifier. It catches the
+    // JNI-semantic bug class — invalid/stale handles, local-ref leaks
+    // (DA-JVM-1), env misuse across threads — which memory sanitizers
+    // cannot see. Violations abort the JVM ("FATAL ERROR in native
+    // method"), so regressions fail this gating test job loudly. Cost at
+    // our test scale is negligible.
+    jvmArgs("-Xcheck:jni")
     // Gate PanicIsolationTest (@EnabledIfSystemProperty) on the probe being built.
     if (jniTestHooks) {
         systemProperty("tst.jniTestHooks", "true")

@@ -54,11 +54,20 @@ fn register_exit_cleanup() {
             srt_sys::srt_cleanup();
         }
     }
-    // Registration can only fail on allocation exhaustion; in that case we
-    // are no worse off than the pre-registration behavior, so the return
-    // code is deliberately ignored.
-    unsafe {
-        libc::atexit(srt_exit_cleanup);
+    // `atexit` can fail (POSIX: unspecified; in practice allocation
+    // failure, plus implementation-defined handler limits). Since libsrt
+    // 1.5.6 this registration is load-bearing: without the handler, any
+    // process that opened an SRT socket segfaults after `main` returns.
+    // Panicking here — at first libsrt use, where the failure is
+    // attributable — beats a mystery SIGSEGV at process exit, and matches
+    // the process-fatal handling of `srt_startup` failure above.
+    let rc = unsafe { libc::atexit(srt_exit_cleanup) };
+    if rc != 0 {
+        panic!(
+            "atexit(srt_cleanup) registration failed (rc={rc}); \
+             refusing to continue — exiting without srt_cleanup() \
+             segfaults under libsrt >= 1.5.6"
+        );
     }
 }
 

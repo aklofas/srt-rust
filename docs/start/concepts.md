@@ -140,7 +140,7 @@ Compact reference of terms you'll hit in the API and in these docs. Each links t
 | **MISB ST 1402** | KLV-in-MPEG-TS multiplexing standard. |
 | **H.222.0 §2.12.4.2** | The ITU-T standard for the 5-byte Metadata AU cell header that wraps synchronous KLV. |
 | **SRT** | Secure Reliable Transport. UDP-based, retransmission-within-latency-budget. ([guide](/docs/guides/srt.md)) |
-| **libsrt** | The C++ reference implementation; ts-transformer vendors v1.5.5. |
+| **libsrt** | The C++ reference implementation; ts-transformer vendors v1.5.6. |
 | **mbedTLS** | Encryption library; ts-transformer vendors v3.6.x LTS. |
 | **ADTS** | Audio Data Transport Stream — AAC's elementary stream framing format. |
 | **LATM** | Low-overhead Audio Transport Multiplex — alternate AAC framing for TS. |

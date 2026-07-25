@@ -105,7 +105,7 @@ SRT_FORCE_VENDORED=1 cargo build --release            # Rust workspace
 SRT_FORCE_VENDORED=1 cargo build --release -p tst-c   # C bindings → cdylib + staticlib + tstrans.h + tstrans.pc
 ```
 
-The build vendors and compiles libsrt 1.5.5 + mbedTLS 3.6 LTS from submodules — ~3–5 minutes
+The build vendors and compiles libsrt 1.5.6 + mbedTLS 3.6 LTS from submodules — ~3–5 minutes
 cold, seconds warm. Feature flags (`mbedtls`, `file`, per-transport) are documented in
 [`docs/languages/rust.md`](docs/languages/rust.md).
 

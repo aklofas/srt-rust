@@ -16,7 +16,7 @@
 When you need to send or receive raw SRT messages directly — handshake,
 encryption, latency tuning, stream identification, statistics, and the per-call
 error model — `tst_srt` is the layer you reach for. It's a safe Rust wrapper
-over libsrt 1.5.5 with `Socket` and `Listener` types modeled on
+over libsrt 1.5.6 with `Socket` and `Listener` types modeled on
 `std::net::TcpStream` / `TcpListener`.
 
 Read this guide if your data path is byte-oriented and you handle the
@@ -609,7 +609,7 @@ Each item below maps to an entry in
 - Linger tuning (`SRTO_LINGER`) — the library uses a sensible
   internal value; live mode doesn't need a long linger.
 - Protocol-version pinning (`SRTO_PEERVERSION`, `SRTO_MINVERSION`) —
-  libsrt 1.5.5 negotiates with anything 1.3 or newer.
+  libsrt 1.5.6 negotiates with anything 1.3 or newer.
 - Typed FEC / packet-filter builder — pass the libsrt spec string
   verbatim today.
 - Stream-ID filtering on `Listener` — kept caller-side intentionally.

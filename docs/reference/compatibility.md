@@ -89,8 +89,8 @@ feature.
 | Component | Pinned at |
 | --- | --- |
 | Rust edition | 2024, MSRV **1.85** (`rust-toolchain.toml`) |
-| `libsrt` (Haivision) | **v1.5.5** (`vendor/srt`, git submodule) |
-| `mbedTLS` | **v3.6.6** LTS (`vendor/mbedtls`, git submodule) |
+| `libsrt` (Haivision) | **v1.5.6** (`vendor/srt`, git submodule) |
+| `mbedTLS` | **v3.6.7** LTS (`vendor/mbedtls`, git submodule) |
 | `bindgen` | 0.72 (FFI; `srt-sys` build) |
 | `cbindgen` | 0.29 (C header generation; `tst-c` build) |
 | `cc` | 1.0 (compiles + links the C smoke test in `tst-c` integration tests) |
@@ -108,7 +108,7 @@ on (default).
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
-| `draft-sharabayko-srt` (IETF SRT v1.5) | ✅ Full | via libsrt 1.5.5; we don't reimplement the wire protocol. |
+| `draft-sharabayko-srt` (IETF SRT v1.5) | ✅ Full | via libsrt 1.5.6; we don't reimplement the wire protocol. |
 | `draft-sharabayko-srt-over-quic` | ❌ Out of scope | Upstream is exploratory. |
 | Caller / Listener / Rendezvous handshake | ⚙️ Partial | Caller + Listener exposed; Rendezvous reachable via raw `srt-sys` only. |
 | Live congestion controller (`SRTO_CONGESTION=live`) | ✅ Full | `Congestion::Live` (default). |
@@ -193,7 +193,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 | Filter | Status | Notes |
 | --- | --- | --- |
 | `fec` (Reed–Solomon ARQ) | ✅ Full | Filter spec passed verbatim; libsrt evaluates it. |
-| Custom-name pass-through | ✅ Full | Any value accepted by libsrt 1.5.5. |
+| Custom-name pass-through | ✅ Full | Any value accepted by libsrt 1.5.6. |
 | Filter parameter validation | 🟡 Permissive | Length ≤ 512 bytes + ASCII charset enforced; semantics handed to libsrt. |
 
 ---
@@ -628,9 +628,9 @@ covers.
 
 | Crate | Status | Target |
 | --- | --- | --- |
-| `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.5; encryption via mbedTLS. |
+| `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.6; encryption via mbedTLS. |
 | `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903 / 0806 / 1010 / 1204) + the ST 0805 KLV→CoT conversion layer, codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
-| `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
+| `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.6. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
 | `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.19** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
 | `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.3.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for the core MISB sets (ST 0601 / 0102 / 0605 / 0903) plus ST 0806 / 1010 / 1204 and the ST 0805 KLV→CoT conversion layer; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; TLS variants ship in the wheels (`tcps://` caller + listener, `rtsps://` client + server, HTTPS HLS) as does RIST PSK encryption; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |

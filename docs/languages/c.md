@@ -30,7 +30,7 @@ SRT_FORCE_VENDORED=1 cargo build -p tst-c --release
 # Artifacts land in target/release/ + bindings/c/include/tstrans.h
 ```
 
-The build vendors libsrt 1.5.5 + mbedTLS 3.6.x statically — your `libtstrans.so` has no external dependencies beyond libc, libpthread, libstdc++, libdl, and libm. Verify with `ldd target/release/libtstrans.so`.
+The build vendors libsrt 1.5.6 + mbedTLS 3.6.x statically — your `libtstrans.so` has no external dependencies beyond libc, libpthread, libstdc++, libdl, and libm. Verify with `ldd target/release/libtstrans.so`.
 
 ### Compile + link
 

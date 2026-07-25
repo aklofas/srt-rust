@@ -9,6 +9,54 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Vendored dependency updates: libsrt 1.5.6 (security), librist 0.2.18, mbedTLS 3.6.7
+
+#### Security
+
+- **libsrt bumped v1.5.5 → v1.5.6** — a security patch release fixing a
+  KMREQ CVE (unchecked buffer size, Haivision/srt#3317 + #3345), a KMRSP
+  wire-length stack overflow (#3319), out-of-bounds reads in LOSSREPORT
+  (#3324) and DROPREQ (#3320) parsing, and a receive-buffer drop-range
+  bug (#3322) — all reachable from hostile wire input. Every build of
+  `tst-srt`/`tst-c`/the Python wheels/the JVM JAR vendors this statically,
+  so consumers pick the fixes up by rebuilding/upgrading.
+
+#### Changed
+
+- **librist bumped v0.2.16 → v0.2.18.** Adds upstream Advanced Profile
+  support (not yet exposed through `tst-rist` — the `RistProfile` surface
+  is unchanged). librist now requires LZ4 for Advanced Profile payload
+  compression; the vendored build compiles librist's bundled
+  `contrib/lz4` (`-Dbuiltin_lz4=true`), so no system LZ4 dependency is
+  introduced on any platform. The mbedTLS-3.x header workaround
+  (staging `entropy_poll.h`) is gone — upstream removed the vestigial
+  include this release.
+- **mbedTLS bumped v3.6.6 → v3.6.7** (LTS patch release; both the libsrt
+  and librist static copies move together, preserving the byte-identical
+  dual-copy link invariant).
+- **Embedded: FreeRTOS kernel V11.1.0 → V11.3.0**, FreeRTOS-Plus-POSIX
+  advanced one upstream commit (semaphore value restored on timed-wait
+  failure — relevant to the libsrt pthread shims). lwIP stays at 2.2.1
+  (latest stable). The freertos-srt cross-build stamp covers submodule
+  HEADs, so the QEMU gates rebuild automatically.
+
+#### Fixed
+
+- **`tst-srt` now registers `srt_cleanup()` via `atexit` at first libsrt
+  use.** libsrt 1.5.6 changed its receive-queue worker to keep running
+  through UDP-channel teardown errors (Haivision/srt#3327), so exiting a
+  process without `srt_cleanup()` — previously our documented behavior —
+  became a deterministic post-`main` segfault in any process that had
+  opened an SRT socket. The `atexit` handler is registered right after
+  `srt_startup()`, so it runs before libsrt's static destructors and
+  stops the queue workers cleanly. Cleanup remains decoupled from value
+  drops (unchanged design).
+- `srt-sys`/`rist-sys` build scripts now watch the vendored submodules'
+  version-bearing files (`cargo:rerun-if-changed`), so a submodule bump
+  triggers a rebuild of the vendored static libraries on incremental
+  local builds instead of silently reusing the previous version's
+  artifacts. (CI was never affected — fresh checkouts always rebuilt.)
+
 ### Security policy + rustdoc staleness sweep
 
 #### Added

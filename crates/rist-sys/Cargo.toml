@@ -42,5 +42,6 @@ default = ["mbedtls"]
 # incompatible layouts → SRT-encryption segfaulted at runtime. Sharing one
 # mbedTLS version (3.6.x) makes the two static copies byte-identical, so the
 # downstream cdylib's `-Wl,--allow-multiple-definition` collapses them safely.
-# librist 0.2.16 supports mbedTLS 3.x (srp.c includes <mbedtls/compat-2.x.h>).
+# librist 0.2.18 supports mbedTLS 3.x natively (srp.c defines its own 3.x
+# compat macros for the _ret SHA-256 names; no compat-2.x.h needed).
 mbedtls = []

@@ -42,6 +42,14 @@ fn build_mbedtls() -> PathBuf {
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
+    // Version-bearing files of the vendored submodules. A submodule bump
+    // otherwise leaves cargo's fingerprint untouched, so an incremental
+    // local build silently reuses the PREVIOUS libsrt/mbedTLS static libs
+    // (CI never sees this — fresh checkouts always rebuild). Tracking the
+    // two top-level files (each carries the version) is enough to catch
+    // every pin change without recursively statting the whole submodule.
+    println!("cargo:rerun-if-changed=../../vendor/srt/CMakeLists.txt");
+    println!("cargo:rerun-if-changed=../../vendor/mbedtls/CMakeLists.txt");
     println!("cargo:rerun-if-env-changed=SRT_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=SRT_FORCE_VENDORED");
 

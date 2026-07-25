@@ -97,7 +97,7 @@ fn srt_transport_inherits_configured_payload_size() {
 /// live-mode maximum (1456) delivers 1456-byte messages to a receiver
 /// that kept the 1316 default, so a delivered message was SILENTLY
 /// TRUNCATED to the size of a receive buffer sized from the old
-/// recv-side max_payload() (= local option) on vendored libsrt 1.5.5
+/// recv-side max_payload() (= local option) on vendored libsrt 1.5.6
 /// (the BufferTooSmall→Broken mapping never fired; kept as defence).
 /// The recv-side ceiling must cover the
 /// live-mode wire maximum regardless of the local option.

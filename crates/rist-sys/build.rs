@@ -49,37 +49,13 @@ fn build_mbedtls() -> PathBuf {
             .define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
     }
 
-    let prefix = cfg.build();
+    cfg.build()
 
-    // librist 0.2.16's `src/crypto/random.c` unconditionally does
-    // `#include <mbedtls/entropy_poll.h>`. That header was PUBLIC in mbedTLS 2.x
-    // but is PRIVATE in 3.x (it lives in `library/`, not `include/mbedtls/`), so
-    // `cmake --install` does NOT ship it. random.c doesn't actually use any
-    // symbol from it — the include is vestigial — but the compile still fails
-    // without the file present (it only surfaced on CI; a developer box with
-    // system `libmbedtls-dev` 2.x on the default include path masks it). Stage
-    // the private header into our install's public include dir so librist's
-    // cmake-resolved `-I<prefix>/include` finds it. It only needs the public
-    // `mbedtls/build_info.h`, so it is self-contained against the 3.x install.
-    let src = mbedtls_dir.join("library").join("entropy_poll.h");
-    let dst = prefix
-        .join("include")
-        .join("mbedtls")
-        .join("entropy_poll.h");
-    if src.exists() {
-        if let Some(parent) = dst.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        std::fs::copy(&src, &dst).unwrap_or_else(|e| {
-            panic!(
-                "Failed to stage private mbedTLS header {} -> {}: {e}",
-                src.display(),
-                dst.display()
-            )
-        });
-    }
-
-    prefix
+    // (A former workaround here staged mbedTLS's private `entropy_poll.h`
+    // into the install's public include dir because librist ≤ 0.2.17's
+    // `src/crypto/random.c` carried a vestigial `#include
+    // <mbedtls/entropy_poll.h>`. librist 0.2.18 removed that include
+    // upstream — commit df07717 — so the staging is gone.)
 }
 
 /// Generate a meson cross-file for a Linux cross build so librist (+ its
@@ -127,6 +103,12 @@ fn write_meson_cross_file() -> Option<PathBuf> {
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
+    // Version-bearing files of the vendored submodules — a submodule bump
+    // otherwise leaves the fingerprint untouched and incremental local
+    // builds silently reuse the previous librist/mbedTLS static libs.
+    // Mirrors srt-sys; see the comment there.
+    println!("cargo:rerun-if-changed=../../vendor/librist/meson.build");
+    println!("cargo:rerun-if-changed=../../vendor/mbedtls/CMakeLists.txt");
     println!("cargo:rerun-if-env-changed=RIST_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=RIST_FORCE_VENDORED");
 
@@ -229,6 +211,13 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
     //   -Dbuilt_tools=false       skip CLI tools (faster build)
     //   -Dtest=false              skip test suite
     //   -Dbuiltin_cjson=true      bundle contrib/cjson (avoids system cjson dep)
+    //   -Dbuiltin_lz4=true        bundle contrib/lz4 (librist ≥ 0.2.17 needs
+    //                             LZ4 for Advanced Profile payload compression;
+    //                             explicit builtin keeps the build free of a
+    //                             system liblz4 dep on every platform. Must be
+    //                             explicit: our -Dfallback_builtin=false turns
+    //                             the would-be automatic builtin fallback into
+    //                             a hard "lz4.h not found" meson error)
     //   -Dbuiltin_mbedtls=<bool>  bundle contrib/mbedtls when mbedtls feature is on
     //   -Duse_mbedtls=<bool>      enable/disable encryption entirely
     let mut args: Vec<String> = vec![
@@ -240,6 +229,7 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         "-Dbuilt_tools=false".into(),
         "-Dtest=false".into(),
         "-Dbuiltin_cjson=true".into(),
+        "-Dbuiltin_lz4=true".into(),
     ];
     let mut meson_envs: Vec<(String, String)> = Vec::new();
 
@@ -306,7 +296,7 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
     // (`-Dbuiltin_mbedtls=false`) instead of its bundled contrib/mbedtls — see
     // the `mbedtls` feature note in Cargo.toml.
     //
-    // librist 0.2.16's `contrib/mbedtls/meson.build` resolves the external
+    // librist 0.2.18's `contrib/mbedtls/meson.build` resolves the external
     // mbedTLS via the CMAKE method FIRST (`dependency('MbedTLS', method:
     // 'cmake', modules: ['MbedTLS::mbedcrypto'])`), then a bare
     // `cc.find_library('mbedcrypto')`. PKG_CONFIG_PATH alone is NOT consulted

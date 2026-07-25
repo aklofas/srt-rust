@@ -46,7 +46,7 @@ If you cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-The submodules are `vendor/srt` (libsrt 1.5.5) and `vendor/mbedtls`
+The submodules are `vendor/srt` (libsrt 1.5.6) and `vendor/mbedtls`
 (mbedTLS 3.6.x LTS). Both are required for the default build.
 
 ## Add it to your project

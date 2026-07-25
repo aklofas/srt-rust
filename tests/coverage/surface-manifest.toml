@@ -11293,3 +11293,135 @@ reason = "derive impl for st0805 CotError; covered by error-path tests"
 [[exempt]]
 item = "tst_core::error::CotError::fmt"
 reason = "derive impl for st0805 CotError; covered by error-path tests"
+
+[[exempt]]
+item = "rist_sys::iovec::clone"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::iovec::default"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::iovec::fmt"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::msghdr::clone"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::msghdr::default"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::msghdr::fmt"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::pollfd::clone"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::pollfd::default"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::pollfd::fmt"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::receiver_flow_attr_callback_t"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_DEFAULT_RECOVERY_PRIORITY"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_PEER_WEIGHT_DUPLICATE"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_RECOVERY_DEPTH_DEFAULT"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_RECOVERY_DEPTH_MAX"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_RECOVERY_DEPTH_MIN"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::rist_transport_ops::clone"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::rist_transport_ops::default"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::rist_transport_ops::fmt"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_LOCAL_PORT"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_MCAST_SOURCE"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_MCAST_TTL"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_MERGE_MODE"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_RECOVERY_DEPTH"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_RECOVERY_PRIORITY"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_REFLECTOR"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_SPLIT_MODE"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_SRP_COMPAT"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::sa_family_t"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::sockaddr::clone"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::sockaddr::default"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::sockaddr::fmt"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::__socklen_t"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::socklen_t"
+reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"

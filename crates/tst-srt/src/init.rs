@@ -4,8 +4,10 @@
 //! `OnceLock` from any constructor that needs libsrt (`Socket::connect_with`,
 //! `Listener::bind_with`, etc.).
 //!
-//! `srt_cleanup()` is **not** called automatically — see the design doc for
-//! rationale (drop-order ambiguity vs. negligible OS-reclaimed leaks).
+//! `srt_cleanup()` is never tied to value drops — see the design doc for
+//! rationale (drop-order ambiguity vs. negligible OS-reclaimed leaks) — but
+//! it IS registered via `atexit` to run at process exit; see
+//! `register_exit_cleanup` below.
 
 use std::sync::OnceLock;
 
@@ -21,7 +23,43 @@ pub(crate) fn ensure_initialized() {
             panic!("srt_startup() failed with rc={rc}; libsrt cannot be used");
         }
         install_log_handler();
+        register_exit_cleanup();
     });
+}
+
+/// Register `srt_cleanup()` to run at process exit.
+///
+/// Required since libsrt 1.5.6: commit 1e4c908c (Haivision/srt#3327)
+/// changed the RcvQueue worker to keep running when the UDP channel
+/// reports an error mid-teardown ("the worker thread must run until all
+/// sockets are removed from the multiplexer"). Exiting the process
+/// WITHOUT `srt_cleanup()` now lets a live worker race libsrt's C++
+/// static destructors and dereference the destroyed receive list — a
+/// deterministic post-main SIGSEGV whenever any socket existed in the
+/// process (on 1.5.5 the worker exited on that same channel error, which
+/// is why skipping cleanup used to be benign).
+///
+/// Ordering: `atexit`/`__cxa_atexit` handlers run in REVERSE registration
+/// order. libsrt's global-state destructor is registered during
+/// `srt_startup()`, and this handler is registered after `srt_startup()`
+/// returns, so `srt_cleanup()` — which stops the GC and queue workers —
+/// always runs before those destructors.
+///
+/// The design-doc decision to keep `srt_cleanup()` away from `Drop` impls
+/// (drop-order ambiguity between sockets/listeners) is unchanged; this is
+/// process-exit only.
+fn register_exit_cleanup() {
+    extern "C" fn srt_exit_cleanup() {
+        unsafe {
+            srt_sys::srt_cleanup();
+        }
+    }
+    // Registration can only fail on allocation exhaustion; in that case we
+    // are no worse off than the pre-registration behavior, so the return
+    // code is deliberately ignored.
+    unsafe {
+        libc::atexit(srt_exit_cleanup);
+    }
 }
 
 fn install_log_handler() {

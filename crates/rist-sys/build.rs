@@ -336,13 +336,42 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         None
     };
 
-    // If a previous build exists, reconfigure it instead of erroring.
-    if build_dir.join("build.ninja").exists() {
+    // If a previous build exists, reconfigure it instead of erroring. A
+    // reconfigure can FAIL when the existing dir was configured against a
+    // different vendored librist version — a cargo `target/` that predates a
+    // submodule bump, either local-incremental or restored from the CI cargo
+    // cache (whose key hashes Cargo.lock, which a submodule bump doesn't
+    // touch). meson's cached state doesn't survive the source jump, so
+    // self-heal: wipe the stale build dir and set up fresh. (First bitten by
+    // the librist 0.2.16 -> 0.2.18 bump, locally and on the CI cache.)
+    let reconfiguring = build_dir.join("build.ninja").exists();
+    if reconfiguring {
         args[0] = "setup".into();
         args.insert(1, "--reconfigure".into());
     }
 
-    run_cmd("meson", &args, &vendor_dir, &meson_envs);
+    if !try_run_cmd("meson", &args, &vendor_dir, &meson_envs) {
+        if !reconfiguring {
+            panic!(
+                "Command `meson {}` failed (cwd={})",
+                args.join(" "),
+                vendor_dir.display()
+            );
+        }
+        println!(
+            "cargo:warning=rist-sys: meson reconfigure failed on a stale build dir \
+             (likely a pre-bump cargo cache); wiping {} and retrying fresh",
+            build_dir.display()
+        );
+        std::fs::remove_dir_all(&build_dir).unwrap_or_else(|e| {
+            panic!(
+                "Failed to remove stale meson build dir {}: {e}",
+                build_dir.display()
+            )
+        });
+        args.remove(1); // drop --reconfigure
+        run_cmd("meson", &args, &vendor_dir, &meson_envs);
+    }
 
     // ===== meson compile =====
     run_cmd(
@@ -462,19 +491,24 @@ fn which(name: &str) -> Option<PathBuf> {
 }
 
 fn run_cmd(prog: &str, args: &[String], cwd: &Path, envs: &[(String, String)]) {
+    if !try_run_cmd(prog, args, cwd, envs) {
+        panic!(
+            "Command `{prog} {}` failed (cwd={})",
+            args.join(" "),
+            cwd.display()
+        );
+    }
+}
+
+/// Like [`run_cmd`] but reports failure instead of panicking (spawn errors —
+/// tool not found at all — still panic).
+fn try_run_cmd(prog: &str, args: &[String], cwd: &Path, envs: &[(String, String)]) -> bool {
     let mut cmd = Command::new(prog);
     cmd.args(args).current_dir(cwd);
     for (k, v) in envs {
         cmd.env(k, v);
     }
-    let status = cmd
-        .status()
-        .unwrap_or_else(|e| panic!("Failed to spawn `{prog}`: {e}"));
-    if !status.success() {
-        panic!(
-            "Command `{prog} {}` exited with status {status} (cwd={})",
-            args.join(" "),
-            cwd.display()
-        );
-    }
+    cmd.status()
+        .unwrap_or_else(|e| panic!("Failed to spawn `{prog}`: {e}"))
+        .success()
 }

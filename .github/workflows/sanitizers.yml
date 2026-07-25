@@ -1,13 +1,19 @@
 name: sanitizers
 
 # Sanitizers (ASan, TSan) run nightly + on-demand. NOT on every PR — the
-# 10-20-minute per-job runtime + sanitizer noise is too disruptive for
-# the PR feedback loop. Scope: tst-core + tst-pipeline only (pure Rust;
-# tst-srt + tst-c link unsanitized vendored libsrt/mbedTLS C/C++ and
-# need a separate plan to thread sanitizer flags through the cmake
-# build).
+# per-job runtime + sanitizer noise is too disruptive for the PR feedback
+# loop. Scope: the pure-Rust crates — tst-core, tst-pipeline, tst-rtp,
+# tst-udp, tst-tcp, tst-hls. tst-srt, tst-rist and tst-c link vendored
+# libsrt/librist/mbedTLS C/C++ and need sanitizer flags threaded through
+# their cmake/meson builds; dedicated *-native jobs are planned and will
+# be added here.
 #
-# See docs/plans/2026-05-15-sanitizers-ci-workflow.md.
+# Tests run under cargo-nextest with the `sanitizer` profile
+# (.config/nextest.toml): sanitizer-scaled per-test timeouts (ASan ~2x,
+# TSan 5-15x slower) so a wedged test is killed and reported by name
+# instead of hanging the nightly job silently. nextest does not run
+# doctests, so doctests are exercised by regular CI only — accepted
+# trade-off for the per-test timeout + network-serialization behavior.
 
 on:
   workflow_dispatch:
@@ -25,7 +31,7 @@ env:
 
 jobs:
   asan:
-    name: ASan (tst-core + tst-pipeline, nightly)
+    name: ASan (pure-Rust crates, nightly)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -40,6 +46,14 @@ jobs:
           rustup toolchain install nightly --profile minimal --no-self-update
           rustup component add --toolchain nightly rust-src
 
+      - name: Install cargo-nextest
+        # Prebuilt binary. The `sanitizer` nextest profile provides
+        # per-test kills scaled to sanitizer slowdown — a wedged test
+        # fails by name instead of hanging the nightly job.
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Cache cargo artifacts
         uses: actions/cache@v5
         with:
@@ -53,14 +67,13 @@ jobs:
           key: cargo-asan-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-asan-${{ runner.os }}-
 
-      - name: cargo test under ASan
+      - name: nextest run under ASan
         env:
           # `-Z sanitizer=address` injects ASan instrumentation. Combined
           # with `-Z build-std=std,panic_abort` so std is rebuilt with
           # the same instrumentation (otherwise std-level UAFs go
           # undetected).
           RUSTFLAGS: "-Z sanitizer=address"
-          RUSTDOCFLAGS: "-Z sanitizer=address"
           # Suppressions are split: LSAN_OPTIONS for leak suppressions
           # (LSan rides inside ASan), ASAN_OPTIONS for ASan-proper
           # tunables. detect_stack_use_after_return=1 catches a real
@@ -69,13 +82,15 @@ jobs:
           ASAN_OPTIONS: "detect_stack_use_after_return=1:abort_on_error=0:halt_on_error=0"
           LSAN_OPTIONS: "suppressions=${{ github.workspace }}/.sanitizer-suppressions/asan.txt"
         run: |
-          cargo +nightly test \
+          cargo +nightly nextest run --profile sanitizer \
             -p tst-core -p tst-pipeline \
+            -p tst-rtp -p tst-udp -p tst-tcp -p tst-hls \
+            --no-fail-fast \
             -Z build-std=std,panic_abort \
             --target x86_64-unknown-linux-gnu
 
   tsan:
-    name: TSan (tst-core + tst-pipeline, nightly)
+    name: TSan (pure-Rust crates, nightly)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -86,6 +101,11 @@ jobs:
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           rustup component add --toolchain nightly rust-src
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
 
       - name: Cache cargo artifacts
         uses: actions/cache@v5
@@ -100,18 +120,20 @@ jobs:
           key: cargo-tsan-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-tsan-${{ runner.os }}-
 
-      - name: cargo test under TSan
+      - name: nextest run under TSan
         env:
           # TSan instruments every memory access for the happens-before
           # graph; significantly slower than ASan but the ONLY way to
-          # surface data races. Test scope intentionally narrow to
-          # tst-pipeline + tst-core because pipeline threading is the
-          # primary race-exposure surface.
+          # surface data races. Scope covers the pure-Rust transport
+          # crates too: pipeline + transport threading (the loopback
+          # tests spin real reader/writer threads) is the primary
+          # race-exposure surface.
           RUSTFLAGS: "-Z sanitizer=thread"
-          RUSTDOCFLAGS: "-Z sanitizer=thread"
           TSAN_OPTIONS: "suppressions=${{ github.workspace }}/.sanitizer-suppressions/tsan.txt:halt_on_error=0:report_signal_unsafe=0"
         run: |
-          cargo +nightly test \
+          cargo +nightly nextest run --profile sanitizer \
             -p tst-core -p tst-pipeline \
+            -p tst-rtp -p tst-udp -p tst-tcp -p tst-hls \
+            --no-fail-fast \
             -Z build-std=std,panic_abort \
             --target x86_64-unknown-linux-gnu

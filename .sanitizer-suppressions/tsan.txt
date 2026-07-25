@@ -22,8 +22,10 @@
 # same tests ASan-clean. ScheduledIo's hand-rolled readiness/lock
 # protocol is loom-verified upstream but uses ordering idioms TSan
 # cannot model (tokio-rs/tokio#2273 documents the fence-vs-TSan class).
-# Local evidence: sanitizer-quick-wins branch verification run,
-# 2026-07-24 (see PR). The pattern is deliberately module-scoped, NOT
+# Evidence: caught in local pre-push verification (never red in CI);
+# first CI run exercising this entry = the PR #126 branch dispatch,
+# https://github.com/aklofas/ts-transformer/actions/runs/30140030852
+# The pattern is deliberately module-scoped, NOT
 # race:tokio* — task-harness frames appear in genuine app-race stacks
 # and must stay unsuppressed.
 # Remove/re-test: on any tokio upgrade that restructures the io driver

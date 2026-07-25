@@ -65,3 +65,33 @@ filter = """
 """
 test-group = "network"
 slow-timeout = { period = "10s", terminate-after = 2 }
+
+[profile.sanitizer]
+# Sanitizer runs (.github/workflows/sanitizers.yml): ASan is ~2x slower and
+# TSan 5-15x, so the default profile's budgets would kill healthy tests.
+# Custom profiles layer on top of [profile.default] (and test-groups are
+# global), so the network single-threading still applies — only the time
+# budgets change. Global safety net scaled to the TSan worst case:
+# 120s x 2 = 240s hard kill.
+slow-timeout = { period = "120s", terminate-after = 2 }
+
+[[profile.sanitizer.overrides]]
+# Network/loopback budget under sanitizers: the slowest legitimate loopback
+# is an encrypted handshake at ~1-5s, so 15x TSan puts it near ~75s — give
+# the group 60s x 2. This block is REQUIRED even though the default profile
+# already has a network override: profile-specific overrides take precedence
+# over [[profile.default.overrides]], but without one here the default 10s
+# budget would still match and kill healthy tests under TSan. Filter
+# duplicated from the default network override — KEEP THIS FILTER IN SYNC
+# WITH IT.
+filter = """
+    binary(loopback) | binary(loopback_multicast) | binary(pipeline_round_trip)
+  | binary(hls_e2e) | binary(pipeline) | binary(stats) | binary(receiving)
+  | binary(muxing) | binary(transports) | binary(url_open) | binary(rtp)
+  | binary(rtcp) | binary(rtsp_client) | binary(rtsp_server)
+  | binary(tls_hostname)
+  | test(loopback) | test(round_trip) | test(roundtrip) | test(pairing)
+  | test(multicast) | test(reconnect) | test(rtsp) | test(live_pair)
+"""
+test-group = "network"
+slow-timeout = { period = "60s", terminate-after = 2 }

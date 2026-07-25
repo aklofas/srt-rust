@@ -10,3 +10,22 @@
 #
 # This file starts empty. Entries land reactively as the first nightly
 # runs surface real findings vs false positives.
+
+# 2026-07-24 — tokio io-driver internals (false-positive class, not our
+# code). Adding tst-rtp/tst-hls to the TSan scope put a tokio
+# multi-thread io driver under TSan for the first time; 50 warnings
+# across 4 signatures, ALL with racing accesses inside
+# tokio::runtime::io::scheduled_io (readiness CAS/load, waker-slot
+# replace via ScheduledIo::wake, waiter-list drain_filter). Zero tst-*
+# frames at any racing access (ours appear only as task-spawn ancestry);
+# no assertion failures (the 9 test "failures" were TSan's exit code);
+# same tests ASan-clean. ScheduledIo's hand-rolled readiness/lock
+# protocol is loom-verified upstream but uses ordering idioms TSan
+# cannot model (tokio-rs/tokio#2273 documents the fence-vs-TSan class).
+# Local evidence: sanitizer-quick-wins branch verification run,
+# 2026-07-24 (see PR). The pattern is deliberately module-scoped, NOT
+# race:tokio* — task-harness frames appear in genuine app-race stacks
+# and must stay unsuppressed.
+# Remove/re-test: on any tokio upgrade that restructures the io driver
+# (delete the entry, dispatch the tsan job, re-add only if it re-fires).
+race:tokio::runtime::io::scheduled_io

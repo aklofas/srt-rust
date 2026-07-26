@@ -1349,8 +1349,9 @@ the trigger that would unblock it.
 
 ## Windows MSVC runtime tests — RESOLVED 2026-05-29 (one sub-deferral remains)
 
-- **Status:** RESOLVED. windows-msvc now runs the full runtime test
-  suite and is green across all four platforms. Plan #65's "SRT
+- **Status:** RESOLVED. windows-msvc now runs the runtime test suite
+  and is green across all four platforms (the one carve-out is the
+  IPv6-multicast sub-deferral below). Plan #65's "SRT
   loopback hangs on Windows" diagnosis turned out STALE — it was an
   artifact of the pre-MSVC-`cl` librist build; on the cl-built libsrt
   the blocking `srt_recv` wakes on peer-close immediately (proven by a

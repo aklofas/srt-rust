@@ -137,9 +137,7 @@ encoder, decoder, validator, or viewer on either side of a ts-transformer pipeli
 
 Pre-1.0, released on PyPI (`tstrans`) and Maven Central (`org.tstrans:tstrans-jvm`);
 C ABI **0.19**. Sender + receiver pipelines are complete, and **all four Tier-1
-targets gate CI** — Linux x86_64, Linux aarch64, macOS arm64, and Windows MSVC
-(the RIST runtime test stays gated on Windows; see
-[`docs/project/deferred-features.md`](docs/project/deferred-features.md)).
+targets gate CI** — Linux x86_64, Linux aarch64, macOS arm64, and Windows MSVC.
 Hundreds of tests run across both feature modes, with bash ratchets and
 `cargo public-api` baselines guarding the surface on every commit.
 

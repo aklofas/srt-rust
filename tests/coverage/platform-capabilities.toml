@@ -28,12 +28,14 @@ file = "crates/tst-rist/tests/loopback.rs"
 platform = "windows-msvc"
 capability = "rist_runtime"
 class = "blocked_bug"
-expires_after = "2026-09-30"
+resolved = "2026-07-26"
 note = """
-librist rist_destroy teardown hang (~14s+, both Simple and Main+AES profiles);
-vendored-lib bug, not our code. Evidence: project_windows_multicast_rist_ci_evidence.md.
-Unaffected by the 2026-05-30 librist 0.2.16 bump (that fixed an unrelated
-entropy_poll.h build break). Compile/link is covered; only runtime is gated.
+Was: librist rist_destroy teardown hang (~14s+, both Simple and Main+AES
+profiles) + zero data-plane delivery; vendored-lib bug, not our code.
+Evidence: project_windows_multicast_rist_ci_evidence.md. RESOLVED: both bugs
+fixed upstream in librist 0.2.18 (vendored bump PR #125; diagnostic run
+30136835805 showed teardown 10-31 ms and full delivery on both profiles) —
+gate lifted 2026-07-26.
 """
 
 [[platform_skip]]
@@ -41,8 +43,8 @@ file = "crates/tst-rist/tests/pipeline_round_trip.rs"
 platform = "windows-msvc"
 capability = "rist_runtime"
 class = "blocked_bug"
-expires_after = "2026-09-30"
-note = "Same librist rist_destroy teardown hang as loopback.rs."
+resolved = "2026-07-26"
+note = "Same librist teardown hang as loopback.rs; fixed in librist 0.2.18, gate lifted 2026-07-26."
 
 [[platform_skip]]
 file = "crates/tst-udp/tests/loopback_multicast.rs"
@@ -107,8 +109,9 @@ platform = "windows-msvc"
 status = "A"
 note = """
 Gating since 2026-05-30 (d5ef206a); matrix `continue` = false in ci.yml +
-jvm-jar.yml. RIST runtime + IPv6 multicast remain gated (see platform_skip
-rows); those do not block the rest of the suite.
+jvm-jar.yml. RIST runtime un-gated 2026-07-26 (librist 0.2.18 fixed the
+teardown hang); only IPv6 multicast remains gated (see platform_skip rows),
+and it does not block the rest of the suite.
 """
 
 [[capability]]

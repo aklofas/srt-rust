@@ -56,8 +56,7 @@ final class ListenerCloseRaceTest {
             disabledReason =
                     "libsrt's srt_close does not reliably wake a thread parked in srt_accept within"
                         + " the 2s bound on Windows (the memory-safety fix itself holds — no UAF"
-                        + " crash — but the parked accept may not unblock promptly). Same"
-                        + " libsrt-on-Windows teardown family as the gated RIST runtime. Full"
+                        + " crash — but the parked accept may not unblock promptly). Full"
                         + " close-while-parked coverage runs on Linux + macOS.")
     void closeWhileAcceptParkedIsMemorySafe() throws Exception {
         // Interleaving tally across the 50 races. Written by the accept thread, read by main

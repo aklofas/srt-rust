@@ -44,7 +44,7 @@ deferred — see `deferred-features.md` for triggers to revisit.
 | Linux x86_64 (GNU)           | Tier 1, gating          | Every PR + scrub/ratchet scripts  | Reference platform                             |
 | Linux aarch64 (GNU)          | Tier 1, gating          | Every PR + cargo build/test       | GHA `ubuntu-24.04-arm`; native build           |
 | macOS arm64 (Apple Silicon)  | Tier 1, gating          | Every PR + cargo build/test       | GHA `macos-14`; native build; Intel not supported |
-| Windows x86_64 (MSVC)        | Tier 1, gating          | Every PR + cargo build/test       | GHA `windows-latest`; MSVC toolchain only; RIST runtime test gated (see `deferred-features.md`) |
+| Windows x86_64 (MSVC)        | Tier 1, gating          | Every PR + cargo build/test       | GHA `windows-latest`; MSVC toolchain only      |
 | Linux x86_64 (musl)          | Tier 2                  | `tst-core` + `tst-pipeline` only  | libsrt-bound crates not supported under musl   |
 | Bare-metal `thumbv7em-none-eabihf` | Tier 2 (compile-gate) | `tst-core --no-default-features` build | Cortex-M4F/M7F (STM32F4/F7/H7); `#![no_std]`+`alloc` |
 | Bare-metal `riscv32imac-unknown-none-elf` | Tier 2 (compile-gate) | `tst-core --no-default-features` build | RISC-V (e.g. ESP32-P4 bare-metal); `#![no_std]`+`alloc` |
@@ -54,9 +54,7 @@ deferred — see `deferred-features.md` for triggers to revisit.
 
 **"Gating" status meaning:** the platform is built + tested in CI on every
 PR and build or test failures DO block merge. All four Tier 1 platforms
-(Linux x86_64 + aarch64, macOS arm64, Windows MSVC) are gating; the only
-carve-out is the RIST runtime test on Windows (a vendored-librist teardown
-hang — see `deferred-features.md`).
+(Linux x86_64 + aarch64, macOS arm64, Windows MSVC) are gating.
 
 **Bare-metal `no_std` (compile-gate only):** `tst-core` builds under
 `#![no_std]` + `alloc` with `--no-default-features` — the MPEG-TS

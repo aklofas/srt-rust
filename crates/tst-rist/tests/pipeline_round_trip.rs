@@ -11,15 +11,9 @@
 //! so the receive thread tolerates the librist-internal poll Backpressure
 //! timeouts that fire while the handshake settles.
 //!
-//! Gated off windows-msvc: RIST runtime on Windows is blocked by a vendored
-//! librist teardown hang — `Drop` (`rist_destroy`) blocks ~14s+ on Windows
-//! (listen/connect/send themselves return; the data plane just delivers
-//! nothing). See `loopback.rs` for the CI-diagnostic detail +
-//! `project_windows_multicast_rist_ci_evidence` /
-//! `project_plan_65_windows_runtime_test_deferral`. SRT is fully exercised on
-//! Windows. Compile/link on Windows stays covered by the cargo build steps +
-//! tst-c rist feature build.
-#![cfg(not(target_os = "windows"))]
+//! Runs on Windows too (un-gated 2026-07-26): formerly gated off windows-msvc
+//! by a vendored-librist teardown hang + zero-delivery bug, both fixed
+//! upstream in librist 0.2.18 — see `loopback.rs` for the history.
 
 use std::net::UdpSocket;
 use std::sync::Mutex;

@@ -8,19 +8,11 @@
 //! ~800-1500ms — so we sleep before the first send and use a retry loop
 //! on the recv side that tolerates Backpressure timeouts.
 //!
-//! Gated off windows-msvc: RIST *runtime* on Windows is blocked by a bug
-//! inside vendored librist, not in our wrappers. CI diagnostics (2026-05-29,
-//! `diag_win_rist`) showed that `listen()`, `connect()` and `send_bytes()`
-//! all RETURN promptly for BOTH Simple and Main+AES-256 profiles — but the
-//! data plane delivers nothing AND **`Drop` hangs ~14s+** (librist's
-//! `rist_destroy` / `rist_receiver_destroy` blocks on Windows winsock/mbedtls
-//! teardown). Because it hangs in destroy regardless of profile, it is not
-//! encryption-specific. Fixing it means debugging vendored librist on Windows
-//! (out of scope here); SRT is the primary transport and is fully exercised on
-//! Windows. Compile/link on Windows stays covered by the cargo build steps +
-//! the tst-c rist feature build. See `project_windows_multicast_rist_ci_evidence`
-//! + `project_plan_65_windows_runtime_test_deferral`.
-#![cfg(not(target_os = "windows"))]
+//! Runs on Windows too (un-gated 2026-07-26): this file was gated off
+//! windows-msvc from 2026-05-29 because vendored librist ≤ 0.2.16 hung ~14s+
+//! in `rist_destroy` on Windows teardown and delivered no data. Both bugs are
+//! fixed upstream in librist 0.2.18 (CI diagnostic run 30136835805: teardown
+//! 10–31 ms, full delivery, both Simple and Main+AES-256 profiles).
 
 use std::sync::Mutex;
 use std::sync::mpsc;

@@ -30,7 +30,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `contrib/lz4` (`-Dbuiltin_lz4=true`), so no system LZ4 dependency is
   introduced on any platform. The mbedTLS-3.x header workaround
   (staging `entropy_poll.h`) is gone — upstream removed the vestigial
-  include this release.
+  include this release. 0.2.18 also fixes the librist-on-Windows
+  teardown hang (`rist_destroy` blocked ~14 s) and zero data-plane
+  delivery that had kept the RIST runtime tests gated off Windows
+  since 2026-05-29 — those tests now run (and gate) on windows-msvc CI.
 - **mbedTLS bumped v3.6.6 → v3.6.7** (LTS patch release; both the libsrt
   and librist static copies move together, preserving the byte-identical
   dual-copy link invariant).

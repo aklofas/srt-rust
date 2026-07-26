@@ -1347,7 +1347,7 @@ the trigger that would unblock it.
   with `continue-on-error: true` initially, mirroring the
   Tier 1 phase-in pattern.
 
-## Windows MSVC runtime tests — RESOLVED 2026-05-29 (sub-deferrals remain)
+## Windows MSVC runtime tests — RESOLVED 2026-05-29 (one sub-deferral remains)
 
 - **Status:** RESOLVED. windows-msvc now runs the full runtime test
   suite and is green across all four platforms. Plan #65's "SRT
@@ -1362,24 +1362,25 @@ the trigger that would unblock it.
   per-platform in `crates/tst-srt/src/socket.rs`. CI now runs all
   platforms under cargo-nextest, so per-test timeouts bound any future
   hang (one hang can no longer stall the job).
-- **Remaining sub-deferrals** (each gated `#[cfg(not(target_os =
-  "windows"))]`; tracked in ROADMAP "Fully-green test suite") —
-  1. **Promote windows-msvc to gating:** still
-     `continue-on-error: true`; flip to `continue: false` in the
-     `ci.yml` build matrix once it has several consecutive green runs.
-  2. **RIST runtime on Windows:** `tst-rist/tests/{loopback,
-     pipeline_round_trip}.rs` are gated off windows — librist's
-     Main-Profile AES-256 encrypted handshake hangs there (genuine
-     investigation needed; compile + link stay covered by the build
-     steps + the tst-c `rist` feature build).
-  3. **Multicast on Windows:** `tst-rtp`/`tst-udp` `loopback_multicast`
-     + the `tst-rtp` `build_multicast_with_iface_v4` unit test are gated
-     off windows — GHA Windows runners don't loop multicast back and
-     Winsock rejects `IP_MULTICAST_IF=loopback`. Most likely a
-     runner-environment limitation rather than a code bug; confirm, then
-     either un-gate on a multicast-capable runner or document permanent.
-- **Trigger to revisit:** the next-session "fully-green test suite"
-  pass (RIST + multicast investigations), then the gating promotion.
+- **Sub-deferrals, now all but one closed:**
+  1. **Promote windows-msvc to gating:** DONE 2026-05-30 — all four
+     Tier-1 platforms gate CI (`continue` = false in the `ci.yml` and
+     `jvm-jar.yml` matrices).
+  2. **RIST runtime on Windows:** DONE 2026-07-26 —
+     `tst-rist/tests/{loopback,pipeline_round_trip}.rs` are un-gated.
+     The blocker was a vendored-librist bug (teardown hung ~14s+ in
+     `rist_destroy` and the data plane delivered nothing, both
+     profiles), fixed upstream in librist 0.2.18: a CI diagnostic on
+     the bumped pin showed teardown in 10–31 ms with full delivery.
+  3. **Multicast on Windows:** IPv4 DONE 2026-05-29 (the failure was
+     our `set_multicast_if_v4` being unix-only, not a runner
+     limitation; fixed via socket2 + receiver-side
+     `IP_MULTICAST_LOOP`). **IPv6 multicast remains gated** —
+     `IPV6_MULTICAST_IF` needs an interface index on Windows, which
+     the URL `?iface=` plumbing doesn't carry yet. This is the one
+     remaining sub-deferral.
+- **Trigger to revisit:** a consumer needs IPv6 multicast reception on
+  Windows (adds interface-index plumbing to the multicast join path).
 
 ## RTSP server/client deferred test surface (`#[ignore]`d)
 

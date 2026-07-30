@@ -9,6 +9,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Native-boundary sanitizer coverage: `TST_NATIVE_SANITIZER` + nightly `asan-native` CI
+
+#### Added
+
+- The `srt-sys` and `rist-sys` build scripts accept
+  `TST_NATIVE_SANITIZER=address|thread`, threading the matching
+  `-fsanitize` instrumentation through every vendored native object they
+  build — libsrt, librist, and both static mbedTLS copies (which must
+  stay flag-identical for their first-definition-wins link collapse to
+  be sound, hence one shared variable rather than per-crate ones).
+  Requires `CC=clang CXX=clang++` and the vendored build path; unknown
+  values or a system-library pkg-config resolution fail the build
+  instead of silently producing uninstrumented libraries. With the
+  variable unset, builds are byte-identical to before.
+- CI: new nightly `asan-native` sanitizers job runs `tst-srt`,
+  `tst-rist`, and `tst-c` (all six transport features) under
+  AddressSanitizer with the instrumented native libraries — the first
+  sanitizer coverage of the vendored C/C++ boundary.
+
 ### Vendored dependency updates: libsrt 1.5.6 (security), librist 0.2.18, mbedTLS 3.6.7
 
 #### Security

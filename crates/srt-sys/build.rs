@@ -1,11 +1,63 @@
 use std::env;
 use std::path::PathBuf;
 
+/// Sanitizer instrumentation for the vendored native builds.
+///
+/// `TST_NATIVE_SANITIZER=address|thread` (set by the sanitizers workflow's
+/// `*-native` jobs) returns the compiler flags that instrument every
+/// vendored C/C++ object this script builds, so the static libs match the
+/// `-Z sanitizer=<x>` instrumentation of the Rust code they link into.
+/// Unset/empty returns `None` — that path is byte-identical to a build
+/// without this hook. Unknown values fail the build (fail-closed, matching
+/// the embedded-gate convention) instead of silently producing
+/// uninstrumented libs.
+///
+/// The SAME variable gates srt-sys and rist-sys — KEEP IN SYNC with the
+/// twin helper in rist-sys/build.rs. A downstream artifact enabling both
+/// `srt` and `rist` links two static builds of the same vendor/mbedtls
+/// sources, collapsed by the linker first-definition-wins; that collapse
+/// is sound only while both builds carry identical flags. One shared
+/// variable makes a sanitized/unsanitized mix unrepresentable, which is
+/// why there is deliberately no per-crate override.
+///
+/// The instrumented objects resolve their `__asan_*`/`__tsan_*` references
+/// against the LLVM runtime that rustc links into the test binary, so
+/// builds with this set need `CC=clang CXX=clang++` — gcc pairs
+/// `-fsanitize` objects with libgcc's incompatible runtime. Not enforced
+/// (clang binary names vary across distros); we warn when `CC` looks wrong.
+fn native_sanitizer_cflags() -> Option<String> {
+    let value = match env::var("TST_NATIVE_SANITIZER") {
+        Err(env::VarError::NotPresent) => return None,
+        Err(e) => panic!("TST_NATIVE_SANITIZER is not valid UTF-8: {e}"),
+        Ok(v) if v.is_empty() => return None,
+        Ok(v) => v,
+    };
+    match value.as_str() {
+        "address" | "thread" => {}
+        other => panic!(
+            "Unsupported TST_NATIVE_SANITIZER value `{other}` \
+             (expected `address` or `thread`)."
+        ),
+    }
+    let cc = env::var("CC").unwrap_or_default();
+    if !cc.contains("clang") {
+        println!(
+            "cargo:warning=srt-sys: TST_NATIVE_SANITIZER={value} but CC={} — \
+             sanitized native builds need CC=clang CXX=clang++ so the C/C++ \
+             objects match the LLVM sanitizer runtime rustc links",
+            if cc.is_empty() { "<unset>" } else { &cc }
+        );
+    }
+    // -fno-omit-frame-pointer keeps sanitizer stack traces walkable;
+    // -g gives symbolized C frames in reports.
+    Some(format!("-fsanitize={value} -fno-omit-frame-pointer -g"))
+}
+
 /// Build the vendored mbedTLS to a private install prefix.
 /// Returns the install prefix path.
 ///
 /// Only called when the `mbedtls` cargo feature is enabled.
-fn build_mbedtls() -> PathBuf {
+fn build_mbedtls(sanitizer: Option<&str>) -> PathBuf {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let mbedtls_dir = manifest_dir
         .parent()
@@ -21,14 +73,23 @@ fn build_mbedtls() -> PathBuf {
         );
     }
 
+    // Hide mbedTLS from -Wall sweeps; we don't author this code. Sanitizer
+    // flags ride the same define: an explicit CMAKE_C_FLAGS define makes the
+    // cmake crate skip its own computed C flags (cflag() would be ignored),
+    // so the full flag string must be assembled here.
+    let mut c_flags = String::from("-w");
+    if let Some(san) = sanitizer {
+        c_flags.push(' ');
+        c_flags.push_str(san);
+    }
+
     cmake::Config::new(&mbedtls_dir)
         .define("ENABLE_PROGRAMS", "OFF")
         .define("ENABLE_TESTING", "OFF")
         .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
         .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
         .define("MBEDTLS_FATAL_WARNINGS", "OFF")
-        // Hide mbedTLS from -Wall sweeps; we don't author this code.
-        .define("CMAKE_C_FLAGS", "-w")
+        .define("CMAKE_C_FLAGS", &c_flags)
         // Build the static mbedTLS objects position-independent so they can be
         // linked into the downstream cdylib (the tst-py wheel / libtstrans.so).
         // Debian/Ubuntu gcc defaults to PIE so this was implicit there, but the
@@ -52,6 +113,10 @@ fn main() {
     println!("cargo:rerun-if-changed=../../vendor/mbedtls/CMakeLists.txt");
     println!("cargo:rerun-if-env-changed=SRT_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=SRT_FORCE_VENDORED");
+    // Without this, toggling the sanitizer between builds leaves cargo's
+    // fingerprint untouched and a cached UNINSTRUMENTED libsrt.a/libmbed*.a
+    // silently survives into a sanitized run — an invisible false-green.
+    println!("cargo:rerun-if-env-changed=TST_NATIVE_SANITIZER");
 
     // Symbol hygiene for downstream cdylib consumers (validate-1 D6) is wired
     // in each cdylib crate's OWN build.rs, not here: a `cargo:rustc-link-arg-cdylib`
@@ -66,21 +131,32 @@ fn main() {
     let no_pkg_config = env::var_os("SRT_NO_PKG_CONFIG").is_some();
     let want_mbedtls = env::var_os("CARGO_FEATURE_MBEDTLS").is_some();
 
+    let sanitizer = native_sanitizer_cflags();
+    // Fail closed: a sanitizer request must not silently resolve to an
+    // uninstrumented system libsrt through the pkg-config path.
+    if sanitizer.is_some() && !(force_vendored || no_pkg_config) {
+        panic!(
+            "TST_NATIVE_SANITIZER is set but the build may resolve system \
+             libsrt via pkg-config, which cannot be instrumented. Set \
+             SRT_FORCE_VENDORED=1 so the sanitized vendored build is used."
+        );
+    }
+
     let mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
-        Some(build_mbedtls())
+        Some(build_mbedtls(sanitizer.as_deref()))
     } else {
         None
     };
 
     let include_paths: Vec<PathBuf> = if force_vendored || no_pkg_config {
-        build_vendored(mbedtls_prefix.as_ref())
+        build_vendored(mbedtls_prefix.as_ref(), sanitizer.as_deref())
     } else {
         match pkg_config::Config::new()
             .atleast_version("1.5.0")
             .probe("srt")
         {
             Ok(lib) => lib.include_paths,
-            Err(_) => build_vendored(mbedtls_prefix.as_ref()),
+            Err(_) => build_vendored(mbedtls_prefix.as_ref(), sanitizer.as_deref()),
         }
     };
 
@@ -134,7 +210,7 @@ fn main() {
 /// to locate mbedTLS via `find_package(MbedTLS)`.
 ///
 /// Otherwise, libsrt is built with `ENABLE_ENCRYPTION=OFF`.
-fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
+fn build_vendored(mbedtls_prefix: Option<&PathBuf>, sanitizer: Option<&str>) -> Vec<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let vendor_dir = manifest_dir
         .parent()
@@ -170,6 +246,16 @@ fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
     let target = env::var("TARGET").unwrap_or_default();
     if target.contains("msvc") {
         cfg.cxxflag("/EHsc");
+    }
+
+    // Sanitize the libsrt objects when requested. libsrt is C++ with C
+    // entry shims — both languages need the flag. cflag()/cxxflag() append
+    // to the C flags the cmake crate computes itself; that works here
+    // because (unlike the mbedTLS config above) this config does not
+    // define CMAKE_C(XX)_FLAGS explicitly.
+    if let Some(san) = sanitizer {
+        cfg.cflag(san);
+        cfg.cxxflag(san);
     }
 
     match mbedtls_prefix {

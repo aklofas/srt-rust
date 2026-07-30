@@ -2,12 +2,64 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Sanitizer instrumentation for the vendored native builds.
+///
+/// `TST_NATIVE_SANITIZER=address|thread` (set by the sanitizers workflow's
+/// `*-native` jobs) returns the compiler flags that instrument every
+/// vendored C object this script builds, so the static libs match the
+/// `-Z sanitizer=<x>` instrumentation of the Rust code they link into.
+/// Unset/empty returns `None` — that path is byte-identical to a build
+/// without this hook. Unknown values fail the build (fail-closed, matching
+/// the embedded-gate convention) instead of silently producing
+/// uninstrumented libs.
+///
+/// The SAME variable gates srt-sys and rist-sys — KEEP IN SYNC with the
+/// twin helper in srt-sys/build.rs. A downstream artifact enabling both
+/// `srt` and `rist` links two static builds of the same vendor/mbedtls
+/// sources, collapsed by the linker first-definition-wins; that collapse
+/// is sound only while both builds carry identical flags. One shared
+/// variable makes a sanitized/unsanitized mix unrepresentable, which is
+/// why there is deliberately no per-crate override.
+///
+/// The instrumented objects resolve their `__asan_*`/`__tsan_*` references
+/// against the LLVM runtime that rustc links into the test binary, so
+/// builds with this set need `CC=clang CXX=clang++` — gcc pairs
+/// `-fsanitize` objects with libgcc's incompatible runtime. Not enforced
+/// (clang binary names vary across distros); we warn when `CC` looks wrong.
+fn native_sanitizer_cflags() -> Option<String> {
+    let value = match env::var("TST_NATIVE_SANITIZER") {
+        Err(env::VarError::NotPresent) => return None,
+        Err(e) => panic!("TST_NATIVE_SANITIZER is not valid UTF-8: {e}"),
+        Ok(v) if v.is_empty() => return None,
+        Ok(v) => v,
+    };
+    match value.as_str() {
+        "address" | "thread" => {}
+        other => panic!(
+            "Unsupported TST_NATIVE_SANITIZER value `{other}` \
+             (expected `address` or `thread`)."
+        ),
+    }
+    let cc = env::var("CC").unwrap_or_default();
+    if !cc.contains("clang") {
+        println!(
+            "cargo:warning=rist-sys: TST_NATIVE_SANITIZER={value} but CC={} — \
+             sanitized native builds need CC=clang CXX=clang++ so the C \
+             objects match the LLVM sanitizer runtime rustc links",
+            if cc.is_empty() { "<unset>" } else { &cc }
+        );
+    }
+    // -fno-omit-frame-pointer keeps sanitizer stack traces walkable;
+    // -g gives symbolized C frames in reports.
+    Some(format!("-fsanitize={value} -fno-omit-frame-pointer -g"))
+}
+
 /// Build the workspace-shared vendored mbedTLS (`vendor/mbedtls`, 3.6.x) to a
 /// private install prefix and return that prefix. Mirrors
 /// `srt-sys::build_mbedtls` so librist links the SAME mbedTLS version libsrt
 /// does (see the `mbedtls` feature note in Cargo.toml). Only called when the
 /// `mbedtls` feature is on + the vendored build path is taken.
-fn build_mbedtls() -> PathBuf {
+fn build_mbedtls(sanitizer: Option<&str>) -> PathBuf {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let mbedtls_dir = manifest_dir
         .parent()
@@ -23,14 +75,23 @@ fn build_mbedtls() -> PathBuf {
         );
     }
 
+    // Hide mbedTLS from -Wall sweeps; we don't author this code. Sanitizer
+    // flags ride the same define: an explicit CMAKE_C_FLAGS define makes the
+    // cmake crate skip its own computed C flags (cflag() would be ignored),
+    // so the full flag string must be assembled here.
+    let mut c_flags = String::from("-w");
+    if let Some(san) = sanitizer {
+        c_flags.push(' ');
+        c_flags.push_str(san);
+    }
+
     let mut cfg = cmake::Config::new(&mbedtls_dir);
     cfg.define("ENABLE_PROGRAMS", "OFF")
         .define("ENABLE_TESTING", "OFF")
         .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
         .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
         .define("MBEDTLS_FATAL_WARNINGS", "OFF")
-        // Hide mbedTLS from -Wall sweeps; we don't author this code.
-        .define("CMAKE_C_FLAGS", "-w")
+        .define("CMAKE_C_FLAGS", &c_flags)
         // Build the static mbedTLS objects position-independent so they link
         // into the downstream cdylib (the tst-py wheel). Implicit on
         // Debian/Ubuntu (gcc defaults to PIE) but NOT on the RHEL/AlmaLinux
@@ -111,6 +172,10 @@ fn main() {
     println!("cargo:rerun-if-changed=../../vendor/mbedtls/CMakeLists.txt");
     println!("cargo:rerun-if-env-changed=RIST_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=RIST_FORCE_VENDORED");
+    // Without this, toggling the sanitizer between builds leaves cargo's
+    // fingerprint untouched and a cached UNINSTRUMENTED librist.a/libmbed*.a
+    // silently survives into a sanitized run — an invisible false-green.
+    println!("cargo:rerun-if-env-changed=TST_NATIVE_SANITIZER");
 
     // Symbol hygiene (hiding librist's static exports from downstream cdylib
     // export tables) is done in each cdylib crate's own build.rs, not here:
@@ -122,15 +187,26 @@ fn main() {
     let no_pkg_config = env::var_os("RIST_NO_PKG_CONFIG").is_some();
     let feat_mbedtls = env::var_os("CARGO_FEATURE_MBEDTLS").is_some();
 
+    let sanitizer = native_sanitizer_cflags();
+    // Fail closed: a sanitizer request must not silently resolve to an
+    // uninstrumented system librist through the pkg-config path.
+    if sanitizer.is_some() && !(force_vendored || no_pkg_config) {
+        panic!(
+            "TST_NATIVE_SANITIZER is set but the build may resolve system \
+             librist via pkg-config, which cannot be instrumented. Set \
+             RIST_FORCE_VENDORED=1 so the sanitized vendored build is used."
+        );
+    }
+
     let include_paths: Vec<PathBuf> = if force_vendored || no_pkg_config {
-        build_vendored(feat_mbedtls)
+        build_vendored(feat_mbedtls, sanitizer.as_deref())
     } else {
         match pkg_config::Config::new()
             .atleast_version("0.2.10")
             .probe("librist")
         {
             Ok(lib) => lib.include_paths,
-            Err(_) => build_vendored(feat_mbedtls),
+            Err(_) => build_vendored(feat_mbedtls, sanitizer.as_deref()),
         }
     };
 
@@ -181,7 +257,7 @@ fn main() {
 /// Unlike srt-sys (which uses cmake), librist is a meson project. We invoke
 /// `meson setup` + `meson compile` via `std::process::Command`. Both `meson`
 /// and `ninja` must be on `$PATH` (Debian: `apt install meson ninja-build`).
-fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
+fn build_vendored(want_mbedtls: bool, sanitizer: Option<&str>) -> Vec<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let vendor_dir = manifest_dir
         .parent()
@@ -232,6 +308,18 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         "-Dbuiltin_lz4=true".into(),
     ];
     let mut meson_envs: Vec<(String, String)> = Vec::new();
+
+    // Sanitize the librist objects when requested. meson's free-form
+    // compile-args options shlex-split their value, so the multi-flag
+    // string rides a single -Dc_args=. librist is pure C (no cpp_args
+    // needed); c_link_args keeps meson's compiler sanity/feature probes
+    // linking consistently with the instrumented objects. On a cached
+    // build dir the `--reconfigure` path below picks up the changed
+    // option values and ninja rebuilds every affected object.
+    if let Some(san) = sanitizer {
+        args.push(format!("-Dc_args={san}"));
+        args.push(format!("-Dc_link_args={san}"));
+    }
 
     // On Windows the Rust target is `x86_64-pc-windows-msvc`, so librist (and
     // its bundled contrib/mbedtls + cJSON) MUST be compiled with MSVC `cl` —
@@ -311,7 +399,7 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
     // error (it sets librist's internal `required_library = true`), so a future
     // detection regression fails loudly instead of mis-linking.
     let mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
-        let prefix = build_mbedtls();
+        let prefix = build_mbedtls(sanitizer);
         let pc_dir = prefix.join("lib").join("pkgconfig");
         let pkg_path = match env::var("PKG_CONFIG_PATH") {
             Ok(existing) if !existing.is_empty() => {

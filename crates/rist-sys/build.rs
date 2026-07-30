@@ -41,12 +41,16 @@ fn native_sanitizer_cflags() -> Option<String> {
         ),
     }
     let cc = env::var("CC").unwrap_or_default();
-    if !cc.contains("clang") {
+    let cxx = env::var("CXX").unwrap_or_default();
+    if !cc.contains("clang") || !cxx.contains("clang") {
         println!(
-            "cargo:warning=rist-sys: TST_NATIVE_SANITIZER={value} but CC={} — \
-             sanitized native builds need CC=clang CXX=clang++ so the C \
-             objects match the LLVM sanitizer runtime rustc links",
-            if cc.is_empty() { "<unset>" } else { &cc }
+            "cargo:warning=rist-sys: TST_NATIVE_SANITIZER={value} but CC={} CXX={} — \
+             sanitized native builds need CC=clang CXX=clang++ so the native \
+             objects match the LLVM sanitizer runtime rustc links (librist and \
+             mbedTLS are pure C, but the twin srt-sys helper builds C++ and \
+             the two warnings stay in sync)",
+            if cc.is_empty() { "<unset>" } else { &cc },
+            if cxx.is_empty() { "<unset>" } else { &cxx }
         );
     }
     // -fno-omit-frame-pointer keeps sanitizer stack traces walkable;

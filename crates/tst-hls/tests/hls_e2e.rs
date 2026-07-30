@@ -6,7 +6,6 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use std::thread;
 use std::time::Duration;
 
 use tst_core::mpegts::common::Pts90khz;
@@ -180,7 +179,17 @@ fn hls_pipeline_via_ffmpeg_validates_playlist() {
         pub_shell.send_video(&au, pts, true).unwrap();
     }
 
-    thread::sleep(Duration::from_millis(100));
+    // Finish the stream BEFORE pointing ffmpeg at it, keeping the server up
+    // via finish_serving() so ffmpeg reads a complete (ENDLIST-terminated)
+    // playlist. Reading the LIVE playlist here deadlocks: the un-ended EVENT
+    // playlist lists only ~0.2 s of media while `-t 1` asks ffmpeg for a
+    // full second, so ffmpeg polls the playlist for more segments while this
+    // test blocks in `output()` waiting for ffmpeg — the finish() that would
+    // have written ENDLIST only ran after ffmpeg exited. Masked for as long
+    // as no machine running the suite had ffmpeg installed (the guard above
+    // skips silently).
+    let publisher = pub_shell.finish().unwrap();
+    let server = publisher.finish_serving().unwrap();
 
     let url = format!("http://{}/playlist.m3u8", addr);
     let out = Command::new("ffmpeg")
@@ -195,6 +204,5 @@ fn hls_pipeline_via_ffmpeg_validates_playlist() {
         "ffmpeg didn't see any stream — stderr:\n{stderr}"
     );
 
-    let publisher = pub_shell.finish().unwrap();
-    publisher.finish().unwrap();
+    server.shutdown();
 }

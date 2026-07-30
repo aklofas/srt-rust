@@ -1880,6 +1880,46 @@ the trigger that would unblock it.
   field report where a Python/JVM integrator cannot tell why a stream
   ended.
 
+## ASan under the JVM test suite (tst-jni)
+
+- **Status:** Not run. The nightly sanitizer CI covers the pure-Rust
+  crates (`asan`/`tsan` jobs) and the native-linking crates with
+  instrumented libsrt/librist/mbedTLS (`asan-native` job), but the JVM
+  test suite runs no memory sanitizer. The Gradle test JVM does run
+  HotSpot's built-in JNI checker (`-Xcheck:jni`, gating in ci.yml),
+  which targets the JNI-*semantic* bug class actually observed here
+  (local-ref exhaustion, handle misuse) — a class ASan would never
+  catch.
+- **Why deferred:** ASan under a JVM means `LD_PRELOAD`-ing the
+  sanitizer runtime into the Gradle test JVM with
+  `ASAN_OPTIONS=handle_segv=0` (HotSpot uses SEGV internally for
+  safepoints and implicit null checks), and the result is high-noise:
+  JVM-internal allocations report as leaks and the interceptors
+  interact poorly with HotSpot's own memory management. TSan under a
+  JVM is effectively impractical. The unsafe native code under
+  `libtstjni.so` exercises the same tst-c-core/tst-srt/tst-rist paths
+  the `asan-native` job now instruments directly, so the marginal
+  coverage is the thin JNI glue itself.
+- **Trigger to revisit:** the first memory-unsafety-shaped JNI bug
+  (crash in native frames, corruption traced to the JNI layer), or
+  tst-jni gaining substantial new `unsafe` surface.
+
+## ASan under pytest (tst-py)
+
+- **Status:** Not run. Same shape as the JVM entry above: the Python
+  test suite runs no memory sanitizer; the native paths under the
+  `tstrans` extension module are the same core/transport code the
+  nightly `asan`/`asan-native` jobs instrument directly.
+- **Why deferred:** ASan under CPython means `LD_PRELOAD`-ing the
+  runtime into the interpreter running pytest; CPython's allocator and
+  extension-module loading generate leak-report noise that needs its
+  own suppression curation, and the PyO3 layer is a thin translation
+  over already-sanitized Rust surfaces — low marginal coverage for the
+  maintenance cost.
+- **Trigger to revisit:** the first memory-unsafety-shaped bug reported
+  through the Python surface, or tst-py gaining substantial new
+  `unsafe` surface.
+
 ## RTSP keepalive response handling — RESOLVED
 
 - **Status:** RESOLVED (was: "no 401 reaction / session-dead detection

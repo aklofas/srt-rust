@@ -1834,8 +1834,8 @@ the trigger that would unblock it.
 ## Input-consumption detail on binding send errors
 
 - **Status:** Rust-only. `MuxSenderError`/`SenderError` carry
-  `input_consumed` since v0.4.0; the C ABI, Python, and JVM send errors
-  expose only the error kind.
+  `input_consumed`; Unreleased, first release will be v0.4.0. The C ABI,
+  Python, and JVM send errors expose only the error kind.
 - **Why deferred:** the C surface needs an ABI minor bump for a new error
   field; Python/JVM callers are steered to the `Managed*` wrappers, where
   the question does not arise. No binding consumer has asked.

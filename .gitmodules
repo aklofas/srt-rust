@@ -1,5 +1,5 @@
 [submodule "vendor/srt"]
-	path = vendor/srt
+	path = crates/srt-sys/vendor/srt
 	url = https://github.com/Haivision/srt.git
 [submodule "vendor/mbedtls"]
 	path = crates/mbedtls-src/vendor/mbedtls

@@ -208,6 +208,10 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/rust/publish-package-sanity.sh
 
+      - name: api-stability-coverage ratchet
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check/rust/api-stability-coverage.sh
+
       - name: check-close-contract-presence
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/rust/close-contract-presence.sh

@@ -6,6 +6,16 @@ the **pre-1.0 era** — once we reach 1.0, SemVer rules govern; the
 conventions here become the *baseline* for what crosses the SemVer
 contract boundary.
 
+This page governs *what stays public at all* — the binding-canonical
+workflow below decides whether an item is kept reachable for a real
+consumer. It does not say how much that item is expected to churn once
+it's public. That's a separate question, answered one layer up by
+[`docs/reference/api-stability.md`](/docs/reference/api-stability.md),
+which classifies every top-level public module into a Stable /
+Provisional / Experimental / Internal tier. Read this page to learn *why*
+an item is public; read that page to learn *how much it might move under
+you*.
+
 ## Layer model
 
 Three layers of intended-public surface, from most stable to least:
@@ -126,6 +136,7 @@ the pin bump and the re-rendered baselines in the same commit.
 
 ## Cross-references
 
+- `docs/reference/api-stability.md` — per-module stability tiers (the churn-expectation layer on top of this policy).
 - `docs/reference/conventions.md` — naming, constructor verbs, builder rules.
 - `docs/reference/binding-authors.md` — JNI / UniFFI / C ABI conventions.
 - `docs/reference/architecture.md` — crate graph and high-level pipeline model.

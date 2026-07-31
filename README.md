@@ -125,6 +125,7 @@ language integrator, domain expert, binding author). Or jump straight in:
 | Writing your first code | [`docs/start/quickstart.md`](docs/start/quickstart.md) — working mux + demux in 10 minutes |
 | Building something real | [`docs/cookbook/index.md`](docs/cookbook/index.md) — 40+ task-oriented recipes |
 | Looking up a type or error | [`docs/reference/`](docs/reference/) — architecture, conventions, public-API policy |
+| Checking what's safe to depend on | [`docs/reference/api-stability.md`](docs/reference/api-stability.md) — per-module Stable/Provisional/Internal tiers |
 | Wrapping for a new language | [`docs/reference/binding-authors.md`](docs/reference/binding-authors.md) — ABI, error mapping, stability tiers |
 
 ## Validated against

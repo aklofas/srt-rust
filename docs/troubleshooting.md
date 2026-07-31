@@ -28,7 +28,7 @@ By default the build script tries `pkg-config srt` first to detect a system libs
 
 Fix: install pkg-config, or set `SRT_FORCE_VENDORED=1` to skip the probe and go straight to the vendored compile.
 
-**First build hangs at "Compiling srt-sys"**
+**First build hangs at "Compiling tstrans-srt-sys"**
 
 Not actually hung. libsrt and mbedTLS compile from source on a cold build, which takes 3-5 minutes on a typical workstation. Subsequent builds reuse the artifacts and finish in seconds.
 

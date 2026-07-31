@@ -9,6 +9,60 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Rust crate packaging: crates.io publish readiness
+
+#### Changed
+
+- `srt-sys` renamed to `tstrans-srt-sys`; `rist-sys` renamed to
+  `tstrans-rist-sys`. Both keep their library name (`srt_sys` / `rist_sys`,
+  so every existing `use srt_sys::...` / `use rist_sys::...` call site
+  compiles unchanged) and their Cargo dependency **key** inside the
+  workspace (`srt-sys` / `rist-sys`, so internal `Cargo.toml` files and
+  feature forwards like `mbedtls = ["srt-sys/mbedtls"]` are untouched) —
+  only the published package name changed. Git consumers depending on
+  either crate directly need to add the `package` key to keep resolving
+  the same crate under the old dependency name:
+  ```toml
+  srt-sys  = { package = "tstrans-srt-sys",  git = "https://github.com/aklofas/ts-transformer" }
+  rist-sys = { package = "tstrans-rist-sys", git = "https://github.com/aklofas/ts-transformer" }
+  ```
+- Both `-sys` crates now bundle their native source tree directly instead
+  of resolving a shared workspace-root `vendor/`: the libsrt submodule
+  moved to `crates/srt-sys/vendor/srt`, and the librist submodule moved to
+  `crates/rist-sys/vendor/librist`. A new `tstrans-mbedtls-src` crate does
+  the same for the shared vendored Mbed TLS tree (moved from the old
+  workspace-root `vendor/mbedtls` to `crates/mbedtls-src/vendor/mbedtls`),
+  and is now a build-dependency of both `-sys` crates instead of each
+  resolving a shared relative path independently. This is what makes each
+  crate a self-contained, publishable package — crates.io does not allow a
+  package to reference files outside its own directory.
+
+#### Added
+
+- New crate `tstrans-mbedtls-src` — a build-time-only source provider (no
+  bindings, no compiled code) exposing `source_dir()` so
+  `tstrans-srt-sys`'s and `tstrans-rist-sys`'s build scripts can compile the
+  bundled Mbed TLS sources with their own flags.
+- `tst-core`, `tst-pipeline`, `tst-udp`, `tst-tcp`, `tst-hls`, `tst-rtp`,
+  `tst-srt`, `tst-rist`, `tstrans-srt-sys`, `tstrans-rist-sys`, and
+  `tstrans-mbedtls-src` (10 crates) are now packaged for crates.io
+  publication (`readme`/`keywords`/`categories` metadata, per-crate
+  `README.md`, versioned path dependencies) — starting **v0.4.0** they are
+  resolvable directly from crates.io (`cargo add tst-core`, etc.) rather
+  than only via a `git` dependency. See `docs/project/releasing.md`'s new
+  "crates.io publish" section for the publish order and procedure.
+- `publish = false` set explicitly on the 4 binding crates (`tst-c`,
+  `tst-c-core`, `tst-py`, `tst-jni`) — none of these are meant to be
+  depended on directly from crates.io; their consumer contract is the C
+  ABI / PyPI wheel / Maven JAR, not a Rust `Cargo.toml` dependency.
+- CI rail `publish-package-sanity`
+  (`scripts/check/rust/publish-package-sanity.sh`) guards the bundled-vendor
+  packaging: submodules actually checked out, no nested `Cargo.toml`
+  silently dropping a subtree, required native-build/license file sentinels
+  present, deliberately-excluded subtrees (nested dev-tool submodules,
+  unused bundled fallback sources) absent, and compressed package size
+  under crates.io's budget.
+
 ### MuxSender/Sender: explicit input-consumption reporting
 
 #### Added

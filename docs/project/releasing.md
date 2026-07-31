@@ -67,7 +67,12 @@ Central Portal in a **staged** state that a maintainer releases manually.
      `TST_VERSION_*` values);
    - the `#define TST_VERSION_*` snippet in `docs/languages/c.md` — the
      doc-currency ratchet (`doc-abi-and-st1910-currency.sh` Rule 4) pins it
-     to the workspace version and will hold CI red until it matches.
+     to the workspace version and will hold CI red until it matches;
+   - `crates/mbedtls-src/Cargo.toml`'s `version` field. It carries a
+     `+3.6.7`-style local-version-identifier suffix pinned to the bundled
+     Mbed TLS release (e.g. `0.4.0+3.6.7`) — bump the base number on every
+     workspace version sweep, and bump the suffix independently whenever the
+     vendored `vendor/mbedtls` submodule itself advances.
 2. **`main` is green** — `ci`, `jvm-jar`, and `python-wheels` all passing on
    the commit you intend to tag.
 3. **Dry-run the wheels** (recommended):
@@ -104,6 +109,75 @@ Central Portal in a **staged** state that a maintainer releases manually.
    - A Gradle / Maven resolve of `org.tstrans:tstrans-jvm:X.Y.Z` succeeds.
    Only **after** both verify, announce the release (GitHub Release notes
    seeded from the CHANGELOG highlights block).
+
+## crates.io publish (Rust crates)
+
+`ts-transformer` also publishes its 10 publishable Rust library crates to
+crates.io, starting at **v0.4.0**. This is independent of the PyPI/Maven tag
+trigger above — crates.io publishing is manual, per-crate, and not wired to
+CI (`cargo publish` needs a maintainer-held API token; there is no
+trusted-publishing / OIDC path for crates.io analogous to PyPI's yet).
+
+**Publish order** (topo-sorted from the dependency graph — a crate cannot
+publish until every crate it depends on with a `version =` key is already
+live on the index):
+
+1. `tstrans-mbedtls-src` (no internal dependencies — the base of the chain)
+2. `tstrans-srt-sys`, `tstrans-rist-sys` (each depends on `tstrans-mbedtls-src`
+   as a build-dependency; these two can publish in either order relative to
+   each other)
+3. `tst-core` (no internal path dependencies with a `version` key)
+4. `tst-pipeline` (depends on `tst-core`)
+5. `tst-udp`, `tst-tcp`, `tst-hls`, `tst-rtp`, `tst-srt`, `tst-rist` (each
+   depends only on `tst-core` + `tst-pipeline`; publish in any order once
+   layer 4 is live)
+
+For each crate, in the order above:
+
+```bash
+cargo publish --dry-run -p <pkg>   # catches metadata/packaging problems for free
+cargo publish -p <pkg>
+```
+
+**Wait for index visibility between layers** — crates.io's index takes on
+the order of tens of seconds to a couple of minutes to propagate a fresh
+publish; a same-session `cargo publish` for a *dependent* crate can otherwise
+fail with the same "no matching package named ..." error the
+`publish-package-sanity` CI rail's manual-fallback branch works around
+pre-first-publish (see below). Confirm the crate's `https://crates.io/crates/<pkg>`
+page is live before moving to the next layer, not just that the `cargo
+publish` command returned success.
+
+**Post-publish, before moving on:**
+- Check `https://crates.io/crates/<pkg>` resolves and shows the expected
+  version.
+- Check the docs.rs build status at `https://docs.rs/<pkg>` — docs.rs builds
+  automatically on publish; a build failure there (e.g. the vendored native
+  source failing to compile in docs.rs's sandboxed build environment) is a
+  real signal worth investigating even though it doesn't block the publish
+  itself.
+
+**First-publish extras (one-time, this release only):**
+- Use a crates.io API token scoped to **publish-new** (not blanket
+  publish-update) for the first publish of each of the 10 crates — narrower
+  blast radius if the token leaks.
+- **Do not** configure crates.io Trusted Publishing (OIDC) until *after* all
+  10 crates exist on the index — Trusted Publishing is configured per
+  already-existing crate on crates.io's side, so it cannot be set up before
+  the first manual publish. Track "wire up Trusted Publishing for the 10
+  crates.io crates" as a recorded post-v0.4.0 follow-up.
+
+**Rail note:** the `publish-package-sanity` CI rail
+(`scripts/check/rust/publish-package-sanity.sh`) cannot run a real `cargo
+package --no-verify` on `tstrans-srt-sys` / `tstrans-rist-sys` until
+`tstrans-mbedtls-src` is live on crates.io (Cargo's packaging step validates
+every path-dependency-with-a-`version`-key against the real index,
+independent of `--no-verify`). Until then the rail falls back to a manual
+tar+gzip size reconstruction of the exact `cargo package --list` file set.
+This is self-healing: once `tstrans-mbedtls-src`'s first publish lands, the
+rail's real `cargo package --no-verify` calls start succeeding on their own
+and the fallback branch simply stops firing — no rail change needed after
+this release.
 
 ## Notes
 

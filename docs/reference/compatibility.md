@@ -108,11 +108,11 @@ on (default).
 | --- | --- | --- |
 | `draft-sharabayko-srt` (IETF SRT v1.5) | ✅ Full | via libsrt 1.5.6; we don't reimplement the wire protocol. |
 | `draft-sharabayko-srt-over-quic` | ❌ Out of scope | Upstream is exploratory. |
-| Caller / Listener / Rendezvous handshake | ⚙️ Partial | Caller + Listener exposed; Rendezvous reachable via raw `srt-sys` only. |
+| Caller / Listener / Rendezvous handshake | ⚙️ Partial | Caller + Listener exposed; Rendezvous reachable via raw `tstrans-srt-sys` only. |
 | Live congestion controller (`SRTO_CONGESTION=live`) | ✅ Full | `Congestion::Live` (default). |
 | File congestion controller (`SRTO_CONGESTION=file`) | ✅ Full | `Congestion::File`. |
 | Message API (datagram-style send/recv) | ✅ Full | `Socket::send` / `Socket::recv`. |
-| Stream API (`SRTO_TSBPDMODE=false`, `SRTO_MESSAGEAPI=false`) | ⏳ Planned | Reachable only via `srt-sys` today. |
+| Stream API (`SRTO_TSBPDMODE=false`, `SRTO_MESSAGEAPI=false`) | ⏳ Planned | Reachable only via `tstrans-srt-sys` today. |
 | Bonded sockets / groups (`SRT_GROUP_*`) | ❌ Out of scope | No consumer demand. |
 | Async / poll API (`srt_epoll_*`) | ⏳ Planned | Today's API is sync blocking. Reactor is on the roadmap. |
 
@@ -154,7 +154,7 @@ and must not be confused:
 ### Tunables (`SocketConfig` / `ListenerConfig`)
 
 Each row maps a libsrt option to its safe-Rust accessor. Accessors that
-aren't yet wrapped are reachable via `srt-sys`.
+aren't yet wrapped are reachable via `tstrans-srt-sys`.
 
 | libsrt option | Safe field / setter | Status |
 | --- | --- | --- |
@@ -184,7 +184,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 | `SRTO_SENDER` | `role: Role` (`Receiver` / `Sender`) | ✅ Full — `Sender` sets `SRTO_SENDER=1` for HSv4-peer compatibility. |
 | Sender / receiver socket presets | `SocketConfig::sender_defaults()` / `::receiver_defaults()` + `merge_sender_defaults()` / `merge_receiver_defaults()` + `SocketBuilder::sender_defaults()` / `::receiver_defaults()` chain methods | ✅ Full — domain-tuned bundle (`connect_timeout=15s`, `linger=5s` sender / off receiver, `role=Sender` / `Receiver`). Merge-if-default semantics preserve explicit caller values. |
 | Per-socket statistics (`srt_bistats`) | `Socket::stats() -> Stats` | ⚙️ Partial — flat counter snapshot; finer windowing TBD. |
-| All other `SRTO_*` options | — | 🔁 Pass-through via `srt-sys` (raw FFI). |
+| All other `SRTO_*` options | — | 🔁 Pass-through via `tstrans-srt-sys` (raw FFI). |
 
 ### Packet filters (`SRTO_PACKETFILTER`)
 
@@ -626,7 +626,7 @@ covers.
 
 | Crate | Status | Target |
 | --- | --- | --- |
-| `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.6; encryption via mbedTLS. |
+| `tstrans-srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.6; encryption via mbedTLS. |
 | `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903 / 0806 / 1010 / 1204) + the ST 0805 KLV→CoT conversion layer, codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.6. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |

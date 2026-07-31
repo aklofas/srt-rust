@@ -12,7 +12,7 @@ Fix: `sudo apt-get install -y python3` on Debian/Ubuntu; on macOS Python 3 is pr
 
 **"submodule X is empty" / "fatal: no submodule mapping"**
 
-You cloned without submodules. `vendor/srt` and `vendor/mbedtls` are git submodules pinned to specific upstream tags, and the build script needs their contents.
+You cloned without submodules. `crates/srt-sys/vendor/srt`, `crates/mbedtls-src/vendor/mbedtls`, and `crates/rist-sys/vendor/librist` (if you're building the `rist` feature) are git submodules pinned to specific upstream tags, and the build script needs their contents.
 
 Fix: from the repo root, run `git submodule update --init --recursive`.
 
@@ -240,7 +240,7 @@ Leave `SRT_FORCE_VENDORED` unset (the default) and ensure `pkg-config srt --modv
 
 **Want to force the vendored build for reproducibility**
 
-Set `SRT_FORCE_VENDORED=1` (equivalent: `SRT_NO_PKG_CONFIG=1`). This skips pkg-config entirely and always compiles `vendor/srt` from source. Use this in CI and release builds where you want bit-for-bit reproducibility independent of whatever libsrt is installed on the build host.
+Set `SRT_FORCE_VENDORED=1` (equivalent: `SRT_NO_PKG_CONFIG=1`). This skips pkg-config entirely and always compiles `crates/srt-sys/vendor/srt` from source. Use this in CI and release builds where you want bit-for-bit reproducibility independent of whatever libsrt is installed on the build host.
 
 **Want to skip the encryption build to iterate faster**
 

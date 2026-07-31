@@ -7,6 +7,7 @@
 #   crates/tst-c, crates/tst-c-core, crates/tst-py   -> bindings/ (relocation)
 #   bindings/c/tst-c, bindings/c/tst-c-core          -> bindings/c{,/core} (Option-B flatten)
 #   crates/baremetal-qemu, crates/baremetal-qemu-c   -> embedded/ (embedded move)
+#   vendor/{srt,mbedtls,librist} (workspace root)    -> crates/{srt-sys,mbedtls-src,rist-sys}/vendor/... (crates-io-packaging move)
 #
 # This rail exists because the moves above are path-coupled and the literal
 # grep used during each move is BLIND to a few forms (slashless `cd crates/tst-c`,
@@ -44,6 +45,34 @@ PATTERN='crates/tst-c-core|crates/tst-py|crates/baremetal-qemu|bindings/c/tst-c-
 PATTERN_EMB='scripts/check/embedded/|scripts/check/c/firmware-qemu\.sh|scripts/lib/run-freertos-srt-example\.sh'
 PATTERN_VEND='vendor/(freertos-kernel|freertos-plus-posix|lwip)'
 
+# 2026-07-31 crates-io-packaging: the shared workspace-root vendor/{srt,mbedtls}
+# submodules (plus vendor/librist, added alongside rist-sys) moved INTO their
+# owning crate so each `-sys`/`-src` crate is a self-contained, publishable
+# package (crates.io forbids a package referencing files outside its own
+# directory):
+#   vendor/srt      -> crates/srt-sys/vendor/srt
+#   vendor/mbedtls  -> crates/mbedtls-src/vendor/mbedtls
+#   vendor/librist  -> crates/rist-sys/vendor/librist
+# UNLIKE the other classes above, this one deliberately scans only the DOCS
+# PROSE surface (docs/ + the two top-level READMEs), not the whole tracked
+# tree: a bare `vendor/srt` (no `crates/srt-sys/` prefix) is CORRECT, not
+# stale, wherever it's written relative to its own crate — Cargo resolves
+# build.rs/Cargo.toml paths relative to the manifest, so crates/srt-sys's
+# (and rist-sys's / mbedtls-src's) own Cargo.toml exclude-lists, build.rs,
+# README.md, and lib.rs doc comments legitimately keep the bare form, as do
+# incidental source comments elsewhere in the workspace that cite a libsrt/
+# librist file path rather than describe where the submodule lives. What
+# this guards against is specifically reader-facing docs implying the
+# submodule still lives at the shared workspace-root vendor/ (it hasn't
+# since this move) — narrowed to the same docs surface as the srt-sys/
+# rist-sys package-name sweep from the same arc (docs/ + the two READMEs).
+# A trailing-boundary class (mirrors the `tst-c` collision guard in PATTERN
+# above) keeps this from matching `vendor/srtcore`-style non-collisions (none
+# exist today; boundary-safe by default rather than by luck). Hits on the new
+# `crates/<c>/vendor/` prefixes are filtered back out the same way the
+# embedded class filters `embedded/vendor/` above.
+PATTERN_VEND_NATIVE='vendor/(srt|mbedtls|librist)([/")`, .]|$)'
+
 # Exempt: CHANGELOG (history) and this script (it names the forbidden paths).
 hits=$(git ls-files \
   | grep -vE '^(CHANGELOG\.md|scripts/check/repo/no-stale-relocated-paths\.sh)$' \
@@ -62,11 +91,17 @@ hits_vend=$(git ls-files \
   | xargs -0 grep -InE "$PATTERN_VEND" 2>/dev/null \
   | grep -v 'embedded/vendor/' || true)
 
-if [ -n "$hits$hits_emb$hits_vend" ]; then
+hits_vend_native=$(git ls-files docs/ README.md embedded/README.md \
+  | tr '\n' '\0' \
+  | xargs -0 grep -InE "$PATTERN_VEND_NATIVE" 2>/dev/null \
+  | grep -vE 'crates/(srt-sys|mbedtls-src|rist-sys)/vendor/' || true)
+
+if [ -n "$hits$hits_emb$hits_vend$hits_vend_native" ]; then
   echo "FAIL: references to relocated-away package directories found (these dirs no longer exist):" >&2
   [ -n "$hits" ] && echo "$hits" >&2
   [ -n "$hits_emb" ] && echo "$hits_emb" >&2
   [ -n "$hits_vend" ] && echo "$hits_vend" >&2
+  [ -n "$hits_vend_native" ] && echo "$hits_vend_native" >&2
   echo "" >&2
   echo "Update each to its current location:" >&2
   echo "  crates/tst-c, crates/tst-c-core, crates/tst-py  -> bindings/c, bindings/c/core, bindings/python" >&2
@@ -75,6 +110,9 @@ if [ -n "$hits$hits_emb$hits_vend" ]; then
   echo "  scripts/check/embedded/*, scripts/check/c/firmware-qemu.sh -> embedded/scripts/check/" >&2
   echo "  scripts/lib/run-freertos-srt-example.sh         -> embedded/scripts/lib/" >&2
   echo "  vendor/{freertos-kernel,freertos-plus-posix,lwip} -> embedded/vendor/ (.gitmodules submodule NAMES exempt)" >&2
+  echo "  vendor/srt      -> crates/srt-sys/vendor/srt" >&2
+  echo "  vendor/mbedtls  -> crates/mbedtls-src/vendor/mbedtls" >&2
+  echo "  vendor/librist  -> crates/rist-sys/vendor/librist  (.gitmodules submodule NAMES exempt)" >&2
   echo "(CHANGELOG.md is exempt as historical record.)" >&2
   exit 1
 fi

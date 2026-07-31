@@ -87,8 +87,8 @@ feature.
 | Component | Pinned at |
 | --- | --- |
 | Rust edition | 2024, MSRV **1.85** (`rust-toolchain.toml`) |
-| `libsrt` (Haivision) | **v1.5.6** (`vendor/srt`, git submodule) |
-| `mbedTLS` | **v3.6.7** LTS (`vendor/mbedtls`, git submodule) |
+| `libsrt` (Haivision) | **v1.5.6** (`crates/srt-sys/vendor/srt`, git submodule) |
+| `mbedTLS` | **v3.6.7** LTS (`crates/mbedtls-src/vendor/mbedtls`, git submodule) |
 | `bindgen` | 0.72 (FFI; `srt-sys` build) |
 | `cbindgen` | 0.29 (C header generation; `tst-c` build) |
 | `cc` | 1.0 (compiles + links the C smoke test in `tst-c` integration tests) |
@@ -124,7 +124,7 @@ on (default).
 | AES-128 key length | ✅ Full | `KeyLength::Aes128` (default). |
 | AES-192 key length | ✅ Full | `KeyLength::Aes192`. |
 | AES-256 key length | ✅ Full | `KeyLength::Aes256`. |
-| mbedTLS backend | ✅ Full | Default; statically linked from `vendor/mbedtls`. |
+| mbedTLS backend | ✅ Full | Default; statically linked from `crates/mbedtls-src/vendor/mbedtls`. |
 | OpenSSL backend | ❌ Out of scope | Add only on consumer ask. |
 | Built-in (libsrt's "internal" cryptolib) | ❌ Out of scope | Not used. |
 | Encryption disabled (`--no-default-features`) | ✅ Full | Builds without mbedTLS; `ENABLE_ENCRYPTION=OFF`. |
@@ -615,7 +615,7 @@ covers.
 | **MISP-2025.1** | Motion Imagery Standards Profile | 📖 Roadmap reference |
 | **MISP-2025.1 Handbook** | MIS Handbook (companion to MISP) | 📖 Reference reading |
 | **MISP-2023.2** | Motion Imagery Standards Profile (prior) | 📖 Reference reading |
-| `draft-sharabayko-srt` (IETF) | Secure Reliable Transport Protocol | ✅ via `vendor/srt` |
+| `draft-sharabayko-srt` (IETF) | Secure Reliable Transport Protocol | ✅ via `crates/srt-sys/vendor/srt` |
 | `draft-sharabayko-srt-over-quic` | SRT over QUIC | ❌ Out of scope |
 
 📖 = read for context; nothing to implement directly.

@@ -130,22 +130,41 @@ done
 # quality); every other workspace member must be explicitly publish=false
 # (metadata: publish=[]) so a new crate can't silently become publishable.
 PUBLISHABLE="tstrans-mbedtls-src tstrans-srt-sys tstrans-rist-sys tst-core tst-pipeline tst-udp tst-tcp tst-hls tst-rtp tst-srt tst-rist"
-meta=$(cargo metadata --format-version 1 --no-deps 2>/dev/null) || { echo "FAIL: cargo metadata"; fail=1; meta=""; }
-if [ -n "$meta" ]; then
-  is_publishable() { local n=$1 p; for p in $PUBLISHABLE; do [ "$p" = "$n" ] && return 0; done; return 1; }
-  null_count=$(jq '[.packages[] | select(.publish == null)] | length' <<<"$meta")
-  [ "$null_count" -eq 11 ] || { echo "FAIL: expected 11 publish=null packages, found $null_count"; fail=1; }
-  while IFS=$'\t' read -r name publish desc readme kw cat; do
-    if is_publishable "$name"; then
-      [ "$publish" = "null" ] || { echo "FAIL: $name is publishable but publish=$publish (want null)"; fail=1; }
-      [ "$desc" -gt 0 ] || { echo "FAIL: $name missing description"; fail=1; }
-      [ "$readme" != "null" ] || { echo "FAIL: $name missing readme"; fail=1; }
-      [ "$kw" -gt 0 ] || { echo "FAIL: $name missing keywords"; fail=1; }
-      [ "$cat" -gt 0 ] || { echo "FAIL: $name missing categories"; fail=1; }
+# `jq` is required below; under `set -euo pipefail` a missing/failed jq
+# invocation used as a bare command substitution (e.g. `x=$(jq ...)`) would
+# otherwise abort the whole script with a raw "jq: command not found" instead
+# of the intended named "FAIL: ..." + fail=1 reporting. Guard presence
+# upfront, and check every jq invocation's own exit status explicitly.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "FAIL: jq is required for the metadata census check (check 5)"
+  fail=1
+else
+  meta=$(cargo metadata --format-version 1 --no-deps 2>/dev/null) || { echo "FAIL: cargo metadata"; fail=1; meta=""; }
+  if [ -n "$meta" ]; then
+    is_publishable() { local n=$1 p; for p in $PUBLISHABLE; do [ "$p" = "$n" ] && return 0; done; return 1; }
+    if null_count=$(jq '[.packages[] | select(.publish == null)] | length' <<<"$meta" 2>&1); then
+      [ "$null_count" -eq 11 ] || { echo "FAIL: expected 11 publish=null packages, found $null_count"; fail=1; }
     else
-      [ "$publish" = "[]" ] || { echo "FAIL: $name is not in the publishable list but publish=$publish (want [], i.e. \`publish = false\`)"; fail=1; }
+      echo "FAIL: jq census-count parse failed: $null_count"
+      fail=1
     fi
-  done < <(jq -r '.packages[] | [.name, (.publish|tostring), ((.description // "")|length), (.readme // "null"), (.keywords|length), (.categories|length)] | @tsv' <<<"$meta")
+    if census_rows=$(jq -r '.packages[] | [.name, (.publish|tostring), ((.description // "")|length), (.readme // "null"), (.keywords|length), (.categories|length)] | @tsv' <<<"$meta" 2>&1); then
+      while IFS=$'\t' read -r name publish desc readme kw cat; do
+        if is_publishable "$name"; then
+          [ "$publish" = "null" ] || { echo "FAIL: $name is publishable but publish=$publish (want null)"; fail=1; }
+          [ "$desc" -gt 0 ] || { echo "FAIL: $name missing description"; fail=1; }
+          [ "$readme" != "null" ] || { echo "FAIL: $name missing readme"; fail=1; }
+          [ "$kw" -gt 0 ] || { echo "FAIL: $name missing keywords"; fail=1; }
+          [ "$cat" -gt 0 ] || { echo "FAIL: $name missing categories"; fail=1; }
+        else
+          [ "$publish" = "[]" ] || { echo "FAIL: $name is not in the publishable list but publish=$publish (want [], i.e. \`publish = false\`)"; fail=1; }
+        fi
+      done <<<"$census_rows"
+    else
+      echo "FAIL: jq census-row parse failed: $census_rows"
+      fail=1
+    fi
+  fi
 fi
 
 [ "$fail" -eq 0 ] && echo "publish-package-sanity: OK"

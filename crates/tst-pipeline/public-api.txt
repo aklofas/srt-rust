@@ -474,6 +474,7 @@ impl<T> core::marker::UnsafeUnpin for tst_pipeline::mux_sender::MuxSender<T> whe
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_sender::MuxSender<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxSender<T>
 #[non_exhaustive] pub struct tst_pipeline::mux_sender::MuxSenderError
+pub tst_pipeline::mux_sender::MuxSenderError::input_consumed: core::option::Option<bool>
 pub tst_pipeline::mux_sender::MuxSenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::mux_sender::MuxSenderError::source: tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::convert::From<tst_core::error::MuxError> for tst_pipeline::mux_sender::MuxSenderError
@@ -1059,6 +1060,7 @@ impl core::marker::UnsafeUnpin for tst_pipeline::sender::SenderConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::SenderConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::SenderConfig
 #[non_exhaustive] pub struct tst_pipeline::sender::SenderError
+pub tst_pipeline::sender::SenderError::input_consumed: core::option::Option<bool>
 pub tst_pipeline::sender::SenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::sender::SenderError::source: tst_pipeline::sender::SenderErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::sender::SenderError
@@ -1639,6 +1641,7 @@ impl<T> core::marker::UnsafeUnpin for tst_pipeline::mux_sender::MuxSender<T> whe
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_sender::MuxSender<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxSender<T>
 #[non_exhaustive] pub struct tst_pipeline::MuxSenderError
+pub tst_pipeline::MuxSenderError::input_consumed: core::option::Option<bool>
 pub tst_pipeline::MuxSenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::MuxSenderError::source: tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::convert::From<tst_core::error::MuxError> for tst_pipeline::mux_sender::MuxSenderError
@@ -1980,6 +1983,7 @@ impl core::marker::UnsafeUnpin for tst_pipeline::sender::SenderConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::SenderConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::SenderConfig
 #[non_exhaustive] pub struct tst_pipeline::SenderError
+pub tst_pipeline::SenderError::input_consumed: core::option::Option<bool>
 pub tst_pipeline::SenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::SenderError::source: tst_pipeline::sender::SenderErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::sender::SenderError

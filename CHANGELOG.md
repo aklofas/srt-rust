@@ -9,6 +9,32 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### MuxSender/Sender: explicit input-consumption reporting
+
+#### Added
+
+- `MuxSenderError` and `SenderError` gain a new `input_consumed:
+  Option<bool>` field, reported on every error from the `send_*` family
+  (`send_video`, `send_klv`, `send_audio_to`, etc.) and `Sender::send_ts`:
+  - `Some(false)` — this call's input was **not** consumed (a mux/framing
+    rejection, a closed transport, or a failure draining bytes retained
+    by a *previous* call). Retrying the same input after fixing the
+    cause cannot duplicate data.
+  - `Some(true)` — this call's input **was** consumed: muxed/framed and
+    retained in the pending queue, which drains exactly once on the next
+    `send_*`/`send_ts` call. Do not push the same input again.
+  - `None` — the error did not originate from a per-call input path
+    (e.g. `Sender::flush`, or a poisoned internal lock).
+  - `RawSender` gains no such field — it performs no pending retention,
+    so a transport error always means the current input was not
+    delivered and may be retried without ambiguity.
+
+  This supersedes the previous discriminate-by-the-previous-call's-
+  outcome retry contract documented on `MuxSender` / `Sender` (callers
+  had to remember whether the prior `send_*` also failed to tell consumed
+  from not-consumed). Existing `match` arms on `MuxSenderError` /
+  `SenderError` keep compiling unchanged — the field is additive.
+
 ### Native-boundary sanitizer coverage: `TST_NATIVE_SANITIZER` + nightly `asan-native` CI
 
 #### Added

@@ -1,7 +1,7 @@
+//! URL parsing helpers shared across transport crates.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! URL parsing helpers shared across transport crates.
 //!
 //! Today's consumers: [`tst_srt::url`](https://docs.rs/tst-srt) and (soon)
 //! `tst_rtp::url`. The module deliberately knows nothing about transport

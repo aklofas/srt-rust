@@ -1,7 +1,7 @@
+//! H.266 / VVC parameter-set parsers.
+//!
 //! **Stability: Provisional** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! H.266 / VVC parameter-set parsers.
 //!
 //! Hand-rolled per ITU-T H.266 V4 (2026-01) — the bitstream spec
 //! (sections 7.3 syntax tables and 7.4 semantics). Mirrors the

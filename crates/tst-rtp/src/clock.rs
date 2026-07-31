@@ -1,7 +1,7 @@
+//! 90 kHz monotonic timestamp source per RFC 3551 §6 Table 5.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! 90 kHz monotonic timestamp source per RFC 3551 §6 Table 5.
 //!
 //! Each `RtpTransport` instance owns one [`RtpClock`]. The clock is
 //! sampled at sendto-time and converted to a 32-bit 90 kHz tick — RFC

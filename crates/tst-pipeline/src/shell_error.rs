@@ -1,7 +1,7 @@
+//! Unified shell-layer error vocabulary for binding authors.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! Unified shell-layer error vocabulary for binding authors.
 //!
 //! Every pipeline shell (`MuxSender`, `Sender`, `RawSender`, `DemuxReceiver`,
 //! `Receiver`, `RawReceiver`) exposes a `struct { kind, source }` error

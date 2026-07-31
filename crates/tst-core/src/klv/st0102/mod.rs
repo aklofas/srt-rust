@@ -1,7 +1,7 @@
+//! MISB ST 0102.12 Security Metadata Local Set typed layer.
+//!
 //! **Stability: Provisional** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! MISB ST 0102.12 Security Metadata Local Set typed layer.
 //!
 //! Sibling typed parser to [`crate::klv::st0601`]. Consumers who decode
 //! a `UasDatalinkLs` and want typed access to the inner Security LS

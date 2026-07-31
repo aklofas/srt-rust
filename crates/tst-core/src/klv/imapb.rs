@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! ST 1201.5 §7 IMAPB — bit-packed mapping between unsigned integers and a
 //! defined floating-point range.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Given parameters `(min, max, length)` with `min < max` and `length ∈ 1..=8`:
 //! - The integer occupies `length` bytes, big-endian, **unsigned** (ST 1201.5

@@ -1,13 +1,15 @@
+//! Low-level extension points for the MPEG-TS demuxer.
+//!
 //! **Stability: Internal** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
-//! Low-level extension points for the MPEG-TS demuxer.
-//!
-//! **Stability: experimental.** Items in this module may change between
-//! minor versions before 1.0. Use only when the curated [`Demuxer`] /
-//! [`DemuxEvent`] API is insufficient — typical examples are fuzz
-//! harnesses, third-party tools that introspect raw PSI sections, and
-//! advanced consumers that need direct access to PES reassembly state.
+//! No stability promise: this module is public solely for the
+//! binding-canonical workflow and documented extension points (see the
+//! header above), and its items may change in any release. Use only
+//! when the curated [`Demuxer`] / [`DemuxEvent`] API is insufficient —
+//! typical examples are fuzz harnesses, third-party tools that
+//! introspect raw PSI sections, and advanced consumers that need direct
+//! access to PES reassembly state.
 //!
 //! For 99% of use cases, prefer:
 //! - [`crate::mpegts::demux::Demuxer`] for stream parsing.

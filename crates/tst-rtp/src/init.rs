@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! Crate-private no-op initialization, exposed for symmetry with
 //! [`tst_srt::init`](https://docs.rs/tst-srt).
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! `tst-rtp` is pure Rust: there's no library to start up the way
 //! `srt_startup()` is required for libsrt. Binding-crate authors who

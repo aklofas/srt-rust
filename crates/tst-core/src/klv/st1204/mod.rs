@@ -1,8 +1,8 @@
-//! **Stability: Provisional** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! MISB ST 1204.3 MIIS Core Identifier — binary decode/encode, textual format,
 //! and Appendix B check value.
+//!
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! A MIIS Core Identifier is a compact binary record that uniquely identifies
 //! a motion imagery source. It consists of a version byte, a usage byte, and

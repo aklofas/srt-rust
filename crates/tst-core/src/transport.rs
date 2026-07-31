@@ -1,7 +1,7 @@
+//! Transport trait definitions — the seam between shells and the wire.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! Transport trait definitions — the seam between shells and the wire.
 //!
 //! This module contains both send-side and receive-side transport traits.
 //! Concrete implementations (SRT, file-replay, in-memory channels) live

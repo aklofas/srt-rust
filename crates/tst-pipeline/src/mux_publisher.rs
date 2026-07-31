@@ -1,8 +1,8 @@
-//! **Stability: Provisional** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! [`MuxPublisher`] — pipeline shell that owns a [`Muxer`] and pushes its
 //! output to a [`Publisher`].
+//!
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 
 use std::sync::Mutex;
 use std::time::Duration;

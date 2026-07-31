@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! `rtp://host:port?key=value&...` URL parsing, plus `rtsp://` and
 //! `rtsps://` URL parsing for the Phase 2 RTSP client.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Built on the scheme-neutral [`tst_core::url::common`] helpers from
 //! Plan #97. The `rtp://` shape is parsed by [`RtpUrl`]; the

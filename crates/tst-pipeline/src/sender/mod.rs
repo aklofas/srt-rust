@@ -1,7 +1,7 @@
+//! `Sender<T: Transport>` — pre-muxed TS bytes → SRT, with framing.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `Sender<T: Transport>` — pre-muxed TS bytes → SRT, with framing.
 //!
 //! See `framing.rs` for the sync-acquisition / loss-detection state
 //! machine. `Sender` composes `TsFraming` with a `Transport`.

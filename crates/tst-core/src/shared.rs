@@ -1,7 +1,7 @@
+//! `SharedBytes` — a refcounted, cheaply-cloneable, sub-sliceable byte buffer.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `SharedBytes` — a refcounted, cheaply-cloneable, sub-sliceable byte buffer.
 //!
 //! One backing `Arc<[u8]>` allocation is shared by all clones and sub-slices, so a
 //! demuxed access unit can be held once while parsed NAL/OBU bodies are zero-copy

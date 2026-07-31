@@ -1,7 +1,7 @@
+//! `SrtCancelHandle` — thread-safe one-shot socket-close primitive.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `SrtCancelHandle` — thread-safe one-shot socket-close primitive.
 //!
 //! Wraps a libsrt `SRTSOCKET` (or any other integer handle) plus a
 //! caller-supplied closer closure. Calling `cancel()` from any thread

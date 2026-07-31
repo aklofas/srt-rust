@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! Cross-codec utility helpers used by the muxer/demuxer to derive
 //! per-stream codec-specific stats (`StreamCodecCounters`).
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Today this module exposes a single helper: [`count_nal_units`], used
 //! on the sender side to count NAL units (H.264/H.265/H.266) or OBUs

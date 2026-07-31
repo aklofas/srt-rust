@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+//!
 //! TS Transformer RTP transport — two receive shapes over RTP/RTSP:
 //!
 //! - **MPEG-TS-over-RTP (RFC 2250, PT=33):** an enclosing MPEG-TS stream rides

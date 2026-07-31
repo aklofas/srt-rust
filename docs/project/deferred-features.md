@@ -668,12 +668,26 @@ the trigger that would unblock it.
 
 ## Rustdoc lift to docs.rs via `#![doc = include_str!(...)]`
 
-- **Status:** Not implemented; the markdown guides under `docs/` are
-  read directly from the repo.
-- **Why deferred:** This crate is not yet on crates.io; until it
-  publishes, docs.rs has nothing to auto-build. The markdown guides
-  are written rustdoc-compatibly so the future lift is mechanical.
-- **Trigger to revisit:** Immediately before publishing to crates.io.
+- **Status:** Shipped in minimal form, v0.4.0. Each of the 8
+  publishable pure-Rust crates (`tst-core`, `tst-pipeline`, `tst-srt`,
+  `tst-rtp`, `tst-udp`, `tst-tcp`, `tst-hls`, `tst-rist`) now ships a
+  `README.md` (rendered on crates.io/docs.rs via the `readme` package
+  key); the six transport crates additionally lift it into the
+  crate-level rustdoc via `#![doc = include_str!("../README.md")]`
+  (`tst-core`/`tst-pipeline` keep their existing, more detailed crate
+  docs instead of double-including — their READMEs are a terser
+  summary that agrees with, but doesn't replace, those docs).
+  docs.rs now builds real API documentation from the bundled source
+  once each crate publishes.
+- **Why deferred (partially, still):** Full migration of the
+  markdown guides under `docs/` (the per-language onramps, cookbook,
+  guides) into rustdoc is not planned — those are user-journey docs
+  meant to be browsed as a set from the repo/docs site, not per-crate
+  API reference pages. Only the per-crate README summary moved.
+- **Trigger to revisit:** Satisfied by the v0.4.0 README lift above.
+  No further trigger is tracked; revisit only if a future consumer
+  specifically asks for the full guide tree to be mirrored into
+  docs.rs.
 
 ## URL parameter coverage (Group 3 — recognized but unsupported)
 

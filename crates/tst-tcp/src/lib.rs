@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+//!
 //! Raw MPEG-TS over TCP — caller + listener, plain + TLS.
 //!
 //! This crate provides a single [`TcpTransport`] type that implements both

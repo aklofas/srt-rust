@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+//!
 //! Safe Rust wrapper around librist 0.2.x.
 //!
 //! - Sender: [`transport::RistTransport`] (impl [`tst_core::transport::Transport`])

@@ -748,4 +748,31 @@ mod tests {
         sender.send_ts(&ts_packets(7)).unwrap();
         assert_eq!(sink.lock().unwrap().len() % 188, 0);
     }
+
+    /// The `self.closed` early-return tag site: `send_ts` after `close()`
+    /// never touches `bytes`, so it must report `Some(false)`.
+    #[test]
+    fn send_ts_after_close_reports_input_consumed_false() {
+        let mut sender = Sender::new(Mem, SenderConfig::default());
+        sender.close();
+
+        let err = sender.send_ts(&ts_packets(7)).unwrap_err();
+        assert_eq!(err.input_consumed, Some(false));
+    }
+
+    /// The STRICT-mode `push_strict` tag site: a misaligned first byte is
+    /// rejected before anything is queued, so it must report `Some(false)`.
+    #[test]
+    fn strict_mode_misaligned_input_reports_input_consumed_false() {
+        let cfg = SenderConfig {
+            framing_mode: TsFramingMode::Strict,
+            ..Default::default()
+        };
+        let mut sender = Sender::new(Mem, cfg);
+
+        let mut input = vec![0xAB, 0xCD];
+        input.extend(ts_packets(3));
+        let err = sender.send_ts(&input).unwrap_err();
+        assert_eq!(err.input_consumed, Some(false));
+    }
 }

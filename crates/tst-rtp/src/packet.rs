@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! `RtpHeader` — the 12-byte fixed RTP header per RFC 3550 §5.1.
 //!
 //! The **encoder** emits only the fixed 12-byte header (no CSRC list, no

@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MISB ST 0605 §7 Precision Time Stamp Pack: PES-emit-time auxiliary
 //! KLV record commonly multiplexed alongside an ST 0601 LS in real
 //! captures. Body is a 1-byte Time Status (per MISB ST 0603 §7.4) plus

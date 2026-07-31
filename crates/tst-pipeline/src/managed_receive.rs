@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! `ManagedRecvTransport<R>` — reconnect on receive break.
 //!
 //! Sibling to [`ManagedTransport`][crate::reconnect::ManagedTransport]:

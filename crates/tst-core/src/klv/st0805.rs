@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MISB ST 0805.1 KLV → Cursor-on-Target (CoT) conversion.
 //!
 //! ST 0805.1 defines two one-way conversions from a decoded ST 0601 UAS

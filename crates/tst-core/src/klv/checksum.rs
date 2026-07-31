@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! ST 0601 §6.3 16-bit running-sum checksum.
 //!
 //! For each byte at index `i`, contribute `byte << (8 * ((i + 1) % 2))` to a

@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MPEG-TS muxing and demuxing — multi-program TS with video, audio, KLV
 //! metadata, and subtitle/caption carriage.
 //!

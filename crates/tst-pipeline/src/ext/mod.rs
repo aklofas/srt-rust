@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Optional extensions to the pipeline shells.
 //!
 //! Modules under `ext` are **opt-in** — callers reach for them

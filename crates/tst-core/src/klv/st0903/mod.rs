@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MISB ST 0903.6 VMTI (Video Moving Target Indicator) Local Set typed layer.
 //!
 //! Sibling typed parser to [`crate::klv::st0601`]. Consumers who decode

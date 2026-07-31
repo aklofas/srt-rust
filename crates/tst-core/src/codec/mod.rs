@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Typed codec parameter-set parsers and audio frame iterators.
 //!
 //! Stateless parsers for video codec parameter sets (SPS / VPS / PPS)

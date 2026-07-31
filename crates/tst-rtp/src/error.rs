@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! RTSP-control-plane errors.
 //!
 //! RTSP failures do not fit the [`tst_core::transport::TransportError`]

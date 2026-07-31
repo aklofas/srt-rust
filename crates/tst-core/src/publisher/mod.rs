@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Outbound-only, segment-aware sinks (HLS, future MPEG-DASH, ...).
 //!
 //! Sits alongside [`crate::transport::Transport`] and

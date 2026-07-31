@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! ST 0601 UAS Datalink Local Set typed layer.
 //!
 //! `UasDatalinkLs` is a flat plain struct that mirrors the wire format

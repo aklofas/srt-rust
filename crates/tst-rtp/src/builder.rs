@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Fluent builders over [`RtpUrl`] for callers who'd rather construct
 //! transports field-by-field than parse a string.
 //!

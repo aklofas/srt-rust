@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Generic KLV pack and unpack — `RawField`, `OwnedRawField`, `Iter`,
 //! `encode_pack`. Knows nothing about ST 0601 specifically.
 //!

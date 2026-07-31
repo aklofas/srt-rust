@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! `rtp://host:port?key=value&...` URL parsing, plus `rtsp://` and
 //! `rtsps://` URL parsing for the Phase 2 RTSP client.
 //!

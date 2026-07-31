@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! 16-byte SMPTE/MISB Universal Label. Non-validating constructor; introspection
 //! helpers for the SMPTE structural fields (oid, category, registry, structure
 //! designator). Well-known constants for canonical labels.

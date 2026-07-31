@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Thin wrapper around `sdp-types` for our DESCRIBE response parsing.
 
 use crate::error::RtspError;

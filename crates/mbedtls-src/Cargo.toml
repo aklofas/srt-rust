@@ -1,0 +1,22 @@
+[package]
+name        = "tstrans-mbedtls-src"
+description = "Vendored Mbed TLS 3.6.x source tree for the tstrans native transport crates (build-time source provider, not bindings)."
+version     = "0.3.0+3.6.7"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+readme      = "README.md"
+keywords    = ["mbedtls", "vendored", "source"]
+categories  = ["external-ffi-bindings"]
+exclude = [
+    "vendor/mbedtls/docs/",
+    "vendor/mbedtls/tests/",
+    "vendor/mbedtls/programs/",
+    "vendor/mbedtls/.github/",
+    "vendor/mbedtls/.travis.yml",
+]
+
+[lib]
+doctest = false

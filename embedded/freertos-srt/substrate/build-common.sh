@@ -20,7 +20,7 @@ ROOT=$(cd "$PROD/../.." && pwd)                          # workspace root
 cd "$PROD"
 
 # Single ignored output root. obj/ = compiled objects; generated/ = golden.h;
-# srt-src/ = staged pristine libsrt source (patched there, not in vendor/srt);
+# srt-src/ = staged pristine libsrt source (patched there, not in crates/srt-sys/vendor/srt);
 # srt-build*/srt-install*/mbedtls-* = the cross-built dependency trees.
 BUILD="$PROD/build"
 OBJ="$BUILD/obj"
@@ -31,8 +31,8 @@ K=$ROOT/embedded/vendor/freertos-kernel
 P=$ROOT/embedded/vendor/freertos-plus-posix
 PS=$P/FreeRTOS-Plus-POSIX/source
 L=$ROOT/embedded/vendor/lwip
-SRT=$ROOT/vendor/srt
-MBED=$ROOT/vendor/mbedtls
+SRT=$ROOT/crates/srt-sys/vendor/srt
+MBED=$ROOT/crates/mbedtls-src/vendor/mbedtls
 CC=arm-none-eabi-gcc; CXX=arm-none-eabi-g++
 
 ARCH="-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16"
@@ -144,7 +144,7 @@ if [ "${LIBSRT:-0}" = "1" ]; then
   fi
 
   # Stage a pristine copy of the pinned libsrt source and patch it THERE — never
-  # mutate vendor/srt (shared submodule; an interrupted in-place patch left it
+  # mutate crates/srt-sys/vendor/srt (shared submodule; an interrupted in-place patch left it
   # dirty for every other consumer). `git archive HEAD` gives exactly the tracked
   # source at the pinned commit. Apply with plain `patch`, NOT `git apply`: the
   # staged tree sits under build/ inside this repo's worktree, so `git apply`

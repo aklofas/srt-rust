@@ -69,7 +69,7 @@ static void fail(const char* w) {
 // is deliberately relied on as safe: libsrt's srt_close() returns 0 for
 // sockets already CLOSING/CLOSED/NONEXIST, CUDT::close() no-ops on m_bBroken,
 // and actual teardown is deferred to libsrt's GC, so no double-free is
-// possible (verified against vendor/srt srt_c_api.cpp + api.cpp).
+// possible (verified against crates/srt-sys/vendor/srt srt_c_api.cpp + api.cpp).
 static void abort_listener(void) {
     SRTSOCKET ls = g_ls;
     if (ls != SRT_INVALID_SOCK) srt_close(ls);

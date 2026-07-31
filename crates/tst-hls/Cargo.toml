@@ -6,6 +6,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["hls", "mpeg-ts", "streaming", "playlist"]
+categories = ["multimedia::video", "web-programming"]
 
 [features]
 # serve: the built-in HTTP server + hls:// URL parsing (tokio/hyper).
@@ -25,7 +28,7 @@ serve = [
 tls = ["serve", "dep:rustls", "dep:tokio-rustls", "dep:rustls-pemfile"]
 
 [dependencies]
-tst-core = { path = "../tst-core" }
+tst-core = { path = "../tst-core", version = "0.3.0" }
 thiserror = { workspace = true }
 
 [dependencies.tokio]

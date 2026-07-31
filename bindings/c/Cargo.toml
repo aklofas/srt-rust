@@ -1,6 +1,7 @@
 [package]
 name        = "tst-c"
 description = "C ABI artifact crate (libtstrans.so / .a / tstrans.h) re-exporting tst-c-core"
+publish     = false
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true

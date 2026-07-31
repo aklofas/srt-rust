@@ -1,6 +1,7 @@
 [package]
 name        = "tst-jni"
 description = "JVM (JNI) bindings for the ts-transformer MPEG-TS + KLV + codec parsers"
+publish     = false
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true

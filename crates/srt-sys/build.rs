@@ -60,12 +60,7 @@ fn native_sanitizer_cflags() -> Option<String> {
 ///
 /// Only called when the `mbedtls` cargo feature is enabled.
 fn build_mbedtls(sanitizer: Option<&str>) -> PathBuf {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let mbedtls_dir = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("vendor/mbedtls"))
-        .expect("Cannot resolve vendor/mbedtls path from CARGO_MANIFEST_DIR");
+    let mbedtls_dir = tstrans_mbedtls_src::source_dir();
 
     if !mbedtls_dir.join("CMakeLists.txt").exists() {
         panic!(
@@ -111,8 +106,13 @@ fn main() {
     // (CI never sees this — fresh checkouts always rebuild). Tracking the
     // two top-level files (each carries the version) is enough to catch
     // every pin change without recursively statting the whole submodule.
-    println!("cargo:rerun-if-changed=../../vendor/srt/CMakeLists.txt");
-    println!("cargo:rerun-if-changed=../../vendor/mbedtls/CMakeLists.txt");
+    println!("cargo:rerun-if-changed=vendor/srt/CMakeLists.txt");
+    println!(
+        "cargo:rerun-if-changed={}",
+        tstrans_mbedtls_src::source_dir()
+            .join("CMakeLists.txt")
+            .display()
+    );
     println!("cargo:rerun-if-env-changed=SRT_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=SRT_FORCE_VENDORED");
     // Without this, toggling the sanitizer between builds leaves cargo's
@@ -214,11 +214,7 @@ fn main() {
 /// Otherwise, libsrt is built with `ENABLE_ENCRYPTION=OFF`.
 fn build_vendored(mbedtls_prefix: Option<&PathBuf>, sanitizer: Option<&str>) -> Vec<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let vendor_dir = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("vendor/srt"))
-        .expect("Cannot resolve vendor/srt path from CARGO_MANIFEST_DIR");
+    let vendor_dir = manifest_dir.join("vendor/srt");
 
     if !vendor_dir.join("CMakeLists.txt").exists() {
         panic!(

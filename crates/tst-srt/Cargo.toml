@@ -16,7 +16,7 @@ default = ["mbedtls"]
 mbedtls = ["srt-sys/mbedtls"]
 
 [dependencies]
-srt-sys       = { path = "../srt-sys", default-features = false }
+srt-sys       = { package = "tstrans-srt-sys", path = "../srt-sys", version = "0.3.0", default-features = false }
 tst-core      = { path = "../tst-core" }
 libc          = { workspace = true }
 os_socketaddr = { workspace = true }
@@ -36,7 +36,7 @@ tst-pipeline     = { path = "../tst-pipeline" }
 tst-test-helpers = { path = "../tst-test-helpers" }
 # Used by integration tests that read raw libsrt socket flags
 # (e.g. SRTO_SENDER) via Socket::raw_handle().
-srt-sys   = { path = "../srt-sys", default-features = false }
+srt-sys   = { package = "tstrans-srt-sys", path = "../srt-sys", version = "0.3.0", default-features = false }
 # Captures `tracing` events in tests for assertion.
 # `no-env-filter` makes the subscriber accept events from any crate (not just
 # the test binary), which is needed for integration tests that assert on warns

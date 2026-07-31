@@ -7,13 +7,16 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
+readme      = "README.md"
+keywords    = ["rist", "video", "streaming", "mpeg-ts"]
+categories  = ["multimedia::video", "network-programming"]
 
 [lib]
 doctest = false
 
 [dependencies]
 rist-sys  = { package = "tstrans-rist-sys", path = "../rist-sys", version = "0.3.0" }
-tst-core  = { path = "../tst-core" }
+tst-core  = { path = "../tst-core", version = "0.3.0" }
 libc      = { workspace = true }
 secrecy   = { workspace = true }
 thiserror = { workspace = true }

@@ -7,12 +7,15 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
+readme      = "README.md"
+keywords    = ["rtp", "rtsp", "mpeg-ts", "streaming"]
+categories  = ["multimedia::video", "network-programming"]
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
-tst-core   = { path = "../tst-core" }
+tst-core   = { path = "../tst-core", version = "0.3.0" }
 thiserror  = { workspace = true }
 base64     = { version = "0.22", default-features = false, features = ["std"] }
 bytes      = "1"

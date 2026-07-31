@@ -1,6 +1,7 @@
 [package]
 name        = "tst-c-core"
 description = "Embeddable C-ABI core for tst-c (rlib; no_std-capable)"
+publish     = false
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true

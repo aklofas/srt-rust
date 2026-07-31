@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # api-stability-coverage: every level-1 public module of every ratcheted
-# crate must be covered by a row in docs/reference/api-stability.md
-# (longest-prefix or (crate) row), and every table row must still name a
-# real module. Level-2 completeness is additionally enforced under
-# tst_core::klv and tst_core::codec (tiering is per-dialect there).
+# crate must be covered by an EXACT row in docs/reference/api-stability.md
+# (or a (crate) row), and every table row must still name a real `pub mod`
+# line. Level-2 completeness is additionally enforced under tst_core::klv
+# and tst_core::codec (tiering is per-dialect there). Coverage is
+# deliberately strict, not prefix-based: a level-1 row must not be able to
+# silently stand in for a missing level-2 row, or vice versa.
 #
 # Known coarsenesses (accepted):
 # - Module extraction is scoped to `pub mod <lib>::<name>` lines anchored
@@ -48,13 +50,16 @@ tstrans-mbedtls-src:crates/mbedtls-src:tstrans_mbedtls_src
 rows=$(awk -F'|' '/^\|/ && $4 ~ /Stable|Provisional|Experimental|Internal/ {
   gsub(/ /,"",$2); gsub(/ /,"",$3); print $2 "\t" $3 }' "$TABLE")
 
-covered() { # covered <pkg> <modpath> → 0 if some row prefixes it
+covered() { # covered <pkg> <modpath> → 0 only on an EXACT row match or (crate)
+  # Strict on purpose: a prefix match here would let a level-1 row silently
+  # stand in for a missing level-2 row (or vice versa), making the
+  # completeness loops below vacuous. Every module this function is asked
+  # about must have its own row, full stop.
   local pkg=$1 mod=$2
   while IFS=$'\t' read -r rpkg rmod; do
     [ "$rpkg" = "$pkg" ] || continue
     [ "$rmod" = "(crate)" ] && return 0
-    case "$mod" in "$rmod"|"$rmod"::*) return 0;; esac
-    case "$rmod" in "$mod"::*) return 0;; esac  # deeper rows imply the parent is tiered
+    [ "$rmod" = "$mod" ] && return 0
   done <<<"$rows"
   return 1
 }
@@ -78,12 +83,16 @@ for triple in $CRATES; do
   fi
 done
 
-# reverse direction: every row's module must exist in its baseline
+# reverse direction: every row's module must be a real `pub mod` line in its
+# baseline — anchored the same way as the forward extraction, so a row
+# naming a struct/enum/impl (e.g. `error::CotError`) can't pass by matching
+# incidental text. This also correctly validates override rows that live
+# below the top level, like `mpegts::demux::low_level`.
 while IFS=$'\t' read -r rpkg rmod; do
   [ "$rmod" = "(crate)" ] && continue
   triple=$(grep "^${rpkg}:" <<<"$CRATES") || { echo "FAIL: table row for unknown package $rpkg"; fail=1; continue; }
   IFS=: read -r _ dir lib <<<"$triple"
-  grep -qE "\b${lib}::${rmod}\b" "$dir/public-api.txt" \
+  grep -qE "^pub mod ${lib}::${rmod}\$" "$dir/public-api.txt" \
     || { echo "FAIL: table row $rpkg::$rmod matches nothing in $dir/public-api.txt"; fail=1; }
 done <<<"$rows"
 

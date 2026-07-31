@@ -1594,16 +1594,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
-name = "srt-sys"
-version = "0.3.0"
-dependencies = [
- "bindgen",
- "cmake",
- "libc",
- "pkg-config",
-]
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2127,13 +2117,13 @@ dependencies = [
  "os_socketaddr",
  "proptest",
  "secrecy",
- "srt-sys",
  "thiserror 2.0.18",
  "tracing",
  "tracing-test",
  "tst-core",
  "tst-pipeline",
  "tst-test-helpers",
+ "tstrans-srt-sys",
 ]
 
 [[package]]
@@ -2175,6 +2165,17 @@ dependencies = [
 [[package]]
 name = "tstrans-mbedtls-src"
 version = "0.3.0+3.6.7"
+
+[[package]]
+name = "tstrans-srt-sys"
+version = "0.3.0"
+dependencies = [
+ "bindgen",
+ "cmake",
+ "libc",
+ "pkg-config",
+ "tstrans-mbedtls-src",
+]
 
 [[package]]
 name = "typenum"

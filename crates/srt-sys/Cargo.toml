@@ -1,5 +1,5 @@
 [package]
-name        = "srt-sys"
+name        = "tstrans-srt-sys"
 description = "Raw FFI bindings to Haivision libsrt 1.5.x"
 version.workspace      = true
 edition.workspace      = true
@@ -8,8 +8,20 @@ license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
 links       = "srt"
+readme      = "README.md"
+keywords    = ["srt", "libsrt", "video", "streaming"]
+categories  = ["external-ffi-bindings", "multimedia::video"]
+exclude = [
+    "vendor/srt/apps/",
+    "vendor/srt/docs/",
+    "vendor/srt/test/",
+    "vendor/srt/testing/",
+    "vendor/srt/.github/",
+    "vendor/srt/examples/",
+]
 
 [lib]
+name       = "srt_sys"
 crate-type = ["rlib"]
 doctest    = false
 
@@ -17,9 +29,10 @@ doctest    = false
 libc = { workspace = true }
 
 [build-dependencies]
-bindgen    = { workspace = true }
-cmake      = { workspace = true }
-pkg-config = { workspace = true }
+bindgen             = { workspace = true }
+cmake               = { workspace = true }
+pkg-config          = { workspace = true }
+tstrans-mbedtls-src = { path = "../mbedtls-src", version = "0.3.0" }
 
 [dev-dependencies]
 libc = { workspace = true }
@@ -27,7 +40,8 @@ libc = { workspace = true }
 [features]
 default = ["mbedtls"]
 
-# Enable encryption support by building mbedTLS from the vendored submodule
-# at vendor/mbedtls and linking it into libsrt with USE_ENCLIB=mbedtls.
-# Disabling this feature reverts to an ENABLE_ENCRYPTION=OFF build.
+# Enable encryption support by building mbedTLS from the vendored source
+# tree provided by tstrans-mbedtls-src and linking it into libsrt with
+# USE_ENCLIB=mbedtls. Disabling this feature reverts to an
+# ENABLE_ENCRYPTION=OFF build.
 mbedtls = []

@@ -1,9 +1,9 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! KLV codec — generic substrate plus the typed ST 0601/0102/0806/0903 local
 //! sets, the ST 0605 and ST 1010 packs, the ST 1204 Core Identifier, and the
 //! ST 0805 KLV→CoT conversion layer.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Generic substrate plus typed layers:
 //!

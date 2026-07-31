@@ -1,7 +1,7 @@
+//! `RawSender<T: Transport>` — one-shot byte-blind sender.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `RawSender<T: Transport>` — one-shot byte-blind sender.
 //!
 //! Each `send` call sends exactly one outbound message of the given
 //! length. No buffering, no framing, no accumulation. Caller is

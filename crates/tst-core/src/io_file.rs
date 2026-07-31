@@ -1,7 +1,7 @@
+//! File-based ergonomics for the muxer and demuxer.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! File-based ergonomics for the muxer and demuxer.
 //!
 //! Gated behind the `file` cargo feature (default-on). Embedded users
 //! without a filesystem disable via `tst-core = { default-features = false }`.

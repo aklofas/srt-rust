@@ -1,7 +1,7 @@
+//! MPEG-1 / MPEG-2 / MPEG-2.5 audio frame iterator.
+//!
 //! **Stability: Provisional** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! MPEG-1 / MPEG-2 / MPEG-2.5 audio frame iterator.
 //!
 //! See [`crate::codec`] for umbrella architecture and design rationale.
 //!

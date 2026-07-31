@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! `MuxSender<T: Transport>` — composes `mpegts::mux::Muxer` with a
 //! `Transport` for the canonical NAL+KLV → TS → SRT send path.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Internally synchronized: `send_video` and `send_klv` may be called
 //! from different threads concurrently. The lock is held across push →

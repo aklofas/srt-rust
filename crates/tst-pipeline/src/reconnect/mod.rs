@@ -1,7 +1,7 @@
+//! `ManagedTransport<T>` — Transport decorator with reconnect + gap buffer.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `ManagedTransport<T>` — Transport decorator with reconnect + gap buffer.
 //!
 //! Wraps any inner Transport (most commonly `SrtTransport`); on send
 //! failure with `Broken` semantics, queues the bytes in a fixed-size

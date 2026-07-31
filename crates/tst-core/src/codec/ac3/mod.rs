@@ -1,7 +1,7 @@
+//! AC-3 (ATSC A/52) syncframe parser.
+//!
 //! **Stability: Provisional** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! AC-3 (ATSC A/52) syncframe parser.
 //!
 //! Stateless, minimal parser for the syncinfo + first few bsi fields of
 //! an AC-3 elementary stream, used by the muxer to derive the mandatory

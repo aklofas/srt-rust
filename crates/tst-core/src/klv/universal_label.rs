@@ -1,9 +1,9 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! 16-byte SMPTE/MISB Universal Label. Non-validating constructor; introspection
 //! helpers for the SMPTE structural fields (oid, category, registry, structure
 //! designator). Well-known constants for canonical labels.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Per SMPTE 336M / MISB ST 0107, a Universal Label is a 16-byte key. Bytes
 //! 0-3 are the SMPTE OID prefix, byte 4 is the category, byte 5 is the

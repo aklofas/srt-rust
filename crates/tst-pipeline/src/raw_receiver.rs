@@ -1,7 +1,7 @@
+//! `RawReceiver<R>` — return one owned byte vec per recv, no TS framing.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `RawReceiver<R>` — return one owned byte vec per recv, no TS framing.
 //!
 //! This is the simplest receive shell: one `recv_one` call blocks until a
 //! single SRT message arrives, then returns the bytes verbatim. There is no

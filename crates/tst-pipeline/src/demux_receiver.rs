@@ -1,7 +1,7 @@
+//! `DemuxReceiver<R>` — full receive: RecvTransport → Receiver → Demuxer.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! `DemuxReceiver<R>` — full receive: RecvTransport → Receiver → Demuxer.
 //!
 //! Mirrors the `MuxSender` shape on the receive side. Includes
 //! `add_byte_sink` for fan-out: callbacks see every 188-byte TS packet

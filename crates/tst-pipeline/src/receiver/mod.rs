@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! `Receiver<R>` — pull bytes from a `RecvTransport`, run TS sync recovery,
 //! and emit 188-byte aligned packets.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! `Receiver` is the receive-side counterpart to `Sender`: where
 //! `Sender` wraps raw bytes into TS packets, `Receiver` receives a byte

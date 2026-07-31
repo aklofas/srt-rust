@@ -1,7 +1,7 @@
+//! H.265 / HEVC parameter-set parsers.
+//!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
-//! H.265 / HEVC parameter-set parsers.
 //!
 //! See [`crate::codec`] for umbrella architecture and design rationale.
 //!

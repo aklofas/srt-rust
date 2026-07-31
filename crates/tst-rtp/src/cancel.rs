@@ -1,9 +1,9 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! Cancellation primitive for the `RtpTransport` / `RtpRecvTransport`
 //! send/recv UDP socket wrappers (defined in the `transport` module,
 //! Task 7+).
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! The transport's blocking send/recv loops use a 100 ms socket-level
 //! timeout (`UdpSocket::set_read_timeout` / `set_write_timeout`); on each

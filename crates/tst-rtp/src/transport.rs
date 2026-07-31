@@ -1,8 +1,8 @@
-//! **Stability: Stable** — see the
-//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
-//!
 //! `RtpTransport` (send) + `RtpRecvTransport` (recv) — sync UDP socket
 //! wrappers behind the [`tst_core::transport`] traits.
+//!
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
 //! Phase 1 ships only the UDP data plane; RTSP control plane (Phase 2)
 //! is what makes negotiated transports work. For now, sender + receiver

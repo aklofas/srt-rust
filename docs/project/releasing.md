@@ -57,6 +57,15 @@ Central Portal in a **staged** state that a maintainer releases manually.
 
    The rail does **not** cover everything the version sweep must touch —
    also update by hand:
+   - **every internal path-dependency's pinned `version = "X.Y.Z"` key** —
+     `crates/{srt-sys,rist-sys,tst-pipeline,tst-srt,tst-rist,tst-udp,tst-tcp,
+     tst-hls,tst-rtp}/Cargo.toml` (12 keys total: `tst-srt` has 3 including a
+     dev-dependency, `tst-rist` has 2, the rest have 1 each). Miss one of
+     these and the crates.io ordered publish below fails at layer 2 — after
+     the irreversible layer-1 publish already landed. `release-version-
+     consistency.sh` now asserts these match the workspace version (see
+     `RVC_DEP_TOMLS` in the script), so this step is CI-enforced, not just
+     convention;
    - the workspace `Cargo.lock`, the fuzz-workspace lockfiles
      (`crates/*/fuzz/Cargo.lock`), **and the embedded sub-project lockfiles**
      (`embedded/baremetal-qemu{,-c}/Cargo.lock`,
@@ -129,8 +138,12 @@ live on the index):
 3. `tst-core` (no internal path dependencies with a `version` key)
 4. `tst-pipeline` (depends on `tst-core`)
 5. `tst-udp`, `tst-tcp`, `tst-hls`, `tst-rtp`, `tst-srt`, `tst-rist` (each
-   depends only on `tst-core` + `tst-pipeline`; publish in any order once
-   layer 4 is live)
+   depends on `tst-core`; `tst-srt` additionally depends on
+   `tstrans-srt-sys` and `tst-rist` on `tstrans-rist-sys` — both already
+   live from layer 2. `tst-pipeline` appears only as an unversioned
+   dev-dependency in some of these crates' test suites — not a real,
+   version-pinned publish-order dependency. Publish in any order once
+   layers 2-4 are live)
 
 For each crate, in the order above:
 
@@ -167,6 +180,17 @@ publish` command returned success.
   the first manual publish. Track "wire up Trusted Publishing for the 11
   crates.io crates" as a recorded post-v0.4.0 follow-up.
 
+**Docs flip (one-time, after all 11 crates are live):** the docs were written
+before crates.io publishing existed, so they tell readers to depend via git.
+Once every crate has a first publish on the index, update:
+- `docs/start/quickstart.md`'s "Until `ts-transformer` is published to
+  crates.io, depend on it via git" section — switch the `[dependencies]`
+  snippet from `{ git = "https://github.com/aklofas/ts-transformer" }` to a
+  plain crates.io version requirement (e.g. `tst-core = "0.4"`).
+- The per-language install snippets in `docs/languages/rust.md` (the
+  `tst-core`/`tst-pipeline`/`tst-srt` block under "Install") — same git-to-
+  crates.io flip.
+
 **Rail note:** the `publish-package-sanity` CI rail
 (`scripts/check/rust/publish-package-sanity.sh`) cannot run a real `cargo
 package --no-verify` on `tstrans-srt-sys` / `tstrans-rist-sys` until
@@ -186,6 +210,11 @@ this release.
   stages for manual inspection (`publishToMavenCentral(automaticRelease =
   false)` in `bindings/jvm/build.gradle.kts`). Confirm that flag's current
   value before publishing if you intend to change the staged behavior.
+- crates.io publishes are likewise **permanent/immutable** — a published
+  version can never be overwritten or deleted, only `cargo yank`ed (which
+  hides it from new dependency resolution but does not remove it from the
+  index). A bad crates.io publish means shipping a corrective patch version,
+  same as Maven above.
 - If the Portal upload fails with an opaque error, re-run the publish with
   `--info` added to the `./gradlew publishToMavenCentral` invocation to capture
   the HTTP response body from the Portal.

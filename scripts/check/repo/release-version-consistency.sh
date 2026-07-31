@@ -21,6 +21,16 @@
 # unrelated C ABI version (`TST_ABI_VERSION_*`, currently 0.17) — a different
 # number that must be ignored.
 #
+# ADDITIONALLY: every internal path-dependency's pinned `version = "X.Y.Z"`
+# key (e.g. `tst-core = { path = "../tst-core", version = "0.3.0" }`, required
+# by crates.io publishing — a path dep with no `version` key can't resolve
+# once the crate is fetched from the registry instead of the path) must equal
+# the agreed workspace version too. Missed at a version-sweep bump this means
+# a stale `^0.3.0` requirement forever: the crates.io ordered publish would
+# fail at layer 2 (first dependent crate) AFTER the irreversible layer-1
+# publish already landed, and a coincidentally-same-length stale version could
+# fail silently/skewed instead of loudly. Scanned via RVC_DEP_TOMLS below.
+#
 # Run it:    bash scripts/check/repo/release-version-consistency.sh
 # Tag check: bash scripts/check/repo/release-version-consistency.sh 0.2.0
 #            (or, on a v* tag build, GITHUB_REF_NAME=vX.Y.Z is honoured)
@@ -33,6 +43,8 @@
 #   RVC_C_LIB        bindings/c/core/src/lib.rs
 #   RVC_C_HEADER     bindings/c/include/tstrans.h
 #   RVC_PY_TEST      bindings/python/tests/test_version.py
+#   RVC_DEP_TOMLS    space-separated list of Cargo.toml files to scan for
+#                    internal path-dependency `version` keys
 #
 # Bash 3.2-portable (macOS CI is a gating platform): no
 # `mapfile`/`readarray`/`declare -A`/`declare -a`, and `mktemp` is always given
@@ -47,6 +59,12 @@ RVC_PY_CARGO="${RVC_PY_CARGO:-$ROOT/bindings/python/Cargo.toml}"
 RVC_C_LIB="${RVC_C_LIB:-$ROOT/bindings/c/core/src/lib.rs}"
 RVC_C_HEADER="${RVC_C_HEADER:-$ROOT/bindings/c/include/tstrans.h}"
 RVC_PY_TEST="${RVC_PY_TEST:-$ROOT/bindings/python/tests/test_version.py}"
+
+# The 9 Cargo.toml files that carry an internal path-dependency `version =`
+# key (12 keys total: tst-srt has 3 incl. a dev-dependency, tst-rist has 2,
+# the rest have 1 each). Not every crates/*/Cargo.toml has one — e.g. tst-core
+# has no internal path deps with a `version` key.
+RVC_DEP_TOMLS="${RVC_DEP_TOMLS:-$ROOT/crates/srt-sys/Cargo.toml $ROOT/crates/rist-sys/Cargo.toml $ROOT/crates/tst-pipeline/Cargo.toml $ROOT/crates/tst-srt/Cargo.toml $ROOT/crates/tst-rist/Cargo.toml $ROOT/crates/tst-udp/Cargo.toml $ROOT/crates/tst-tcp/Cargo.toml $ROOT/crates/tst-hls/Cargo.toml $ROOT/crates/tst-rtp/Cargo.toml}"
 
 # ---------------------------------------------------------------------------
 # extractors — each echoes the version (or empty on no-match)
@@ -82,6 +100,15 @@ cdefine_version() { # <file>
 pytest_version() { # <file>
   grep -m1 -E 'tstrans\.__version__[[:space:]]*==' "$1" 2>/dev/null \
     | sed -nE 's/.*==[[:space:]]*"([^"]*)".*/\1/p'
+}
+
+# Every `<crate> = { ... path = "../..." ... version = "X.Y.Z" ... }` internal
+# dependency line in <file> -> one "<file>:<line><TAB><version>" row per hit.
+# These are always single-line inline tables in this workspace (verified by
+# grep across crates/*/Cargo.toml), so a per-line regex is sufficient.
+internal_dep_versions() { # <file>
+  grep -nE 'path[[:space:]]*=[[:space:]]*"\.\./.*version[[:space:]]*=[[:space:]]*"[^"]+"' "$1" 2>/dev/null \
+    | sed -nE "s#^([0-9]+):.*version[[:space:]]*=[[:space:]]*\"([^\"]*)\".*#$1:\1\t\2#p"
 }
 
 # ---------------------------------------------------------------------------
@@ -147,6 +174,21 @@ run_check() { # [EXPECTED_VERSION]
     return 1
   fi
 
+  # (2.5) every internal path-dependency `version` key must equal $first too
+  # (see the ADDITIONALLY note in the file header for why this matters).
+  local dep_mismatch=0 dep_toml dep_site dep_ver
+  for dep_toml in $RVC_DEP_TOMLS; do
+    [ -f "$dep_toml" ] || continue
+    while IFS=$'\t' read -r dep_site dep_ver; do
+      [ -n "$dep_site" ] || continue
+      if [ "$dep_ver" != "$first" ]; then
+        echo "FAIL: internal dep version key at $dep_site = \"$dep_ver\" (workspace is $first)" >&2
+        dep_mismatch=1
+      fi
+    done < <(internal_dep_versions "$dep_toml" || true)
+  done
+  [ "$dep_mismatch" -eq 0 ] || return 1
+
   # (3) optional expected/tag version must match the agreed version.
   if [ -n "$expected" ] && [ "$first" != "$expected" ]; then
     echo "FAIL: source version ($first) does not match expected/tag version ($expected)" >&2
@@ -193,6 +235,9 @@ self_test() {
       printf '#define TST_VERSION_PATCH %s\n' "$pat"
     } > "$tmp/tstrans.h"
     printf '    assert tstrans.__version__ == "%s"\n' "$ver" > "$tmp/test_version.py"
+    # A single-line inline-table internal path-dependency, mirroring the real
+    # `crates/*/Cargo.toml` shape the (2.5) check scans.
+    printf '[dependencies]\ntst-core = { path = "../tst-core", version = "%s" }\n' "$ver" > "$tmp/dep-crate.toml"
   }
 
   # Run the real script with env pointed at the fixtures. $@ -> positional args.
@@ -203,6 +248,7 @@ self_test() {
     RVC_C_LIB="$tmp/lib.rs" \
     RVC_C_HEADER="$tmp/tstrans.h" \
     RVC_PY_TEST="$tmp/test_version.py" \
+    RVC_DEP_TOMLS="$tmp/dep-crate.toml" \
     GITHUB_REF_NAME="" \
     bash "$0" "$@"
   }
@@ -233,6 +279,15 @@ self_test() {
 
   # (4) consistent fixtures + wrong expected arg -> tag mismatch -> fail
   expect fail "expected arg 9.9.9 mismatches" 9.9.9 || return 1
+
+  # (5) internal dep-version key flipped -> fail
+  write_fixtures "0.2.0"
+  printf '[dependencies]\ntst-core = { path = "../tst-core", version = "0.1.0" }\n' > "$tmp/dep-crate.toml"
+  expect fail "internal dep version key flipped to 0.1.0" || return 1
+
+  # (6) restore -> pass
+  write_fixtures "0.2.0"
+  expect pass "internal dep version key restored" || return 1
 
   echo "release-version-consistency self-test: OK"
 }

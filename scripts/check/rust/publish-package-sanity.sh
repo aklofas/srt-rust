@@ -8,6 +8,9 @@
 #      and the deliberately-excluded subtrees (nested submodules / unused
 #      bundled fallback copies) stay excluded
 #   4. compressed package size stays under 9 MiB (crates.io limit: 10)
+#   5. census: exactly the known publishable crates carry publish=null (each
+#      with non-empty description/readme/keywords/categories); every other
+#      workspace member is explicitly publish=false
 # Linux-only: runs cargo package (heavy) and GNU stat.
 set -euo pipefail
 [ "$(uname -s)" = "Linux" ] || { echo "publish-package-sanity: SKIP (linux-only)"; exit 0; }
@@ -120,6 +123,30 @@ for pkg in tstrans-srt-sys tstrans-rist-sys tstrans-mbedtls-src; do
   fi
   [ "$size" -le $((9 * 1024 * 1024)) ] || { echo "FAIL: $pkg is $size bytes (> 9 MiB budget)"; fail=1; }
 done
+
+# Check 5: census. Exactly the 11 known publishable crates must carry
+# publish=null (cargo metadata's spelling for "no publish restriction") with
+# non-empty description/readme/keywords/categories (crates.io listing
+# quality); every other workspace member must be explicitly publish=false
+# (metadata: publish=[]) so a new crate can't silently become publishable.
+PUBLISHABLE="tstrans-mbedtls-src tstrans-srt-sys tstrans-rist-sys tst-core tst-pipeline tst-udp tst-tcp tst-hls tst-rtp tst-srt tst-rist"
+meta=$(cargo metadata --format-version 1 --no-deps 2>/dev/null) || { echo "FAIL: cargo metadata"; fail=1; meta=""; }
+if [ -n "$meta" ]; then
+  is_publishable() { local n=$1 p; for p in $PUBLISHABLE; do [ "$p" = "$n" ] && return 0; done; return 1; }
+  null_count=$(jq '[.packages[] | select(.publish == null)] | length' <<<"$meta")
+  [ "$null_count" -eq 11 ] || { echo "FAIL: expected 11 publish=null packages, found $null_count"; fail=1; }
+  while IFS=$'\t' read -r name publish desc readme kw cat; do
+    if is_publishable "$name"; then
+      [ "$publish" = "null" ] || { echo "FAIL: $name is publishable but publish=$publish (want null)"; fail=1; }
+      [ "$desc" -gt 0 ] || { echo "FAIL: $name missing description"; fail=1; }
+      [ "$readme" != "null" ] || { echo "FAIL: $name missing readme"; fail=1; }
+      [ "$kw" -gt 0 ] || { echo "FAIL: $name missing keywords"; fail=1; }
+      [ "$cat" -gt 0 ] || { echo "FAIL: $name missing categories"; fail=1; }
+    else
+      [ "$publish" = "[]" ] || { echo "FAIL: $name is not in the publishable list but publish=$publish (want [], i.e. \`publish = false\`)"; fail=1; }
+    fi
+  done < <(jq -r '.packages[] | [.name, (.publish|tostring), ((.description // "")|length), (.readme // "null"), (.keywords|length), (.categories|length)] | @tsv' <<<"$meta")
+fi
 
 [ "$fail" -eq 0 ] && echo "publish-package-sanity: OK"
 exit "$fail"

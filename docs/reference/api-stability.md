@@ -144,12 +144,14 @@ not restated here.
 ### 2026-07-30 — MuxSender consumption-info fix: rejected alternatives
 
 The fix for external-review triage item 7 gives transport-source
-`MuxSenderError`s an `input_consumed: bool`, set at the failure site, so
-callers always know whether a failed `send_*` call touched this call's
-input (`true`, do not resend — it's muxed and queued, draining on the
-next `send_*`) or only drained previously retained bytes (`false`, safe
-to retry the same input). Two alternative designs were considered and
-rejected:
+`MuxSenderError`s an `input_consumed: Option<bool>` field, set at the
+failure site, so callers always know whether a failed `send_*` call
+touched this call's input: `Some(true)` — consumed (muxed and retained
+in the pending queue, draining on the next `send_*`) — do not resend;
+`Some(false)` — not consumed (a mux-side rejection, a closed transport,
+or a failure draining bytes retained by a *previous* call) — safe to
+retry the same input; `None` — not a per-call input-path error (e.g. a
+poisoned lock). Two alternative designs were considered and rejected:
 
 - **`SendOutcome` return enum.** Rejected because it changes the `Ok`
   path of all 14 `send_*` methods and every existing caller, merely

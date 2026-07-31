@@ -94,11 +94,16 @@ pub struct RawSendStats {
 /// One-shot byte-blind sender. See module docs for the no-buffering /
 /// no-framing contract.
 ///
-/// `RawSender` performs no pending retention — a transport error means the
-/// current input was not delivered and may be retried; there is no
+/// `RawSender` performs no pending retention — each `send()` call is a
+/// single, independent attempt on its own input, so there is no
 /// cross-call ambiguity, hence no `input_consumed` field (contrast
 /// [`crate::Sender::send_ts`] and [`crate::MuxSender`], which retain
 /// undelivered bytes across calls and so report per-error consumption).
+/// Whether THIS call's bytes were delivered on error is governed by the
+/// [`Transport::send_bytes`] contract, not by `RawSender`: only
+/// `TransportError::Backpressure` guarantees they were not consumed — on
+/// any other error the transport state is undefined and retrying the
+/// same bytes is not guaranteed safe.
 ///
 /// # Closing
 ///

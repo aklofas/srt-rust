@@ -1,5 +1,5 @@
 [package]
-name        = "rist-sys"
+name        = "tstrans-rist-sys"
 description = "Raw FFI bindings to VideoLAN librist 0.2.x"
 version.workspace      = true
 edition.workspace      = true
@@ -8,8 +8,24 @@ license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
 links       = "rist"
+readme      = "README.md"
+keywords    = ["rist", "librist", "video", "streaming"]
+categories  = ["external-ffi-bindings", "multimedia::video"]
+exclude = [
+    "vendor/librist/docs/",
+    "vendor/librist/test/",
+    "vendor/librist/tools/",
+    "vendor/librist/subprojects/",
+    "vendor/librist/.gitlab-ci.yml",
+    "vendor/librist/contrib/mbedtls/include/",
+    "vendor/librist/contrib/mbedtls/library/",
+    "vendor/librist/contrib/mbedtls/LICENSE",
+    "vendor/librist/contrib/mbedtls/Makefile",
+    "vendor/librist/contrib/mbedtls/refresh_mbedtls_source.sh",
+]
 
 [lib]
+name       = "rist_sys"
 crate-type = ["rlib"]
 doctest    = false
 
@@ -17,10 +33,11 @@ doctest    = false
 libc = { workspace = true }
 
 [build-dependencies]
-bindgen    = { workspace = true }
-cc         = { workspace = true }
-cmake      = { workspace = true }
-pkg-config = { workspace = true }
+bindgen             = { workspace = true }
+cc                  = { workspace = true }
+cmake               = { workspace = true }
+pkg-config          = { workspace = true }
+tstrans-mbedtls-src = { path = "../mbedtls-src", version = "0.3.0" }
 
 [dev-dependencies]
 libc = { workspace = true }
@@ -29,9 +46,9 @@ libc = { workspace = true }
 default = ["mbedtls"]
 
 # Enable AES-128/192/256 PSK encryption by building librist against the
-# SHARED workspace-level `vendor/mbedtls` submodule (mbedTLS 3.6.x — the same
-# copy srt-sys links). rist-sys builds vendor/mbedtls via cmake to a private
-# prefix, then drives librist's meson with `-Dbuiltin_mbedtls=false` +
+# SHARED mbedTLS source tree provided by `tstrans-mbedtls-src` (mbedTLS
+# 3.6.x — the same copy srt-sys links). rist-sys builds it via cmake to a
+# private prefix, then drives librist's meson with `-Dbuiltin_mbedtls=false` +
 # `PKG_CONFIG_PATH` pointing at that prefix so librist links the 3.6.x
 # mbedcrypto instead of its bundled `contrib/mbedtls` 2.26.0. Disabling this
 # feature builds librist with `use_mbedtls=false` — no encryption.

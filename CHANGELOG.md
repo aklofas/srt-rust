@@ -63,6 +63,26 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unused bundled fallback sources) absent, and compressed package size
   under crates.io's budget.
 
+### Public API classified into stability tiers
+
+#### Added
+
+- `docs/reference/api-stability.md` classifies every top-level public
+  module across the 10 `cargo public-api`-ratcheted crates into a
+  Stable / Provisional / Experimental / Internal tier — the layer on top of
+  `docs/reference/public-api.md`'s binding-canonical-workflow rule (that
+  page decides what stays public at all; this one says how much churn to
+  expect once it's public). No module is Experimental yet; the tier is
+  reserved for future new surface.
+- Every classified module gained a matching `Stability: <Tier>` line in
+  its rustdoc header, so the tier is visible from `cargo doc` without
+  cross-referencing the table.
+- CI rail `scripts/check/rust/api-stability-coverage.sh` keeps the table
+  in sync with the `cargo public-api` baselines bidirectionally: every
+  top-level public module (and, under `tst_core::klv` /
+  `tst_core::codec`, every second-level dialect/parser module) must have
+  a stability row, and every row must still name a real module.
+
 ### MuxSender/Sender: explicit input-consumption reporting
 
 #### Added

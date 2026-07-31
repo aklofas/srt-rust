@@ -13,29 +13,40 @@
 //!
 //! # Input consumption and retry
 //!
-//! The two error sources have opposite retry semantics:
+//! Every error reports whether this call's input was consumed via
+//! [`MuxSenderError::input_consumed`]:
 //!
-//! - [`MuxSenderErrorSource::Mux`]: the push is atomic — the muxer state is
-//!   unchanged and none of the input's TS packets were produced. The caller
-//!   MAY retry the same input after fixing the cause.
-//! - [`MuxSenderErrorSource::Transport`]: two sub-cases, distinguishable by
-//!   the PREVIOUS call's outcome (a successful `send_*` always leaves the
-//!   pending queue empty):
-//!   - if the previous `send_*` returned `Ok` (and the error is not the
-//!     terminal `TransportError::Closed` from an intervening `close()`),
-//!     the failure happened while sending THIS input's TS bytes: the input
-//!     **was consumed** — muxed (continuity counters advanced) and retained
-//!     in the pending queue, which drains first on the next `send_*` call,
-//!     exactly once, in order. Do **not** push the same input again: it
-//!     would be muxed a second time and the stream would carry duplicate
-//!     access units.
-//!   - if the previous `send_*` ALSO returned a transport error, the
-//!     failure may instead have hit the still-undrained retained bytes
-//!     BEFORE this call's input was pushed — in that case this input was
-//!     **not** consumed, and pushing different data next would lose it.
-//!     Callers that must not drop access units across repeated transport
-//!     failures should wrap the transport in [`crate::ManagedTransport`] rather
-//!     than hand-rolling recovery on the bare shell.
+//! - `Some(false)` — input NOT consumed (muxer state unchanged): a
+//!   mux-side rejection, a closed transport, or a failure while draining
+//!   bytes retained by a PREVIOUS call. Retrying the same input after
+//!   fixing the cause cannot duplicate data.
+//! - `Some(true)` — input consumed: muxed (continuity counters advanced)
+//!   and retained in the pending queue, which drains first on the next
+//!   `send_*` call, exactly once, in order. Do NOT push the same input
+//!   again — the stream would carry duplicate access units.
+//! - `None` — not a `send_*` input-path error (e.g. poisoned lock).
+//!
+//! ```
+//! # use tst_pipeline::{MuxSender, MuxSenderError};
+//! # fn retry_policy<T: tst_core::transport::Transport>(
+//! #     sender: &MuxSender<T>, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz,
+//! # ) {
+//! match sender.send_video(nal, pts, true) {
+//!     Ok(()) => {}
+//!     Err(e) if e.input_consumed == Some(false) => {
+//!         // safe to retry the same input after fixing the cause
+//!     }
+//!     Err(_) => {
+//!         // consumed (or indeterminate): do not resend this input;
+//!         // pending bytes drain on the next send_* call
+//!     }
+//! }
+//! # }
+//! ```
+//!
+//! Callers that must not drop access units across repeated transport
+//! failures should wrap the transport in [`crate::ManagedTransport`]
+//! rather than hand-rolling recovery on the bare shell.
 
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
@@ -1085,16 +1096,20 @@ impl<T: Transport> Inner<T> {
         push: impl FnOnce(&mut Muxer) -> Result<(), MuxError>,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(TransportError::Closed.into());
+            return Err(MuxSenderError::from(TransportError::Closed).with_input_consumed(false));
         }
-        // Drain any leftover from a previous failed call first.
-        self.drain_pending()?;
+        // Drain any leftover from a previous failed call first. A failure
+        // here happens BEFORE this call's input is touched.
+        self.drain_pending()
+            .map_err(|e| e.with_input_consumed(false))?;
         // Push new content. Sample back-pressure between the push (queue at
         // peak) and the drain (queue back to zero).
         let push_result = push(&mut self.muxer);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        push_result.map_err(|e| MuxSenderError::from(e).with_input_consumed(false))?;
+        // From here the input is muxed and retained: a failure leaves it in
+        // the pending queue, draining exactly once on the next call.
+        self.drain_muxer().map_err(|e| e.with_input_consumed(true))
     }
 
     fn send_video(
@@ -1359,6 +1374,23 @@ pub struct MuxSenderError {
     /// instance produced by the underlying muxer / transport).
     #[source]
     pub source: MuxSenderErrorSource,
+    /// Whether THIS call's input was consumed by the muxer.
+    ///
+    /// - `Some(false)` — not consumed; retrying the same input cannot
+    ///   duplicate data.
+    /// - `Some(true)` — consumed: muxed and retained in the pending
+    ///   queue (drains exactly once on the next `send_*`); do NOT push
+    ///   the same input again.
+    /// - `None` — the error did not originate from a `send_*` input
+    ///   path (e.g. a poisoned internal lock; state indeterminate).
+    pub input_consumed: Option<bool>,
+}
+
+impl MuxSenderError {
+    pub(crate) fn with_input_consumed(mut self, consumed: bool) -> Self {
+        self.input_consumed = Some(consumed);
+        self
+    }
 }
 
 /// Typed source enum for [`MuxSenderError`]. One variant per error type
@@ -1377,6 +1409,7 @@ impl From<MuxError> for MuxSenderError {
         Self {
             kind: crate::shell_error::kind_from_mux(&e),
             source: MuxSenderErrorSource::Mux(e),
+            input_consumed: None,
         }
     }
 }
@@ -1386,6 +1419,7 @@ impl From<TransportError> for MuxSenderError {
         Self {
             kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Send),
             source: MuxSenderErrorSource::Transport(e),
+            input_consumed: None,
         }
     }
 }
@@ -1981,6 +2015,116 @@ mod multi_stream_tests {
             captured > 0,
             "MuxSender::close must drain pending_bytes (parity with Drop); captured = {captured}"
         );
+    }
+}
+
+#[cfg(test)]
+mod input_consumed_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tst_core::mpegts::mux::{MuxerProgramConfigBuilder, VideoCodec};
+
+    /// Transport that fails while `failing` is set; delivers otherwise.
+    struct SwitchableTransport {
+        failing: Arc<AtomicBool>,
+        sink: Arc<Mutex<Vec<u8>>>,
+    }
+    impl Transport for SwitchableTransport {
+        fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+            if self.failing.load(Ordering::SeqCst) {
+                return Err(TransportError::Backpressure {
+                    msg: "test outage".into(),
+                    errno_code: None,
+                });
+            }
+            self.sink.lock().unwrap().extend_from_slice(b);
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool {
+            true
+        }
+    }
+
+    fn mk_sender(
+        failing: Arc<AtomicBool>,
+        sink: Arc<Mutex<Vec<u8>>>,
+    ) -> MuxSender<SwitchableTransport> {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.pcr_pid(0x1011);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        MuxSender::new(SwitchableTransport { failing, sink }, cfg).unwrap()
+    }
+
+    const NAL: [u8; 6] = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+
+    /// Phase-2 failure: input muxed, then its bytes fail to send →
+    /// `Some(true)`. After healing, the NEXT call drains it exactly once.
+    #[test]
+    fn transport_failure_after_mux_reports_consumed() {
+        let failing = Arc::new(AtomicBool::new(true));
+        let sink = Arc::new(Mutex::new(Vec::new()));
+        let s = mk_sender(failing.clone(), sink.clone());
+
+        let err = s.send_video(&NAL, Pts90khz::new(0), true).unwrap_err();
+        assert_eq!(err.input_consumed, Some(true));
+
+        failing.store(false, Ordering::SeqCst);
+        s.send_video(&NAL, Pts90khz::new(3000), true).unwrap();
+        // Both AUs delivered; pending drained exactly once (byte count is
+        // a multiple of 188 and strictly more than one AU's packets).
+        let n = sink.lock().unwrap().len();
+        assert!(n > 0 && n % 188 == 0);
+    }
+
+    /// Phase-1 failure: retained bytes fail to drain BEFORE the new input
+    /// is touched → `Some(false)`; retrying the same input later loses
+    /// nothing and duplicates nothing.
+    #[test]
+    fn drain_phase_failure_reports_not_consumed() {
+        let failing = Arc::new(AtomicBool::new(true));
+        let sink = Arc::new(Mutex::new(Vec::new()));
+        let s = mk_sender(failing.clone(), sink.clone());
+
+        // Seed pending: first call consumes input, fails sending it.
+        let e1 = s.send_video(&NAL, Pts90khz::new(0), true).unwrap_err();
+        assert_eq!(e1.input_consumed, Some(true));
+        // Second call fails in the pending drain — its input NOT consumed.
+        let e2 = s.send_video(&NAL, Pts90khz::new(3000), true).unwrap_err();
+        assert_eq!(e2.input_consumed, Some(false));
+    }
+
+    /// Mux-source rejection is atomic → `Some(false)`.
+    #[test]
+    fn mux_error_reports_not_consumed() {
+        let failing = Arc::new(AtomicBool::new(false));
+        let sink = Arc::new(Mutex::new(Vec::new()));
+        let s = mk_sender(failing, sink);
+        // No KLV stream is configured on `mk_sender`'s program → rejected
+        // with `MuxError::NoKlvStreamsConfigured` before any state
+        // mutation (checked first thing in `Muxer::push_klv`).
+        let err = s.send_klv(&[0u8; 4], Pts90khz::new(0), 0).unwrap_err();
+        assert_eq!(err.input_consumed, Some(false));
+    }
+
+    /// Closed sender → `Some(false)`.
+    #[test]
+    fn closed_reports_not_consumed() {
+        let failing = Arc::new(AtomicBool::new(false));
+        let sink = Arc::new(Mutex::new(Vec::new()));
+        let s = mk_sender(failing, sink);
+        s.close();
+        let err = s.send_video(&NAL, Pts90khz::new(0), true).unwrap_err();
+        assert_eq!(err.input_consumed, Some(false));
     }
 }
 

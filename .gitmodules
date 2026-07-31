@@ -2,7 +2,7 @@
 	path = vendor/srt
 	url = https://github.com/Haivision/srt.git
 [submodule "vendor/mbedtls"]
-	path = vendor/mbedtls
+	path = crates/mbedtls-src/vendor/mbedtls
 	url = https://github.com/Mbed-TLS/mbedtls.git
 [submodule "vendor/librist"]
 	path = vendor/librist

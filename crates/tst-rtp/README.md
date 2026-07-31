@@ -25,9 +25,11 @@ tx.send_bytes(&ts_packet)?;
 # }
 ```
 
-**Stability: Stable** for the RTP transports and `RtspClient`; the
-`rtsp` module's server surface (`RtspServer`) is **Provisional** —
-still evolving. See the [API stability
+**Stability: Stable** for the RTP transports; the `rtsp` module
+(client + server) is formally **Provisional** — the client API
+(`RtspClient`) is stable in practice, but the module's tier is set by
+the still-evolving server surface (`RtspServer`). See the [API
+stability
 reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 
 **License:** MIT OR Apache-2.0.

@@ -227,8 +227,9 @@ sender preset internally.
   drop. `Passphrase::from_env(var)` and `Passphrase::from_file(path)`
   cover the usual deployment shapes.
 - `KeyLength` enum: `Aes128`, `Aes192`, `Aes256`. Default `Aes128`.
-- Encryption is gated by the `mbedtls` cargo feature on `srt-sys`, on
-  by default. `--no-default-features` builds an unencrypted libsrt;
+- Encryption is gated by the `mbedtls` cargo feature on `srt-sys`
+  (published as `tstrans-srt-sys`), on by default.
+  `--no-default-features` builds an unencrypted libsrt;
   setting a passphrase against that build fails at handshake.
 - Both peers must agree on passphrase and key length. A mismatch
   surfaces as `ConnectError::Rejected { reason: RejectReason::BadSecret, .. }`

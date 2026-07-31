@@ -25,7 +25,7 @@ directory owns one concern:
 
 | Directory | Owns | Notes |
 |---|---|---|
-| `crates/` | The pure-Rust core: library + transports + test-infra | `srt-sys`, `rist-sys` (raw FFI); `tst-core` (engine); `tst-pipeline` (shells); the transports `tst-srt` / `tst-rtp` / `tst-udp` / `tst-tcp` / `tst-rist`; `tst-integration`, `tst-test-helpers` (test infra) |
+| `crates/` | The pure-Rust core: library + transports + test-infra | `srt-sys` (published as `tstrans-srt-sys`), `rist-sys` (published as `tstrans-rist-sys`) (raw FFI); `tst-core` (engine); `tst-pipeline` (shells); the transports `tst-srt` / `tst-rtp` / `tst-udp` / `tst-tcp` / `tst-rist`; `tst-integration`, `tst-test-helpers` (test infra) |
 | `bindings/` | Language bindings for downstream consumers | `bindings/c` (crate `tst-c` — cdylib/staticlib + `include/tstrans.h`) with its embeddable rlib at `bindings/c/core` (crate `tst-c-core`); `bindings/python` (crate `tst-py`); `bindings/jvm` (crate `tst-jni`); `bindings/apple-android` planned |
 | `embedded/` | Bare-metal / QEMU firmware test harnesses (workspace-excluded) | `baremetal-qemu` (no_std muxer/pipeline QEMU smoke), `baremetal-qemu-c` (C-firmware staticlib glue), `freertos-srt` (libsrt-on-FreeRTOS) |
 | `examples/` | Runnable Rust examples (crate `tst-examples`, `publish = false`) | Task-oriented subfolders; C examples mirror this taxonomy under `bindings/c/examples/` |
@@ -63,7 +63,7 @@ layers. Binding crates (`tst-c`, `tst-jni`, `tst-uniffi`) depend on
 the same safe Rust API and means a fix in `tst-core` reaches every
 binding without per-binding patches.
 
-`srt-sys` is the raw FFI layer — bindgen-generated against libsrt 1.5.6,
+`srt-sys` (published as `tstrans-srt-sys`) is the raw FFI layer — bindgen-generated against libsrt 1.5.6,
 exposing roughly 72 `srt_*` functions and the full `SRT_*` constant
 surface, with `mbedtls` wired in as the encryption backend by default.
 `tst-core` is the safe Rust API; nothing above it should ever pull

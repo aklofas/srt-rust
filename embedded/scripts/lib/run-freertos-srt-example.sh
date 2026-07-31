@@ -21,7 +21,7 @@ run_phase() {  # $1=label  $2=host-PASS-token  $3=ENCRYPT  $4=passphrase-or-empt
   echo "==> building example firmware ($label)"
   ( cd embedded/freertos-srt && env ENCRYPT="$enc" ./build.sh example >/dev/null )
   echo "==> building example host harness ($label)"
-  SRT_FORCE_VENDORED=1 cargo build --manifest-path "$HOST_DIR/Cargo.toml" --release >/dev/null
+  SRT_FORCE_VENDORED=1 cargo build --manifest-path "$HOST_DIR/Cargo.toml" --release --locked >/dev/null
 
   echo "==> starting host listener ($label)"
   local hostout; hostout=$(mktemp)

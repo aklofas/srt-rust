@@ -36,7 +36,7 @@ Running `cargo` inside the workspace auto-uses 1.85 via rustup.
 
 | Crate         | Feature   | Default | Effect                                                           |
 | ------------- | --------- | ------- | ---------------------------------------------------------------- |
-| `srt-sys`     | `mbedtls` | on      | Vendored mbedTLS, `USE_ENCLIB=mbedtls`. Disable for unencrypted. |
+| `srt-sys` (published as `tstrans-srt-sys`) | `mbedtls` | on | Vendored mbedTLS, `USE_ENCLIB=mbedtls`. Disable for unencrypted. |
 | `tst-srt`     | `mbedtls` | on      | Propagates to `srt-sys/mbedtls`.                                 |
 | `tst-srt`     | `log`     | on      | Forwards libsrt's internal logging through the `log` facade.     |
 | `tst-core`    | `file`    | on      | Gates file I/O helpers. Disable for embedded targets without `std::fs`. |

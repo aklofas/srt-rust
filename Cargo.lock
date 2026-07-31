@@ -2173,6 +2173,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tstrans-mbedtls-src"
+version = "0.3.0+3.6.7"
+
+[[package]]
 name = "typenum"
 version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

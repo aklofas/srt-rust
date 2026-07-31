@@ -449,16 +449,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "srt-sys"
-version = "0.3.0"
-dependencies = [
- "bindgen",
- "cmake",
- "libc",
- "pkg-config",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -573,10 +563,25 @@ dependencies = [
  "libc",
  "os_socketaddr",
  "secrecy",
- "srt-sys",
  "thiserror",
  "tracing",
  "tst-core",
+ "tstrans-srt-sys",
+]
+
+[[package]]
+name = "tstrans-mbedtls-src"
+version = "0.3.0+3.6.7"
+
+[[package]]
+name = "tstrans-srt-sys"
+version = "0.3.0"
+dependencies = [
+ "bindgen",
+ "cmake",
+ "libc",
+ "pkg-config",
+ "tstrans-mbedtls-src",
 ]
 
 [[package]]

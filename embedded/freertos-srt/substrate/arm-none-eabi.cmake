@@ -25,7 +25,7 @@ set(_ARCH "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16")
 # doesn't also pull epoll — so it #includes our posix-shims/endian.h instead of
 # hitting its unconditional `#error Endian: platform not supported`.
 # (libsrt's single pthread_cancel call — absent from FreeRTOS-Plus-POSIX — is
-# removed by the vendor/srt patch, which makes CThread assign-to-joinable
+# removed by the crates/srt-sys/vendor/srt patch, which makes CThread assign-to-joinable
 # std::terminate() like std::thread; no opt-out define needed.)
 set(_DEFS "-D__GNU__=1 -include ${CMAKE_CURRENT_LIST_DIR}/posix-shims/shim_prefix.h")
 # The cross-built libsrt (USE_ENCLIB=mbedtls) includes mbedTLS headers and MUST

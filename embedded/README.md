@@ -20,8 +20,8 @@ of it runs under QEMU — no hardware required.
 ## Layout
 
 - `vendor/` — embedded-only submodules: `freertos-kernel`, `freertos-plus-posix`,
-  `lwip`. (The shared `srt` and `mbedtls` submodules stay at the workspace-level
-  `vendor/` — `srt-sys` builds them for host targets too.)
+  `lwip`. (The shared `srt` and `mbedtls` submodules live at `crates/srt-sys/vendor/srt`
+  and `crates/mbedtls-src/vendor/mbedtls` — `srt-sys` builds them for host targets too.)
 - `scripts/check/` — the embedded CI gate scripts (below).
 - `scripts/lib/` — helpers shared by the gates.
 
@@ -32,7 +32,7 @@ pin bare-metal targets and profiles) and consume the workspace crates by path
 ## Prerequisites
 
 ```bash
-git submodule update --init --recursive   # embedded/vendor/* + vendor/{srt,mbedtls}
+git submodule update --init --recursive   # embedded/vendor/* + crates/{srt-sys,mbedtls-src}/vendor/*
 sudo apt install qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi \
                  libstdc++-arm-none-eabi-newlib cmake python3
 rustup target add thumbv7em-none-eabihf riscv32imac-unknown-none-elf
@@ -97,8 +97,8 @@ submodules. Licenses are in each submodule tree.
 | FreeRTOS Kernel | `embedded/vendor/freertos-kernel` | MIT |
 | FreeRTOS-Plus-POSIX | `embedded/vendor/freertos-plus-posix` | MIT |
 | lwIP | `embedded/vendor/lwip` | BSD-3-Clause |
-| libsrt | `vendor/srt` | MPL-2.0 |
-| Mbed TLS | `vendor/mbedtls` | Apache-2.0 OR GPL-2.0-or-later |
+| libsrt | `crates/srt-sys/vendor/srt` | MPL-2.0 |
+| Mbed TLS | `crates/mbedtls-src/vendor/mbedtls` | Apache-2.0 OR GPL-2.0-or-later |
 
 ## Generated artifacts
 

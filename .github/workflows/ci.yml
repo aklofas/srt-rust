@@ -204,6 +204,10 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/repo/no-stale-relocated-paths.sh
 
+      - name: publish-package-sanity ratchet
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check/rust/publish-package-sanity.sh
+
       - name: check-close-contract-presence
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/rust/close-contract-presence.sh
@@ -580,13 +584,30 @@ jobs:
           # cargo-public-api's internal rustdoc render — this job also carries a
           # rolling nightly (doc lints), so a bare +nightly would silently unpin.
           # To bump: pick a new date,
-          # re-render all 9 baselines with it, and land both together.
+          # re-render all 10 baselines with it, and land both together.
           rustup toolchain install nightly-2026-07-03 --profile minimal --no-self-update
           cargo +stable install cargo-public-api --locked --quiet
-          for crate in rist-sys tst-core tst-hls tst-pipeline tst-rist tst-rtp tst-srt tst-tcp tst-udp; do
-            SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo +nightly-2026-07-03 public-api -p $crate --simplified > /tmp/public-api-current-$crate.txt
-            if ! diff -u crates/$crate/public-api.txt /tmp/public-api-current-$crate.txt; then
-              echo "Public API drift in $crate. Update crates/$crate/public-api.txt or revert the change." >&2
+          # pkg:dir pairs — the crates-io-packaging rename (tstrans-rist-sys,
+          # tstrans-mbedtls-src) changed the PACKAGE name but not the crate's
+          # on-disk DIRECTORY, so the baseline path (crates/<dir>/public-api.txt)
+          # can't be derived from the package name alone.
+          for pair in \
+            tstrans-rist-sys:rist-sys \
+            tstrans-mbedtls-src:mbedtls-src \
+            tst-core:tst-core \
+            tst-hls:tst-hls \
+            tst-pipeline:tst-pipeline \
+            tst-rist:tst-rist \
+            tst-rtp:tst-rtp \
+            tst-srt:tst-srt \
+            tst-tcp:tst-tcp \
+            tst-udp:tst-udp \
+          ; do
+            pkg="${pair%%:*}"
+            dir="${pair##*:}"
+            SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo +nightly-2026-07-03 public-api -p $pkg --simplified > /tmp/public-api-current-$pkg.txt
+            if ! diff -u crates/$dir/public-api.txt /tmp/public-api-current-$pkg.txt; then
+              echo "Public API drift in $pkg. Update crates/$dir/public-api.txt or revert the change." >&2
               exit 1
             fi
           done

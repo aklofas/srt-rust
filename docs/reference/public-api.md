@@ -80,9 +80,10 @@ keeps the public surface visible at the top of each `mod.rs`.
 
 ## Binding crates: no `cargo public-api` baseline (by design)
 
-Eight Rust library crates carry a committed `public-api.txt` baseline that
-CI checks via `cargo public-api` on every push: `rist-sys`, `tst-core`,
-`tst-pipeline`, `tst-rist`, `tst-rtp`, `tst-srt`, `tst-tcp`, and `tst-udp`.
+Ten Rust library crates carry a committed `public-api.txt` baseline that
+CI checks via `cargo public-api` on every push: `tstrans-rist-sys`,
+`tstrans-mbedtls-src`, `tst-core`, `tst-hls`, `tst-pipeline`, `tst-rist`,
+`tst-rtp`, `tst-srt`, `tst-tcp`, and `tst-udp`.
 
 The three binding crates — `bindings/c` (tst-c), `bindings/c/core`
 (tst-c-core), and `bindings/python` (tst-py) — intentionally carry **no**

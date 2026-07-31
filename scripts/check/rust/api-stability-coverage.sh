@@ -88,6 +88,12 @@ done
 # naming a struct/enum/impl (e.g. `error::CotError`) can't pass by matching
 # incidental text. This also correctly validates override rows that live
 # below the top level, like `mpegts::demux::low_level`.
+#
+# (crate) rows are skipped before the package lookup below, so
+# documentation-only packages like tstrans-srt-sys (which has no
+# `public-api.txt` baseline and is deliberately absent from $CRATES) never
+# reach it. A per-module row for a baseline-less package DOES fail,
+# deliberately — it would be unverifiable.
 while IFS=$'\t' read -r rpkg rmod; do
   [ "$rmod" = "(crate)" ] && continue
   triple=$(grep "^${rpkg}:" <<<"$CRATES") || { echo "FAIL: table row for unknown package $rpkg"; fail=1; continue; }

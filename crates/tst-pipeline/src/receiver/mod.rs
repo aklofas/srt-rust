@@ -87,7 +87,7 @@ pub struct ReceiverStats {
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as rx:` calls `close()` on exit |
 /// | C | `tst_receiver_close(rx)` (explicit; mirrors `Drop`); `tst_receiver_cancel(handle)` from any thread |
 ///
-/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct Receiver<R: RecvTransport> {
     transport: R,
     syncer: Syncer,

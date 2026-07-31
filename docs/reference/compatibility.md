@@ -89,7 +89,7 @@ feature.
 | Rust edition | 2024, MSRV **1.85** (`rust-toolchain.toml`) |
 | `libsrt` (Haivision) | **v1.5.6** (`crates/srt-sys/vendor/srt`, git submodule) |
 | `mbedTLS` | **v3.6.7** LTS (`crates/mbedtls-src/vendor/mbedtls`, git submodule) |
-| `bindgen` | 0.72 (FFI; `srt-sys` build) |
+| `bindgen` | 0.72 (FFI; `srt-sys` build, published as `tstrans-srt-sys`) |
 | `cbindgen` | 0.29 (C header generation; `tst-c` build) |
 | `cc` | 1.0 (compiles + links the C smoke test in `tst-c` integration tests) |
 | `cmake` | upstream-compatible; `pkg-config` discovery first, vendored fallback |
@@ -133,7 +133,7 @@ on (default).
 two Cargo features with similar-sounding names that operate at different layers
 and must not be confused:
 
-- **`mbedtls`** (`srt-sys` feature, default-on) — links the vendored mbedTLS
+- **`mbedtls`** (`srt-sys`/`tstrans-srt-sys` feature, default-on) — links the vendored mbedTLS
   3.6.x LTS library into libsrt to provide AES-128/192/256-CTR encryption of
   the SRT channel itself (data-plane wire encryption via `SRTO_PASSPHRASE` /
   `SRTO_PBKEYLEN`). Also used by `tst-rist` for RIST channel encryption. This

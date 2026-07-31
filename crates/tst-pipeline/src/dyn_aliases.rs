@@ -12,7 +12,7 @@
 //! `MuxSender<MyTransport>`); the aliases are purely a binding-author
 //! convenience.
 //!
-//! See the [binding-authors guide](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/binding-authors.md)
+//! See the [binding-authors guide](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/binding-authors.md)
 //! for worked examples per language.
 
 pub use crate::mux_sender::BoxedMuxSender;

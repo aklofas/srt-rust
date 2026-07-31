@@ -53,7 +53,7 @@ const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sock:` calls drop on exit |
 /// | C | (deferred — `Socket` is not directly exposed at the C ABI; senders/receivers wrap it) |
 ///
-/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct Socket {
     handle: srt_sys::SRTSOCKET,
     /// Shared close-once primitive. Cloned out via `cancel_handle()` so a

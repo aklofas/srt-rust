@@ -27,8 +27,8 @@ finished `.ts` file on disk.
 - Rust 1.85+ via rustup. Check: `rustc --version`. The repo's
   `rust-toolchain.toml` pins to 1.85 for local development.
 - C/C++ toolchain (`cmake`, `pkg-config`, `python3`, `build-essential`).
-  Required because `srt-sys` and `tst-core` build vendored libsrt and
-  mbedTLS from source.
+  Required because `srt-sys` (published as `tstrans-srt-sys`) and
+  `tst-core` build vendored libsrt and mbedTLS from source.
 - Debian/Ubuntu:
   `sudo apt-get install -y build-essential cmake pkg-config python3`.
 - macOS: `brew install cmake pkg-config` (`python3` is pre-installed).

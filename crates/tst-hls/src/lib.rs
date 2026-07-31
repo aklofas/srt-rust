@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+//!
 //! HLS publisher — segments MPEG-TS to disk + optional built-in HTTP server.
 //!
 //! See [`HlsPublisher`] for the entry point. Modes: LIVE (rolling window),

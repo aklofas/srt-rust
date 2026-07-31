@@ -21,7 +21,10 @@ mod tests {
     #[test]
     fn source_tree_is_present() {
         let d = super::source_dir();
-        assert!(d.join("CMakeLists.txt").is_file(), "mbedTLS tree missing at {d:?} — did `git submodule update --init` run?");
+        assert!(
+            d.join("CMakeLists.txt").is_file(),
+            "mbedTLS tree missing at {d:?} — did `git submodule update --init` run?"
+        );
         assert!(d.join("LICENSE").is_file());
     }
 }

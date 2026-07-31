@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+//!
 //! Raw MPEG-TS over UDP — unicast + multicast (IPv4 + IPv6).
 //!
 //! This crate provides [`UdpTransport`] (sender) and [`UdpRecvTransport`]

@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+//!
 //! TS Transformer SRT transport — safe libsrt wrapper, Socket / Listener /
 //! Builder, URL parsing, Transport + RecvTransport implementations.
 //!

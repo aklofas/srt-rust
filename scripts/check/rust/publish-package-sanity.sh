@@ -31,7 +31,7 @@ check_list() {
   local list
   list=$(cargo package --list -p "$pkg" --allow-dirty 2>/dev/null) || { echo "FAIL: cargo package --list $pkg"; fail=1; return; }
   for f in "$@"; do
-    grep -qx "$f" <<<"$list" || { echo "FAIL: $pkg package misses $f"; fail=1; }
+    grep -qxF "$f" <<<"$list" || { echo "FAIL: $pkg package misses $f"; fail=1; }
   done
 }
 # Inverse of check_list: fail if any packaged file path starts with a
@@ -44,8 +44,17 @@ check_absent() {
   local list
   list=$(cargo package --list -p "$pkg" --allow-dirty 2>/dev/null) || { echo "FAIL: cargo package --list $pkg"; fail=1; return; }
   for prefix in "$@"; do
-    local count
-    count=$(grep -c "^${prefix}" <<<"$list") || count=0
+    # Literal-prefix match via bash's own quoted-glob idiom (not grep): quoting
+    # "$prefix" inside the `[[ ... ]]` pattern makes ITS characters literal,
+    # while the lone trailing unquoted `*` is the only glob metacharacter in
+    # play. This sidesteps the same fixed-vs-regex risk `check_list` had
+    # (a `.` in a path being read as "any character") without needing a
+    # `grep -F` + `^` combination that would fight each other (`-F` treats a
+    # literal `^` as a literal caret, not an anchor).
+    local count=0 line
+    while IFS= read -r line; do
+      [[ $line == "$prefix"* ]] && count=$((count + 1))
+    done <<<"$list"
     [ "$count" -eq 0 ] || { echo "FAIL: $pkg package unexpectedly ships $count file(s) under $prefix"; fail=1; }
   done
 }

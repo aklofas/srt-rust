@@ -5,7 +5,7 @@
 	path = crates/mbedtls-src/vendor/mbedtls
 	url = https://github.com/Mbed-TLS/mbedtls.git
 [submodule "vendor/librist"]
-	path = vendor/librist
+	path = crates/rist-sys/vendor/librist
 	url = https://code.videolan.org/rist/librist.git
 [submodule "vendor/freertos-kernel"]
 	path = embedded/vendor/freertos-kernel

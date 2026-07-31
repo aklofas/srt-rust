@@ -18,6 +18,7 @@ exclude = [
     "vendor/srt/testing/",
     "vendor/srt/.github/",
     "vendor/srt/examples/",
+    "vendor/srt/submodules/",
 ]
 
 [lib]

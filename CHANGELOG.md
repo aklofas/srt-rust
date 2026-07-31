@@ -29,11 +29,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     so a transport error always means the current input was not
     delivered and may be retried without ambiguity.
 
-  This supersedes the previous discriminate-by-the-previous-call's-
-  outcome retry contract documented on `MuxSender` / `Sender` (callers
-  had to remember whether the prior `send_*` also failed to tell consumed
-  from not-consumed). Existing `match` arms on `MuxSenderError` /
-  `SenderError` keep compiling unchanged — the field is additive.
+  This supersedes the previous retry contract on `MuxSender`
+  (discriminate-by-the-previous-call's-outcome — callers had to remember
+  whether the prior `send_*` also failed to tell consumed from
+  not-consumed) and on `Sender` (which previously claimed every error
+  meant the input was consumed, without accounting for drain-failure
+  calls, where the failure happens before the new call's bytes are
+  touched). Existing `match` arms on `MuxSenderError` / `SenderError`
+  keep compiling unchanged — the field is additive.
 
 ### Native-boundary sanitizer coverage: `TST_NATIVE_SANITIZER` + nightly `asan-native` CI
 

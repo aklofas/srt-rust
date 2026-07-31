@@ -1299,17 +1299,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rist-sys"
-version = "0.3.0"
-dependencies = [
- "bindgen",
- "cc",
- "cmake",
- "libc",
- "pkg-config",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2069,13 +2058,13 @@ name = "tst-rist"
 version = "0.3.0"
 dependencies = [
  "libc",
- "rist-sys",
  "secrecy",
  "thiserror 2.0.18",
  "tracing",
  "tst-core",
  "tst-pipeline",
  "tst-test-helpers",
+ "tstrans-rist-sys",
 ]
 
 [[package]]
@@ -2165,6 +2154,18 @@ dependencies = [
 [[package]]
 name = "tstrans-mbedtls-src"
 version = "0.3.0+3.6.7"
+
+[[package]]
+name = "tstrans-rist-sys"
+version = "0.3.0"
+dependencies = [
+ "bindgen",
+ "cc",
+ "cmake",
+ "libc",
+ "pkg-config",
+ "tstrans-mbedtls-src",
+]
 
 [[package]]
 name = "tstrans-srt-sys"

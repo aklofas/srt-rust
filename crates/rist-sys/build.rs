@@ -64,12 +64,7 @@ fn native_sanitizer_cflags() -> Option<String> {
 /// does (see the `mbedtls` feature note in Cargo.toml). Only called when the
 /// `mbedtls` feature is on + the vendored build path is taken.
 fn build_mbedtls(sanitizer: Option<&str>) -> PathBuf {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let mbedtls_dir = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("vendor/mbedtls"))
-        .expect("Cannot resolve vendor/mbedtls path from CARGO_MANIFEST_DIR");
+    let mbedtls_dir = tstrans_mbedtls_src::source_dir();
 
     if !mbedtls_dir.join("CMakeLists.txt").exists() {
         panic!(
@@ -172,8 +167,13 @@ fn main() {
     // otherwise leaves the fingerprint untouched and incremental local
     // builds silently reuse the previous librist/mbedTLS static libs.
     // Mirrors srt-sys; see the comment there.
-    println!("cargo:rerun-if-changed=../../vendor/librist/meson.build");
-    println!("cargo:rerun-if-changed=../../vendor/mbedtls/CMakeLists.txt");
+    println!("cargo:rerun-if-changed=vendor/librist/meson.build");
+    println!(
+        "cargo:rerun-if-changed={}",
+        tstrans_mbedtls_src::source_dir()
+            .join("CMakeLists.txt")
+            .display()
+    );
     println!("cargo:rerun-if-env-changed=RIST_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=RIST_FORCE_VENDORED");
     // Without this, toggling the sanitizer between builds leaves cargo's
@@ -263,11 +263,7 @@ fn main() {
 /// and `ninja` must be on `$PATH` (Debian: `apt install meson ninja-build`).
 fn build_vendored(want_mbedtls: bool, sanitizer: Option<&str>) -> Vec<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let vendor_dir = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("vendor/librist"))
-        .expect("Cannot resolve vendor/librist path from CARGO_MANIFEST_DIR");
+    let vendor_dir = manifest_dir.join("vendor/librist");
 
     if !vendor_dir.join("meson.build").exists() {
         panic!(

@@ -3,8 +3,9 @@
 This page classifies every top-level public module across the workspace's
 publishable crates into a stability tier. It is the source of truth for
 "can I depend on this without it moving under me" — read it alongside
-`/docs/reference/public-api.md` (which governs *what stays public at all*,
-the binding-canonical-workflow rule) and `/docs/reference/conventions.md`
+[`/docs/reference/public-api.md`](/docs/reference/public-api.md) (which
+governs *what stays public at all*, the binding-canonical-workflow rule)
+and [`/docs/reference/conventions.md`](/docs/reference/conventions.md)
 (naming and shape conventions). This page governs *how much churn to
 expect*, not what's public.
 
@@ -35,6 +36,14 @@ covers both the client and server code paths — see its Why cell). Level-2
 KLV dialects (`klv::st0601`, etc.) and codec parsers (`codec::h264`, etc.)
 get their own rows because their tiers diverge from their parent module;
 other crates' submodules are covered by their top-level module's row.
+
+`(crate)` in the Module column means every top-level module in that crate
+shares the row's tier — matching that crate's README whole-crate
+stability line (`tst-srt`, `tst-udp`, `tst-tcp`, `tst-hls`, `tst-rist`,
+and the three `tstrans-*-sys`/`-src` crates). Where a narrower row exists
+for a path inside a crate that also has a broader row (`mpegts` vs.
+`mpegts::demux::low_level`; the fully-enumerated `tst-rtp` modules vs.
+its `rtsp` row), the more specific row wins for that path.
 
 | Package | Module | Tier | Why |
 |---|---|---|---|
@@ -69,7 +78,7 @@ other crates' submodules are covered by their top-level module's row.
 | tst-core | cancel | Stable | cancellation plumbing shared across transports; spec-silent, defaults to tst-core's tier |
 | tst-core | io_file | Stable | file I/O convenience layer over mux/demux (`file` feature); spec-silent, defaults to tst-core's tier |
 | tst-core | net | Stable | shared socket-setup plumbing consumed by transport crates; spec-silent, defaults to tst-core's tier |
-| tst-core | publisher | Stable | `Publisher` trait + stats for segment-publishing transports (HLS); spec-silent, defaults to tst-core's tier |
+| tst-core | publisher | Provisional | `Publisher` trait + stats for segment-publishing transports (HLS); its only implementor (`tst-hls`) and only consumer (`tst-pipeline::mux_publisher`) are both Provisional — no Stable-tier evidence backs the trait yet, unlike `transport`, whose implementors are mostly Stable |
 | tst-core | shared | Stable | `SharedBytes` zero-copy buffer used throughout demux event payloads; spec-silent, defaults to tst-core's tier |
 | tst-core | url | Stable | shared URL-parsing plumbing used by every transport crate; spec-silent, defaults to tst-core's tier |
 | tst-pipeline | mux_sender | Stable | canonical send shell |
@@ -125,8 +134,10 @@ Provisional promise as the Rust API, independent of the binding
 package's own version number. Binding-specific mechanics (C ABI minor
 version bumps, the `#[non_exhaustive]` count ratchet, the
 binding-canonical-workflow rule that keeps an item public in the first
-place) are covered by `/docs/reference/public-api.md` and
-`/docs/binding-authors.md`, not restated here.
+place) are covered by
+[`/docs/reference/public-api.md`](/docs/reference/public-api.md) and
+[`/docs/reference/binding-authors.md`](/docs/reference/binding-authors.md),
+not restated here.
 
 ## Decision log
 

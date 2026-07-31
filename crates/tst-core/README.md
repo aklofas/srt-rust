@@ -29,12 +29,14 @@ assert_eq!(decoded.timestamp_us, Some(1_700_000_000_000_000));
 # }
 ```
 
-**Stability: Stable**, with a few Provisional modules: the newer typed
+**Stability: Stable**, with several Provisional modules: the newer typed
 KLV sets (`klv::st0102`, `klv::st0605`, `klv::st0903`, `klv::st0805`,
-`klv::st0806`, `klv::st1010`, `klv::st1204`) and the newer codec
-parsers (`codec::h266`, `codec::av1`, `codec::misp_time`). See the
-[API stability
+`klv::st0806`, `klv::st1010`, `klv::st1204`), the newer codec parsers
+(`codec::h266`, `codec::av1`, `codec::misp_time`), the audio parsers
+(`codec::aac`, `codec::ac3`, `codec::mpegaudio`), and the HLS-adjacent
+`publisher` trait. This list highlights the carve-outs; the [API
+stability
 reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md)
-for the full per-module table.
+is the authoritative full per-module table.
 
 **License:** MIT OR Apache-2.0.

@@ -72,7 +72,7 @@ Central Portal in a **staged** state that a maintainer releases manually.
      `+3.6.7`-style local-version-identifier suffix pinned to the bundled
      Mbed TLS release (e.g. `0.4.0+3.6.7`) — bump the base number on every
      workspace version sweep, and bump the suffix independently whenever the
-     vendored `vendor/mbedtls` submodule itself advances.
+     vendored `crates/mbedtls-src/vendor/mbedtls` submodule itself advances.
 2. **`main` is green** — `ci`, `jvm-jar`, and `python-wheels` all passing on
    the commit you intend to tag.
 3. **Dry-run the wheels** (recommended):
@@ -112,7 +112,7 @@ Central Portal in a **staged** state that a maintainer releases manually.
 
 ## crates.io publish (Rust crates)
 
-`ts-transformer` also publishes its 10 publishable Rust library crates to
+`ts-transformer` also publishes its 11 publishable Rust library crates to
 crates.io, starting at **v0.4.0**. This is independent of the PyPI/Maven tag
 trigger above — crates.io publishing is manual, per-crate, and not wired to
 CI (`cargo publish` needs a maintainer-held API token; there is no
@@ -159,12 +159,12 @@ publish` command returned success.
 
 **First-publish extras (one-time, this release only):**
 - Use a crates.io API token scoped to **publish-new** (not blanket
-  publish-update) for the first publish of each of the 10 crates — narrower
+  publish-update) for the first publish of each of the 11 crates — narrower
   blast radius if the token leaks.
 - **Do not** configure crates.io Trusted Publishing (OIDC) until *after* all
-  10 crates exist on the index — Trusted Publishing is configured per
+  11 crates exist on the index — Trusted Publishing is configured per
   already-existing crate on crates.io's side, so it cannot be set up before
-  the first manual publish. Track "wire up Trusted Publishing for the 10
+  the first manual publish. Track "wire up Trusted Publishing for the 11
   crates.io crates" as a recorded post-v0.4.0 follow-up.
 
 **Rail note:** the `publish-package-sanity` CI rail

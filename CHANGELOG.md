@@ -45,7 +45,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bundled Mbed TLS sources with their own flags.
 - `tst-core`, `tst-pipeline`, `tst-udp`, `tst-tcp`, `tst-hls`, `tst-rtp`,
   `tst-srt`, `tst-rist`, `tstrans-srt-sys`, `tstrans-rist-sys`, and
-  `tstrans-mbedtls-src` (10 crates) are now packaged for crates.io
+  `tstrans-mbedtls-src` (11 crates) are now packaged for crates.io
   publication (`readme`/`keywords`/`categories` metadata, per-crate
   `README.md`, versioned path dependencies) — starting **v0.4.0** they are
   resolvable directly from crates.io (`cargo add tst-core`, etc.) rather

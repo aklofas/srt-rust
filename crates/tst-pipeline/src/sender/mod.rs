@@ -68,6 +68,23 @@ pub struct SenderError {
     pub kind: ShellErrorKind,
     #[source]
     pub source: SenderErrorSource,
+    /// Whether THIS call's input was consumed by the framer.
+    ///
+    /// - `Some(false)` — not consumed; retrying the same input cannot
+    ///   duplicate data.
+    /// - `Some(true)` — consumed: framed and retained in the pending
+    ///   queue (drains exactly once on the next `send_ts`/`flush`); do
+    ///   NOT push the same input again.
+    /// - `None` — the error did not originate from a `send_ts` input
+    ///   path (e.g. `flush`, which has no per-call input).
+    pub input_consumed: Option<bool>,
+}
+
+impl SenderError {
+    pub(crate) fn with_input_consumed(mut self, consumed: bool) -> Self {
+        self.input_consumed = Some(consumed);
+        self
+    }
 }
 
 #[non_exhaustive]
@@ -84,6 +101,7 @@ impl From<TsFramingError> for SenderError {
         Self {
             kind: crate::shell_error::kind_from_framing(&e),
             source: SenderErrorSource::Framing(e),
+            input_consumed: None,
         }
     }
 }
@@ -93,6 +111,7 @@ impl From<tst_core::transport::TransportError> for SenderError {
         Self {
             kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Send),
             source: SenderErrorSource::Transport(e),
+            input_consumed: None,
         }
     }
 }
@@ -219,12 +238,16 @@ impl<T: Transport> Sender<T> {
     /// internal queue. The next call to `send_ts` or `flush` drains that queue
     /// first before processing new input, so nothing is lost.
     ///
-    /// **An `Err` from this method means the input `bytes` HAVE been
-    /// consumed** (framed and queued) — do **not** call `send_ts` again with
-    /// the same bytes, or the already-delivered prefix is framed and sent a
-    /// second time. To recover after `Backpressure`, back off and then call
-    /// [`Self::flush`] (or the next `send_ts` with *new* data); the retained
-    /// bundles drain first, exactly once, in order.
+    /// Whether THIS call's `bytes` were consumed is reported via
+    /// [`SenderError::input_consumed`] — `Some(true)` means `bytes` were
+    /// framed and queued (do **not** call `send_ts` again with the same
+    /// bytes, or the already-queued prefix is framed and sent a second
+    /// time); `Some(false)` means the failure happened before `bytes` was
+    /// touched (e.g. draining bundles retained by a PREVIOUS call), so
+    /// retrying the same input is safe. To recover after `Backpressure`,
+    /// back off and then call [`Self::flush`] (or the next `send_ts` with
+    /// *new* data); the retained bundles drain first, exactly once, in
+    /// order.
     ///
     /// # Example
     /// ```
@@ -268,23 +291,33 @@ impl<T: Transport> Sender<T> {
     /// ```
     pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError> {
         if self.closed {
-            return Err(tst_core::transport::TransportError::Closed.into());
+            return Err(
+                SenderError::from(tst_core::transport::TransportError::Closed)
+                    .with_input_consumed(false),
+            );
         }
-        self.drain_pending()?;
+        // Drain any leftover from a previous failed call first. A failure
+        // here happens BEFORE this call's `bytes` are touched.
+        self.drain_pending()
+            .map_err(|e| e.with_input_consumed(false))?;
         let bundles = if self.mode == TsFramingMode::Recover {
             let (bundles, _stats) = self.framing.push(bytes);
             bundles
         } else {
-            self.framing.push_strict(bytes)?
+            self.framing
+                .push_strict(bytes)
+                .map_err(|e| SenderError::from(e).with_input_consumed(false))?
         };
         let mut iter = bundles.into_iter();
         for bundle in &mut iter {
             if let Err(e) = self.transport.send_bytes(&bundle) {
                 // Retain the failed bundle + any remaining so the next
-                // send_ts/flush call can re-try them in order.
+                // send_ts/flush call can re-try them in order. From here
+                // `bytes` is framed and retained: a failure leaves it in
+                // the pending queue, draining exactly once on the next call.
                 self.pending_bundles.push_back(bundle);
                 self.pending_bundles.extend(iter);
-                return Err(e.into());
+                return Err(SenderError::from(e).with_input_consumed(true));
             }
         }
         Ok(())
@@ -302,6 +335,11 @@ impl<T: Transport> Sender<T> {
     /// [`Self::close`], or `Broken` on transport flap, or `Backpressure`).
     /// On `Backpressure` the bundle is retained (see the retention contract on
     /// [`Self::send_ts`]) and will be re-attempted on the next call.
+    ///
+    /// `flush` has no per-call input of its own (it only drains
+    /// framing-internal and previously-retained bundles), so
+    /// [`SenderError::input_consumed`] is always `None` on an error from
+    /// this method.
     pub fn flush(&mut self) -> Result<(), SenderError> {
         if self.closed {
             return Err(tst_core::transport::TransportError::Closed.into());
@@ -686,5 +724,28 @@ mod tests {
             21 * 188,
             "after retry, all 3 bundles must be present exactly once"
         );
+    }
+
+    /// Phase discrimination on SenderError: first failure (this call's
+    /// bundles) → Some(true); failure draining retained bundles before new
+    /// input → Some(false).
+    #[test]
+    fn send_ts_reports_input_consumed_per_phase() {
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        // Fail the first TWO send_bytes calls: call 1 fails on its own
+        // bundle (consumed=true); call 2 fails draining the retained
+        // bundle before touching its input (consumed=false).
+        let transport = FailFirst::new(2, sink.clone());
+        let mut sender = Sender::new(transport, SenderConfig::default());
+
+        let e1 = sender.send_ts(&ts_packets(7)).unwrap_err();
+        assert_eq!(e1.input_consumed, Some(true));
+
+        let e2 = sender.send_ts(&ts_packets(7)).unwrap_err();
+        assert_eq!(e2.input_consumed, Some(false));
+
+        // Healed: drain delivers retained bundle 1 + this call's bundle.
+        sender.send_ts(&ts_packets(7)).unwrap();
+        assert_eq!(sink.lock().unwrap().len() % 188, 0);
     }
 }

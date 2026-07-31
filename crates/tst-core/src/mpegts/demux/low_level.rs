@@ -1,3 +1,6 @@
+//! **Stability: Internal** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Low-level extension points for the MPEG-TS demuxer.
 //!
 //! **Stability: experimental.** Items in this module may change between

@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! ST 0806.4 Remote Video Terminal (RVT) Local Set typed layer.
 //!
 //! The RVT LS is **standalone-capable**: it carries its own 16-byte

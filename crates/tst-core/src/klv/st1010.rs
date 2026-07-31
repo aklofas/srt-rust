@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MISB ST 1010.3 SDCC-FLP (Standard Deviation and Correlation Coefficient
 //! pack, Floating-Point variant) — general-purpose parser/encoder.
 //!

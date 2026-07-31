@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! AC-3 (ATSC A/52) syncframe parser.
 //!
 //! Stateless, minimal parser for the syncinfo + first few bsi fields of

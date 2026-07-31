@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MISB ST 0604 MISP timestamps for compressed Motion Imagery.
 //!
 //! Builds and extracts the ST 0604.6 Precision / Nano Precision Time

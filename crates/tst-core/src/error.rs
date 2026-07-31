@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Non-transport error types: KLV, MPEG-TS mux/demux.
 
 use alloc::string::String;

@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! `MuxSender<T: Transport>` — composes `mpegts::mux::Muxer` with a
 //! `Transport` for the canonical NAL+KLV → TS → SRT send path.
 //!

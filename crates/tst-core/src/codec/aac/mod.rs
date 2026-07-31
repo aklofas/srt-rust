@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! AAC frame iterator (ADTS framing today; LATM is a follow-up plan).
 //!
 //! See [`crate::codec`] for umbrella architecture and design rationale.

@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! `ManagedDemuxReceiver<R>` — reconnect-aware full receive shell.
 //!
 //! Composition: `ManagedRecvTransport<R> → Receiver → Demuxer`. Unlike

@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Dyn-erased pipeline shell aliases for FFI bindings.
 //!
 //! These six aliases re-export the generic pipeline shells with `Box<dyn

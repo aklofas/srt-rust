@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! AV1 (AOM Bitstream Spec) OBU parsers.
 //!
 //! Hand-rolled per the AV1 Bitstream & Decoding Process Specification.

@@ -1,3 +1,6 @@
+//! **Stability: Provisional** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! MISB ST 1204.3 MIIS Core Identifier — binary decode/encode, textual format,
 //! and Appendix B check value.
 //!

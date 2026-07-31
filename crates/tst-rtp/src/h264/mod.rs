@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! RFC 6184 H.264 RTP payload format support.
 //!
 //! This module provides SDP attribute parsing, the depacketizer state

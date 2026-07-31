@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Crate-private no-op initialization, exposed for symmetry with
 //! [`tst_srt::init`](https://docs.rs/tst-srt).
 //!

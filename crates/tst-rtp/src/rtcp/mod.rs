@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! RTCP RR / SR / SDES packet encoding, decoding per RFC 3550 §6.
 //!
 //! v1 supports the minimum compound packet needed for the receiver-side

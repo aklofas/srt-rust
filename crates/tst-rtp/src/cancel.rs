@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Cancellation primitive for the `RtpTransport` / `RtpRecvTransport`
 //! send/recv UDP socket wrappers (defined in the `transport` module,
 //! Task 7+).

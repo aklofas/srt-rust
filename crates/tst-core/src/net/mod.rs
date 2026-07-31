@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Network primitives shared across transport crates.
 //!
 //! This module hosts low-level helpers used by `tst-rtp`, `tst-udp`, and

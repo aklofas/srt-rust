@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! Cross-codec utility helpers used by the muxer/demuxer to derive
 //! per-stream codec-specific stats (`StreamCodecCounters`).
 //!

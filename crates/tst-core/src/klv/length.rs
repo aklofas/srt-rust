@@ -1,3 +1,6 @@
+//! **Stability: Stable** — see the
+//! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+//!
 //! BER short/long and BER-OID length codecs.
 //!
 //! BER short form: single byte `0x00..0x7F`.

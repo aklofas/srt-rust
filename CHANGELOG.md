@@ -9,7 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **RTSP server: the `active_sessions` stats gauge could transiently read
+  `max_sessions + 1`** while an over-cap connection was being refused. The
+  accept loop reserved a slot with an increment, bound-checked, then released
+  on refusal — and `RtspServer::stats()` reads the same counter, so a poll
+  landing between the two operations observed an impossible value. The
+  reservation is now a compare-and-swap that only increments while below the
+  cap, so the gauge can never exceed `max_sessions`, even transiently. Cap
+  *enforcement* was never affected: accepted sessions never exceeded the
+  configured limit, and refused connections were always dropped.
 
 ---
 

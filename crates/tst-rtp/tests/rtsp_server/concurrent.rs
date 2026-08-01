@@ -199,3 +199,117 @@ fn unauth_connection_burst_never_exceeds_max_sessions() {
 
     server.stop().ok();
 }
+
+/// Adversarial: over-cap REFUSALS must never make the `active_sessions`
+/// stats gauge overshoot `max_sessions`, even transiently.
+///
+/// This is the companion invariant to the burst test above, at the STATS
+/// layer rather than the accept layer. The refusal path used to reserve
+/// with `fetch_add`, bound-check, then release with `fetch_sub` — correct
+/// for cap ENFORCEMENT (accepted sessions never exceeded the cap), but
+/// between the two atomics the shared counter read `cap + 1`, and
+/// `stats().active_sessions` reads that same atomic. A poller sampling
+/// during a refusal could observe an impossible value (that transient is
+/// exactly what made the burst test above flake on loaded CI runners —
+/// its 20 ms-cadence poll occasionally landed inside the window when the
+/// accept loop was preempted between the two atomics). The CAS
+/// reservation (`fetch_update`, increment only while below the cap) makes
+/// the gauge invariant structural: the counter can never exceed the cap,
+/// so this test is deterministic-pass on correct code.
+///
+/// Detection strategy: saturate a cap-1 server with one parked session,
+/// drive a storm of guaranteed-refusals through the accept loop, and
+/// spin-poll the gauge (no sleep — a cadenced poll would need scheduler
+/// luck to catch a nanosecond-scale window; a spin poll catches it within
+/// a few thousand refusals). Against the pre-CAS reserve/release code
+/// this trips in under 2 seconds on an idle machine.
+///
+/// Bounded + hang-proof: the storm is capped by count AND wall-clock, the
+/// poller is stopped by flag, and every wait is a deadline poll.
+#[test]
+fn over_cap_refusals_never_overshoot_active_sessions_gauge() {
+    const CAP: usize = 1;
+    const STORM_MAX: usize = 5000;
+    const STORM_DEADLINE: Duration = Duration::from_secs(4);
+
+    let mut builder = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+    builder.max_sessions(CAP);
+    let server = builder.build().unwrap();
+    let _mount = server.add_mount("/live", make_muxer_cfg()).unwrap();
+    server.start().unwrap();
+    let addr = server.local_addr().unwrap();
+
+    // Saturate the cap: one parked session (partial request, never
+    // terminated) holds the single slot for the whole storm, so every
+    // storm connect below is an over-cap refusal.
+    let mut parked = TcpStream::connect(addr).unwrap();
+    parked
+        .write_all(b"OPTIONS rtsp://127.0.0.1/live RTSP/1.0\r\n")
+        .unwrap();
+    // Deadline-poll the precondition (a fixed settle sleep is exactly the
+    // kind of load-sensitive timing this file has been burned by).
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while server.stats().active_sessions < CAP && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        server.stats().active_sessions,
+        CAP,
+        "precondition: the parked session must saturate the cap before the storm"
+    );
+
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    let max_seen = std::thread::scope(|scope| {
+        let poller = scope.spawn(|| {
+            let mut max = 0usize;
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                max = max.max(server.stats().active_sessions);
+            }
+            max
+        });
+
+        // Refusal storm: each connect drives the accept loop through the
+        // reserve/refuse path once. Count- and wall-clock-bounded so a
+        // slow loaded runner exits early rather than overrunning the
+        // network group's per-test budget.
+        let storm_deadline = Instant::now() + STORM_DEADLINE;
+        for _ in 0..STORM_MAX {
+            if Instant::now() >= storm_deadline {
+                break;
+            }
+            if let Ok(mut s) = TcpStream::connect(addr) {
+                let _ = s.write_all(b"X");
+            }
+        }
+        // Keep observing while the accept loop drains its backlog of
+        // queued connects (bounded observation window, not a wait).
+        std::thread::sleep(Duration::from_millis(500));
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        poller.join().unwrap()
+    });
+
+    assert!(
+        max_seen <= CAP,
+        "active_sessions gauge read {max_seen}, exceeding max_sessions={CAP} — \
+         a refusal transiently overshot the counter"
+    );
+
+    // Slot hygiene: dropping the parked session must drain the gauge to 0
+    // (no leaked reservation on the CAS-reserve or refusal paths).
+    drop(parked);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut final_count = usize::MAX;
+    while Instant::now() < deadline {
+        final_count = server.stats().active_sessions;
+        if final_count == 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        final_count, 0,
+        "active_sessions leaked after the parked session closed (stuck at {final_count})"
+    );
+
+    server.stop().ok();
+}

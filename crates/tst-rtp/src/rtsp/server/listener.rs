@@ -91,19 +91,25 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                         // unauthenticated connection burst: the loop accepts +
                         // spawns faster than the spawned tasks get polled to
                         // increment, so every accept read the same low count and
-                        // all passed the check, blowing past the cap. `fetch_add`
-                        // makes the count accurate at accept time; a burst now
-                        // correctly observes the incremented value. On over-cap we
-                        // immediately `fetch_sub` the reservation and refuse (drop
-                        // the TCP + continue). On success the reservation is owned
-                        // by a `SessionSlot` RAII guard moved into the spawned task,
-                        // whose `Drop` releases the slot on EVERY exit path
-                        // (including a TLS-handshake failure that returns before the
-                        // session loop runs — the leak the old in-session
-                        // `fetch_sub` couldn't cover).
-                        let prev = state.active_sessions.fetch_add(1, Ordering::Relaxed);
-                        if prev >= state.builder.max_sessions {
-                            state.active_sessions.fetch_sub(1, Ordering::Relaxed);
+                        // all passed the check, blowing past the cap. The CAS
+                        // reservation (`fetch_update`) only increments while below
+                        // the cap, so the counter NEVER exceeds `max_sessions`,
+                        // even transiently — `stats().active_sessions` reads this
+                        // same atomic, and the earlier fetch_add-then-fetch_sub
+                        // refusal briefly exposed cap+1 to pollers. On over-cap we
+                        // refuse (drop the TCP + continue). On success the
+                        // reservation is owned by a `SessionSlot` RAII guard moved
+                        // into the spawned task, whose `Drop` releases the slot on
+                        // EVERY exit path (including a TLS-handshake failure that
+                        // returns before the session loop runs — the leak the old
+                        // in-session `fetch_sub` couldn't cover).
+                        let reserved = state
+                            .active_sessions
+                            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                                (n < state.builder.max_sessions).then_some(n + 1)
+                            })
+                            .is_ok();
+                        if !reserved {
                             tracing::warn!(
                                 target: "tst_rtp::server",
                                 "max sessions ({}) reached; refusing {peer}",

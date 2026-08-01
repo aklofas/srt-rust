@@ -180,7 +180,7 @@ publish` command returned success.
   the first manual publish. Track "wire up Trusted Publishing for the 11
   crates.io crates" as a recorded post-v0.4.0 follow-up.
 
-**Docs flip (one-time, after all 11 crates are live):** the docs were written
+**Docs flip (one-time, after all 11 crates are live — ✅ done post-v0.4.0):** the docs were written
 before crates.io publishing existed, so they tell readers to depend via git.
 Once every crate has a first publish on the index, update:
 - `docs/start/quickstart.md`'s "Until `ts-transformer` is published to

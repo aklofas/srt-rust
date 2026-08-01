@@ -111,7 +111,7 @@ cold, seconds warm. Feature flags (`mbedtls`, `file`, per-transport) are documen
 
 - **Python** — `pip install tstrans` (core) or `pip install tstrans[pandas]` (DataFrame + NumPy adapters). See [`docs/languages/python.md`](docs/languages/python.md).
 - **JVM** — `org.tstrans:tstrans-jvm` on Maven Central. See [`docs/languages/jvm.md`](docs/languages/jvm.md).
-- **Rust** — until the first crates.io publish: `cargo add --git https://github.com/aklofas/ts-transformer tst-core`.
+- **Rust** — `cargo add tst-core` (plus `tst-pipeline` / `tst-srt` for the live pipeline) from crates.io.
 
 ## Documentation
 

@@ -20,9 +20,9 @@ the three top-level crates in:
 
 ```toml
 [dependencies]
-tst-core     = { git = "https://github.com/aklofas/ts-transformer" }  # MPEG-TS mux/demux + KLV + codec parsers
-tst-pipeline = { git = "https://github.com/aklofas/ts-transformer" }  # Sender / Receiver / MuxSender / DemuxReceiver shells
-tst-srt      = { git = "https://github.com/aklofas/ts-transformer" }  # SRT transport
+tst-core     = "0.4"  # MPEG-TS mux/demux + KLV + codec parsers
+tst-pipeline = "0.4"  # Sender / Receiver / MuxSender / DemuxReceiver shells
+tst-srt      = "0.4"  # SRT transport
 ```
 
 When you only need to inspect or build `.ts` bytes (no live transport),

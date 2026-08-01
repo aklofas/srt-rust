@@ -54,11 +54,11 @@ for the default build.
 
 ## Add it to your project
 
-Until `ts-transformer` is published to crates.io, depend on it via git:
+All `ts-transformer` crates are published on crates.io:
 
 ```toml
 [dependencies]
-tst-core = { git = "https://github.com/aklofas/ts-transformer" }
+tst-core = "0.4"
 ```
 
 Note on cold builds: the first build compiles libsrt + mbedTLS from

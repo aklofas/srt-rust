@@ -28,7 +28,7 @@ serve = [
 tls = ["serve", "dep:rustls", "dep:tokio-rustls", "dep:rustls-pemfile"]
 
 [dependencies]
-tst-core = { path = "../tst-core", version = "0.3.0" }
+tst-core = { path = "../tst-core", version = "0.4.0" }
 thiserror = { workspace = true }
 
 [dependencies.tokio]

@@ -9,6 +9,64 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [0.4.0] — 2026-07-31
+
+Post-v0.3.0: RTSP keepalive overhaul, MISB ST 0601 full-tag compliance,
+crates.io publish readiness + API stability tiers, native-boundary sanitizer
+coverage, vendored security updates.
+
+### Release highlights
+
+The integrator-facing changes at a glance (full detail in the sections below):
+
+- **The 16.5-minute RTSP session drop is fixed** (PR #122). Every
+  TCP-interleaved receive session (RTSPS included) died at ~16.5 minutes
+  looking like a clean end of stream: the client's own keepalive responses
+  overflowed an internal queue nothing drained. All prior releases are
+  affected. Keepalive responses are now consumed, pings carry the `Session:`
+  header, the cadence follows a server-advertised `timeout=`, and mid-session
+  digest re-challenges refresh. If you worked around the drop with
+  `keepalive=False`, remove the workaround on 0.4.0. A structured stream-end
+  reason and a Python/JVM `tracing` diagnostics bridge are deferred —
+  tracked in `docs/project/deferred-features.md`.
+- **First crates.io publish** — all 11 Rust library crates are now on
+  crates.io (`tst-core`, `tst-pipeline`, `tst-srt`, `tst-rtp`, `tst-udp`,
+  `tst-tcp`, `tst-hls`, `tst-rist`, `tstrans-srt-sys`, `tstrans-rist-sys`,
+  `tstrans-mbedtls-src`); git dependencies are no longer required. The two
+  `-sys` packages are renamed (`tstrans-` prefix) but keep their library
+  names, so `use srt_sys::` / `use rist_sys::` code compiles unchanged.
+- **Public API classified into stability tiers** —
+  `docs/reference/api-stability.md` maps every public module to
+  Stable / Provisional / Experimental / Internal, with matching rustdoc
+  headers, so pre-1.0 consumers can see what is safe to build on.
+- **Send calls report input consumption** — `MuxSenderError` / `SenderError`
+  now carry `input_consumed: Option<bool>`, replacing the discriminate-by-
+  previous-call retry contract (bindings parity deferred).
+- **Vendored security updates** — libsrt 1.5.5 → 1.5.6 (fixes
+  hostile-wire-reachable KMREQ/KMRSP/LOSSREPORT/DROPREQ parsing bugs,
+  including a CVE), librist 0.2.16 → 0.2.18, mbedTLS 3.6.6 → 3.6.7.
+- **RIST on Windows is now fully supported** — librist 0.2.18 fixed the
+  teardown hang and zero-delivery bugs; the Windows test gate is lifted
+  (IPv6 multicast remains the only Windows-gated case).
+- **MISB ST 0601 typed end to end** (PRs #116–#120) — 142 of 143 spec items
+  typed (up from 52), plus `klv::st1010` SDCC-FLP, `klv::st0806` RVT, and
+  `klv::st0805` KLV → Cursor-on-Target conversion, mirrored in Python + JVM.
+- **RTSP hardening from the field** (PRs #110–#115) — the client
+  authenticates every method (not just DESCRIBE/SETUP), `RtspServer::start()`
+  surfaces bind/TLS errors instead of dying silently, TLS config on a
+  plaintext bind is refused cross-surface, JVM gains full TLS parity, and
+  Python wheels ship with TLS + RIST enabled.
+- **Security policy** — `SECURITY.md` with private disclosure channels
+  (GitHub private vulnerability reporting is enabled on the repo).
+
+Landed as PRs #110–#132. The C ABI stayed frozen at minor **19** for the
+whole span — no symbol, signature, or struct-layout changes; C consumers
+rebuild against 0.4.0 without source changes.
+
 ### Rust crate packaging: crates.io publish readiness
 
 #### Changed

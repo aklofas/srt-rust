@@ -53,8 +53,13 @@ jobs:
     runs-on: ubuntu-latest
     # Every crate's crates.io Trusted Publishing config names this
     # environment (the OIDC claim carries it). No protection rules — the
-    # tag is the gate; required reviewers can be added on the environment
-    # later without touching this file.
+    # tag is the gate. NOTE: the environment binds ALL runs of this job,
+    # including PR/dispatch dry-run rehearsals; if protection rules
+    # (required reviewers) are ever added, they will gate rehearsals too —
+    # at that point split this into a dry-run job (no environment, no
+    # id-token) and a tag-only publish job, not before (the split costs
+    # duplicated setup steps and buys nothing while the environment is
+    # unprotected).
     environment:
       name: crates-io
       url: https://crates.io/crates/tst-core

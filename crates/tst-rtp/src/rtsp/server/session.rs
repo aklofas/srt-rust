@@ -28,9 +28,11 @@ use crate::rtsp::server::handlers;
 
 /// RAII guard for one reserved `active_sessions` slot.
 ///
-/// The accept loop reserves a slot atomically (`fetch_add` + bound check)
-/// *before* spawning the per-session task, then moves this guard into the
-/// task. `Drop` releases the slot (`fetch_sub`) on EVERY task exit path —
+/// The accept loop reserves a slot atomically (a CAS `fetch_update` that
+/// increments only while below `max_sessions`, so the counter never
+/// overshoots the cap — over-cap connections are refused without touching
+/// it) *before* spawning the per-session task, then moves this guard into
+/// the task. `Drop` releases the slot (`fetch_sub`) on EVERY task exit path —
 /// normal close, session error, or (for `rtsps://`) a TLS-handshake
 /// failure that returns before the session loop ever runs. Centralizing
 /// the decrement here is what prevents a leaked slot on the handshake-fail
@@ -40,7 +42,7 @@ pub(crate) struct SessionSlot(Arc<ServerState>);
 
 impl SessionSlot {
     /// Construct a guard for an already-reserved slot (the accept loop has
-    /// done the `fetch_add` + bound check). Dropping it releases the slot.
+    /// done the CAS reserve). Dropping it releases the slot.
     pub(crate) fn new(state: Arc<ServerState>) -> Self {
         SessionSlot(state)
     }

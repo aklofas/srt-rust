@@ -264,6 +264,10 @@ fn over_cap_refusals_never_overshoot_active_sessions_gauge() {
             let mut max = 0usize;
             while !stop.load(std::sync::atomic::Ordering::Relaxed) {
                 max = max.max(server.stats().active_sessions);
+                // CPU-relax hint (PAUSE) — kinder to the runner's SMT
+                // sibling without ceding the timeslice like a sleep would,
+                // so the sampling density that catches the window is kept.
+                std::hint::spin_loop();
             }
             max
         });

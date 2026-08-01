@@ -121,11 +121,45 @@ Central Portal in a **staged** state that a maintainer releases manually.
 
 ## crates.io publish (Rust crates)
 
-`ts-transformer` also publishes its 11 publishable Rust library crates to
-crates.io, starting at **v0.4.0**. This is independent of the PyPI/Maven tag
-trigger above — crates.io publishing is manual, per-crate, and not wired to
-CI (`cargo publish` needs a maintainer-held API token; there is no
-trusted-publishing / OIDC path for crates.io analogous to PyPI's yet).
+`ts-transformer` publishes its 11 publishable Rust library crates to
+crates.io. Since the v0.4.0 first publish this is **wired to CI via
+Trusted Publishing (OIDC)**: pushing a `v*` release tag runs
+`.github/workflows/crates-io.yml`, which publishes all 11 crates in
+dependency order with per-layer OIDC-minted tokens — no maintainer-held
+API token. The crates.io side of the binding (per crate: repository
+`aklofas/ts-transformer`, workflow `crates-io.yml`, environment
+`crates-io`) lives at each crate's Settings → Trusted Publishing page;
+renaming the workflow file or environment breaks it on both sides.
+
+**At release time:** the tag you push for PyPI/Maven triggers this too.
+Watch the `crates-io` run; after it goes green do the same per-crate
+verification as always — `https://crates.io/crates/<pkg>` shows the new
+version, docs.rs builds are green. **First green OIDC publish → revoke
+the maintainer API token** (it becomes dead weight; the OIDC path is
+then the only publisher).
+
+**If the run fails mid-sequence:** fix the cause and re-run the job —
+the layer script (`scripts/release/publish-crates-layer.sh`) skips
+crates already live at their current version, so re-runs fast-forward
+through the published prefix (crates.io publishes are immutable; that
+skip is what makes re-running safe). Versions are resolved per crate
+from `cargo metadata` — `tstrans-mbedtls-src` carries a build-metadata
+suffix (`X.Y.Z+<mbedtls-version>`), so there is no single shared
+version string.
+
+**Rehearsal:** `workflow_dispatch` (or a PR touching the workflow file)
+runs the identical sequence as `cargo publish --dry-run` — packages and
+verify-builds everything, uploads nothing, needs no token. Caveat:
+rehearsals only fully pass while the workspace version is a *published*
+version; after a release version sweep (pre-tag), layer-2+ dry-runs fail
+dependency resolution because the index can't satisfy the bumped
+`version =` keys yet. Rehearse between releases, not after the sweep.
+
+### Manual fallback (token-based)
+
+If the OIDC path is unavailable, the pre-0.4.1 manual flow below still
+works with a maintainer API token (scope: publish-update). It follows
+the same order and verification steps the workflow automates.
 
 **Publish order** (topo-sorted from the dependency graph — a crate cannot
 publish until every crate it depends on with a `version =` key is already
@@ -169,27 +203,6 @@ publish` command returned success.
   source failing to compile in docs.rs's sandboxed build environment) is a
   real signal worth investigating even though it doesn't block the publish
   itself.
-
-**First-publish extras (one-time, this release only):**
-- Use a crates.io API token scoped to **publish-new** (not blanket
-  publish-update) for the first publish of each of the 11 crates — narrower
-  blast radius if the token leaks.
-- **Do not** configure crates.io Trusted Publishing (OIDC) until *after* all
-  11 crates exist on the index — Trusted Publishing is configured per
-  already-existing crate on crates.io's side, so it cannot be set up before
-  the first manual publish. Track "wire up Trusted Publishing for the 11
-  crates.io crates" as a recorded post-v0.4.0 follow-up.
-
-**Docs flip (one-time, after all 11 crates are live — ✅ done post-v0.4.0):** the docs were written
-before crates.io publishing existed, so they tell readers to depend via git.
-Once every crate has a first publish on the index, update:
-- `docs/start/quickstart.md`'s "Until `ts-transformer` is published to
-  crates.io, depend on it via git" section — switch the `[dependencies]`
-  snippet from `{ git = "https://github.com/aklofas/ts-transformer" }` to a
-  plain crates.io version requirement (e.g. `tst-core = "0.4"`).
-- The per-language install snippets in `docs/languages/rust.md` (the
-  `tst-core`/`tst-pipeline`/`tst-srt` block under "Install") — same git-to-
-  crates.io flip.
 
 **Rail note:** the `publish-package-sanity` CI rail
 (`scripts/check/rust/publish-package-sanity.sh`) cannot run a real `cargo

@@ -41,7 +41,12 @@ for pkg in "$@"; do
   if [[ "${PUBLISH:-0}" == "1" ]]; then
     # '+' is semver build metadata but reserved in URLs — encode it for
     # the API path (0.4.0+3.6.7 → 0.4.0%2B3.6.7).
+    # Bounded + retried: an unbounded stall here would wedge the publish
+    # train while holding a live token, and a transient blip shouldn't
+    # abort a release. 200/404 are terminal (no retry); --retry only
+    # covers transient failures (timeouts, 429/5xx).
     status=$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" \
+      --connect-timeout 10 --max-time 30 --retry 3 --retry-connrefused \
       "https://crates.io/api/v1/crates/${pkg}/${ver//+/%2B}")
     case "$status" in
       200) echo "== ${pkg}@${ver} already live on crates.io — skipping"; continue ;;

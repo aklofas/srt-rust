@@ -11,5 +11,6 @@ pub mod profiles;
 pub mod recv;
 pub mod report_types;
 pub mod send;
+pub mod serve;
 pub mod transport;
 pub mod verify;

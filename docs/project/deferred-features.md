@@ -1845,6 +1845,26 @@ the trigger that would unblock it.
   timestamp push through the pipeline-shell layer rather than using
   `Muxer` directly.
 
+## RTSP mount push-surface parity: DTS in bindings, MISP variants
+
+- **Status:** Rust-only / partially absent. `MountHandle` gained
+  `push_video_to_with_dts` (mirror of `MuxSender::send_video_to_with_dts`)
+  from an integrator field-report request — Rust only. The Python, JVM,
+  and C mount push surfaces still expose PTS-only video push, so streams
+  served from a binding-managed mount are always DTS == PTS. Separately,
+  the mount surface has no MISP variant at all
+  (`MuxSender::send_video_misp_to` has no `push_video_misp_to` mount
+  mirror in any language).
+- **Why deferred:** binding mirrors follow the same precedent as the
+  `MuxSender` MISP entry above — the Rust surface ships first, binding
+  shells follow when a binding consumer asks. The requesting integrator
+  consumes the Rust crates directly. MISP-over-mount has no requester in
+  any language yet.
+- **Trigger to revisit:** a Python/JVM/C consumer replaying captures
+  through an RTSP mount (DTS mirrors), or any consumer wanting ST 0604
+  MISP timestamps on served streams (MISP mount variant — mirror the
+  `Muxer::push_video_misp_to` signature when it comes up).
+
 ## Input-consumption detail on binding send errors
 
 - **Status:** Rust-only. `MuxSenderError`/`SenderError` carry

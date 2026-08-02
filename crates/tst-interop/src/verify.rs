@@ -19,7 +19,9 @@ use sha2::{Digest, Sha256};
 
 use tst_core::codec::misp_time;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec as DemuxVideoCodec};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, MetadataKind, SamplePayload, VideoCodec as DemuxVideoCodec,
+};
 
 use crate::profiles::{self, Profile};
 use crate::report_types::{CellMetrics, VerifyReport};
@@ -37,6 +39,35 @@ fn expected_demux_video_codec(c: profiles::VideoCodec) -> DemuxVideoCodec {
         profiles::VideoCodec::H265 => DemuxVideoCodec::H265,
         profiles::VideoCodec::H266 => DemuxVideoCodec::H266,
         profiles::VideoCodec::Av1 => DemuxVideoCodec::Av1,
+    }
+}
+
+/// Payload-free classification of a demuxed [`MetadataKind`] — sync
+/// (`KlvSyncAuCell`, regardless of its struct-variant fields) vs. async
+/// (`KlvAsync`) vs. an unrecognized metadata `stream_type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum KlvCarriage {
+    Sync,
+    Async,
+    Unknown,
+}
+
+fn klv_carriage_of(kind: &MetadataKind) -> KlvCarriage {
+    match kind {
+        MetadataKind::KlvSyncAuCell { .. } => KlvCarriage::Sync,
+        MetadataKind::KlvAsync => KlvCarriage::Async,
+        MetadataKind::Unknown(_) => KlvCarriage::Unknown,
+    }
+}
+
+/// Map `profiles::KlvMode` to the [`KlvCarriage`] a conformant capture must
+/// carry. `Async` and `AsyncWithMisp` both ride bare KLV LS (no AU cell
+/// wrap) — MISP only changes what rides inside the *video* SEI, not the
+/// KLV PID's carriage — so both map to `Async`.
+fn expected_klv_carriage(m: profiles::KlvMode) -> KlvCarriage {
+    match m {
+        profiles::KlvMode::Sync => KlvCarriage::Sync,
+        profiles::KlvMode::Async | profiles::KlvMode::AsyncWithMisp => KlvCarriage::Async,
     }
 }
 
@@ -110,6 +141,9 @@ pub struct Tally {
     /// a singleton (one codec per profile); tracked as a set so an
     /// unexpected second codec is visible too.
     video_codecs_seen: HashSet<DemuxVideoCodec>,
+    /// Distinct KLV carriage shapes (sync AU-cell vs. async) observed
+    /// across all `Metadata` events. Normally a singleton per profile.
+    klv_carriage_seen: HashSet<KlvCarriage>,
     misp_sei_seen: bool,
     pts_monotonic: bool,
     /// Last observed raw PTS tick per elementary-stream PID — PTS
@@ -135,6 +169,7 @@ impl Tally {
             audio_frames: 0,
             programs_seen: BTreeSet::new(),
             video_codecs_seen: HashSet::new(),
+            klv_carriage_seen: HashSet::new(),
             misp_sei_seen: false,
             pts_monotonic: true,
             last_pts_by_pid: BTreeMap::new(),
@@ -186,12 +221,13 @@ impl Tally {
             DemuxEvent::Metadata {
                 stream,
                 pts,
+                kind,
                 payload,
-                ..
             } => {
                 self.record_pts(stream.pid, *pts);
                 self.klv_records += 1;
                 self.klv_digests.push(to_hex(&Sha256::digest(payload)));
+                self.klv_carriage_seen.insert(klv_carriage_of(kind));
             }
             DemuxEvent::Discontinuity { .. }
             | DemuxEvent::NonConformant { .. }
@@ -254,6 +290,15 @@ impl Tally {
                 "KLV records: got {}, want >= {min_klv_records} ({} Hz x {seconds}s x {:.0}% slack)",
                 self.klv_records, inv.min_klv_per_sec, slack * 100.0
             ));
+        }
+        if self.klv_records > 0 {
+            let expected_carriage = expected_klv_carriage(p.klv);
+            if self.klv_carriage_seen != HashSet::from([expected_carriage]) {
+                failures.push(format!(
+                    "KLV carriage: expected {expected_carriage:?}, observed {:?}",
+                    self.klv_carriage_seen
+                ));
+            }
         }
 
         if inv.audio_expected && self.audio_frames == 0 {
@@ -359,6 +404,7 @@ pub fn verify_file(path: &Path, p: &Profile, seconds: f64) -> io::Result<VerifyR
 mod tests {
     use super::*;
     use crate::fixtures;
+    use tst_core::mpegts::au_cell::CellFragmentIndication;
     use tst_core::mpegts::demux::{MetadataKind, ProgramMap, StreamId, StreamKind, VideoCodec};
     use tst_core::shared::SharedBytes;
 
@@ -415,6 +461,36 @@ mod tests {
 
     fn klv_event(pts_ticks: i64, seq: u32) -> DemuxEvent {
         klv_event_on(KLV_PID, pts_ticks, seq)
+    }
+
+    /// A sync-carriage (AU-cell-wrapped) KLV `Metadata` event — the shape
+    /// `klv-sync` profiles carry, as opposed to `klv_event`'s bare-LS async
+    /// shape.
+    fn klv_sync_event_on(pid: u16, pts_ticks: i64, seq: u32) -> DemuxEvent {
+        DemuxEvent::Metadata {
+            stream: StreamId {
+                pid,
+                kind: StreamKind::KlvSync {
+                    declared_link: None,
+                },
+                program_number: PROGRAM,
+            },
+            pts: Pts90khz::new(pts_ticks),
+            kind: MetadataKind::KlvSyncAuCell {
+                metadata_service_id: 0,
+                sequence_number: (seq % 256) as u8,
+                cell_fragment_indication: CellFragmentIndication::Complete,
+                decoder_config_flag: false,
+                random_access_indicator: true,
+                was_reassembled: false,
+                cell_count: 1,
+            },
+            payload: fixtures::klv_record(seq),
+        }
+    }
+
+    fn klv_sync_event(pts_ticks: i64, seq: u32) -> DemuxEvent {
+        klv_sync_event_on(KLV_PID, pts_ticks, seq)
     }
 
     /// Feed 2 seconds of baseline-shaped traffic (60 video AUs @ 30fps, 20
@@ -600,6 +676,51 @@ mod tests {
             "expected a failure naming the codec mismatch, got: {:?}",
             report.failures
         );
+    }
+
+    #[test]
+    fn tally_fails_wrong_klv_carriage() {
+        // klv-sync expects AU-cell-wrapped (sync) KLV; feed bare-LS async
+        // KLV events instead. Counts/cadence/video are otherwise correct,
+        // so only the carriage check can catch this.
+        let p = profiles::by_name("klv-sync").expect("klv-sync profile must exist");
+        let mut t = Tally::new();
+        t.feed(&program_map_event());
+        for i in 0..60u32 {
+            t.feed(&video_event(i as i64 * FPS_STEP_TICKS, i % 30 == 0));
+        }
+        for i in 0..20u32 {
+            t.feed(&klv_event(i as i64 * KLV_STEP_TICKS, i)); // async-shaped
+        }
+
+        let report = t.finish(p, 2.0, NOMINAL_COUNT_SLACK);
+
+        assert!(!report.pass);
+        assert!(
+            report.failures.iter().any(|f| f.contains("KLV carriage")),
+            "expected a failure naming the KLV carriage mismatch, got: {:?}",
+            report.failures
+        );
+    }
+
+    #[test]
+    fn tally_passes_klv_sync_profile_with_matching_carriage() {
+        // Positive control for the check above: klv-sync fed genuinely
+        // sync-shaped (AU-cell-wrapped) KLV events must pass.
+        let p = profiles::by_name("klv-sync").expect("klv-sync profile must exist");
+        let mut t = Tally::new();
+        t.feed(&program_map_event());
+        for i in 0..60u32 {
+            t.feed(&video_event(i as i64 * FPS_STEP_TICKS, i % 30 == 0));
+        }
+        for i in 0..20u32 {
+            t.feed(&klv_sync_event(i as i64 * KLV_STEP_TICKS, i));
+        }
+
+        let report = t.finish(p, 2.0, NOMINAL_COUNT_SLACK);
+
+        assert!(report.pass, "failures: {:?}", report.failures);
+        assert_eq!(report.metrics.klv_records, 20);
     }
 
     /// The four `Tally`-level tests above never touch `verify_file`'s own

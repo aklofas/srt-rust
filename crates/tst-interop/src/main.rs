@@ -5,6 +5,7 @@ use tst_interop::r#gen;
 use tst_interop::profiles;
 use tst_interop::recv;
 use tst_interop::send;
+use tst_interop::serve;
 use tst_interop::verify;
 
 fn usage() -> String {
@@ -12,7 +13,8 @@ fn usage() -> String {
 
 Subcommands:
   gen       Generate synthetic test fixtures
-  send      Send test data to endpoint
+  send      Send test data to endpoint (hls:// and rtsp:// URLs BIND and
+            serve instead of connecting — see `send`'s own doc comment)
   recv      Receive test data from endpoint
   verify    Verify interop test results
   proxy     Proxy between endpoints
@@ -126,6 +128,14 @@ fn run_gen(args: &[String]) -> ! {
 /// time. Exits 0 on success, 2 on usage/transport error. `--json OUT`
 /// additionally writes the sent-side `CellMetrics` as JSON to `OUT`
 /// (or stdout, if `OUT` is `-`).
+///
+/// `hls://`/`hlss://` and `rtsp://`/`rtsps://` URLs are serve (BIND)
+/// modes, not connect modes: this subcommand binds a real HLS HTTP
+/// server / RTSP server at the URL's host:port and waits for a peer to
+/// pull, instead of connecting out to one (see `tst_interop::serve`'s
+/// doc comment for why these two schemes work this way). `--json` is
+/// ignored for these two schemes — there is no sent-side `CellMetrics`
+/// to write (no wire-level Transport tee; see `serve.rs`'s scope notes).
 fn run_send(args: &[String]) -> ! {
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
@@ -174,6 +184,21 @@ fn run_send(args: &[String]) -> ! {
         eprintln!("send: unknown profile: {profile_name}");
         std::process::exit(2);
     });
+
+    // hls:// / rtsp:// (+ TLS variants) are serve (bind) modes — branch
+    // out before the connect-side transport path below.
+    if let Some(scheme) = serve::serve_scheme_of(&url) {
+        let result = match scheme {
+            serve::ServeScheme::Hls => serve::run_hls_url(p, &url, seconds),
+            serve::ServeScheme::Rtsp => serve::run_rtsp_url(p, &url, seconds),
+        };
+        if let Err(e) = result {
+            eprintln!("send: {e}");
+            std::process::exit(2);
+        }
+        eprintln!("send: served {seconds}s of {profile_name} at {url}");
+        std::process::exit(0);
+    }
 
     let metrics = send::run(p, &url, seconds, json_out.as_deref()).unwrap_or_else(|e| {
         eprintln!("send: {e}");

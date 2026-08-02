@@ -9,6 +9,49 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **DTS-capable video push on RTSP server mounts** (PR #138, from an
+  integrator field report). `MountHandle::push_video_to_with_dts(handle, nal,
+  pts, dts, key_frame)` mirrors `MuxSender::send_video_to_with_dts` —
+  targeted-only, like every DTS push in the workspace; obtain the handle from
+  `video_handles()`. Streams served from a mount were previously always
+  DTS == PTS, so a capture replayer could not reproduce real encoder timing
+  (e.g. a constant PTS−DTS offset) through the RTSP server. The
+  drain-and-broadcast contract is unchanged, and the muxer still does not
+  enforce `dts <= pts` (same caller invariant as `MuxSender`). The Python,
+  JVM, and C mount push surfaces remain PTS-only for now — see the "RTSP
+  mount push-surface parity" entry in `docs/project/deferred-features.md`.
+- **`udp://` URLs accept DNS hostnames** (PR #137, same field report).
+  `UdpUrl::parse` — and therefore `UdpTransport::connect`,
+  `UdpRecvTransport::listen`, the builders, and every binding — now resolves
+  non-literal hosts via the system resolver instead of failing with a
+  literal-address error, matching tst-srt and tst-tcp. Candidates are
+  probe-walked with a local `bind` + `connect` (no packets are sent), so a
+  resolver returning an unroutable-family address first (e.g. AAAA on a
+  v6-disabled host) is skipped rather than breaking the send path; if every
+  probe fails the first resolved address is kept so the real send surfaces
+  the OS error. Multicast group addresses and the `?localaddr=` / IPv4
+  `?iface=` selectors stay literal-only.
+- **RTSP server SETUP rejections are now diagnosable from logs** (PR #136,
+  same field report). A malformed `Transport:` header still gets the bare
+  `400 Bad Request` on the wire, but the server logs the missing-header vs
+  malformed-header distinction (target `tst_rtp::server`) and the shared
+  range parser logs exactly which check failed — non-integer port/channel,
+  non-ascending pair, companion overflow, or token count (target
+  `tst_rtp::rtsp::transport_negotiation`, `debug!` level). Wire-supplied
+  values are Debug-escaped before logging.
+
+### Changed
+
+- **Breaking (Rust, pre-1.0): `UdpUrlError::BadHost` is removed**, superseded
+  by the hostname-resolution work above. Unresolvable or junk hosts now
+  surface as `UdpUrlError::HostResolve { host, detail }`, and passing an
+  `@`-prefixed (recv-bind) URL to the send-side builder — which previously
+  misreported through `BadHost` — gets the purpose-specific
+  `UdpUrlError::SendRecvMismatch`. The C ABI and error-kind mappings are
+  unchanged (URL errors ride the existing `Url` kind); C ABI minor stays 19.
+
 ### Fixed
 
 - **RTSP server: the `active_sessions` stats gauge could transiently read

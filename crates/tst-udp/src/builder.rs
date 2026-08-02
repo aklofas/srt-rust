@@ -21,7 +21,7 @@ impl UdpTransportBuilder {
     pub fn from_url(url: &str) -> Result<Self, UdpUrlError> {
         let url = UdpUrl::parse(url)?;
         if url.recv_bind {
-            return Err(UdpUrlError::BadHost(
+            return Err(UdpUrlError::SendRecvMismatch(
                 "URL has '@' prefix → use UdpRecvTransportBuilder instead".into(),
             ));
         }

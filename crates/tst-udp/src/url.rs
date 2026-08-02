@@ -2,7 +2,7 @@
 //!
 //! The format mirrors what ffmpeg + VLC accept:
 //!
-//! - `udp://host:port` — unicast send/recv
+//! - `udp://host:port` — unicast send/recv (IP literal or DNS hostname)
 //! - `udp://@group:port` — multicast recv (the `@` prefix is the ffmpeg convention)
 //! - `udp://group:port` (group in 224.0.0.0/4 or ff00::/8) — multicast send
 //!
@@ -16,6 +16,8 @@ use thiserror::Error;
 #[derive(Debug, Clone)]
 pub struct UdpUrl {
     /// Destination address (for send) or bind address (for recv).
+    /// Hostnames in the URL are resolved at parse time; this always
+    /// holds the resolved literal.
     pub addr: IpAddr,
     /// Port (always required).
     pub port: u16,
@@ -45,8 +47,12 @@ pub enum UdpUrlError {
     BadScheme(String),
     #[error("URL must include a port")]
     MissingPort,
-    #[error("host '{0}' is not a literal IPv4/IPv6 address")]
-    BadHost(String),
+    #[error("could not resolve host '{host}': {detail}")]
+    HostResolve { host: String, detail: String },
+    /// A recv-bind (`@`-prefixed) URL was passed to a send-side entry
+    /// point, or vice versa. The message names the right entry point.
+    #[error("{0}")]
+    SendRecvMismatch(String),
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
     BadQueryValue {
         key: String,
@@ -66,6 +72,13 @@ pub enum UdpUrlError {
 
 impl UdpUrl {
     /// Parse a `udp://...` URL into the structured form.
+    ///
+    /// The host may be an IP literal or a DNS hostname. Non-literal
+    /// hosts are resolved here via the system resolver
+    /// ([`std::net::ToSocketAddrs`]) and the first returned address is
+    /// used — on dual-stack hosts that may be the IPv6 address. The
+    /// `?localaddr=` and IPv4 `?iface=` values stay literal-only
+    /// (resolving a local NIC selector through DNS is meaningless).
     pub fn parse(s: &str) -> Result<Self, UdpUrlError> {
         use tst_core::url::common::parse_url;
 
@@ -82,9 +95,31 @@ impl UdpUrl {
         let recv_bind = parsed.username.is_some();
         let host_str = parsed.host;
 
-        let addr: IpAddr = host_str
-            .parse()
-            .map_err(|_| UdpUrlError::BadHost(host_str.to_string()))?;
+        // IP literals stay a pure parse; anything else is treated as a
+        // hostname and resolved via the system resolver — matching
+        // tst-srt and tst-tcp, which both accept hostnames (containerized
+        // consumers address peers by service name). The FIRST resolved
+        // address wins; on dual-stack hosts that may be the IPv6 one.
+        // Multicast classification runs on the resolved address either
+        // way; group addresses are conventionally written as literals.
+        let addr: IpAddr = match host_str.parse() {
+            Ok(a) => a,
+            Err(_) => {
+                use std::net::ToSocketAddrs;
+                (host_str, port)
+                    .to_socket_addrs()
+                    .map_err(|e| UdpUrlError::HostResolve {
+                        host: host_str.to_string(),
+                        detail: e.to_string(),
+                    })?
+                    .next()
+                    .ok_or_else(|| UdpUrlError::HostResolve {
+                        host: host_str.to_string(),
+                        detail: "resolved to no addresses".to_string(),
+                    })?
+                    .ip()
+            }
+        };
 
         let mut iface = None;
         let mut ttl = None;
@@ -261,6 +296,39 @@ mod tests {
         // recognized suffix, so this is rejected at digit-parse — the key
         // property is Err, never panic/wrap.
         assert!(UdpUrl::parse("udp://239.10.0.1:5004?pkt_size=999999999999G").is_err());
+    }
+
+    #[test]
+    fn hostname_resolves_via_system_resolver() {
+        // `localhost` resolves from the hosts file — hermetic, no DNS
+        // traffic — and must yield a loopback address whichever family
+        // the resolver prefers.
+        let u = UdpUrl::parse("udp://localhost:5004").unwrap();
+        assert!(
+            u.addr.is_loopback(),
+            "resolved localhost must be loopback, got {}",
+            u.addr
+        );
+        assert_eq!(u.port, 5004);
+        assert!(!u.recv_bind);
+    }
+
+    #[test]
+    fn hostname_recv_bind_resolves() {
+        let u = UdpUrl::parse("udp://@localhost:5004").unwrap();
+        assert!(u.recv_bind);
+        assert!(u.addr.is_loopback());
+    }
+
+    #[test]
+    fn unresolvable_hostname_reports_resolve_error() {
+        // RFC 6761 reserves `.invalid` — guaranteed non-resolvable, so
+        // this exercises the resolution-failure path deterministically.
+        let err = UdpUrl::parse("udp://gimbal.invalid:5004").expect_err("must not resolve");
+        match err {
+            UdpUrlError::HostResolve { host, .. } => assert_eq!(host, "gimbal.invalid"),
+            other => panic!("expected HostResolve, got {other:?}"),
+        }
     }
 
     #[test]

@@ -659,7 +659,7 @@ mod tests {
         // report: gimbal encoders hold PTS-DTS at a constant offset).
         // Push with a 0.2 s offset (18000 ticks @ 90 kHz), then demux the
         // broadcast TS bytes and assert the offset survived.
-        use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+        use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
 
         let state = mock_unicast_mount_state();
         let mut rx = state.fanout.subscribe();
@@ -681,7 +681,16 @@ mod tests {
         demux.flush();
         let mut saw_video = false;
         while let Some(event) = demux.next_event() {
-            if let DemuxEvent::Sample { pts, dts, .. } = event {
+            // Match the video payload specifically — `Sample` also covers
+            // audio/subtitles, and the assertion must not vacuously pass
+            // on some other stream if the mock config ever grows one.
+            if let DemuxEvent::Sample {
+                pts,
+                dts,
+                payload: SamplePayload::Video { .. },
+                ..
+            } = event
+            {
                 assert_eq!(pts, Pts90khz::new(18000));
                 assert_eq!(
                     dts,

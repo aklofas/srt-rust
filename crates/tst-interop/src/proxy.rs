@@ -10,8 +10,8 @@
 //!   place of the real destination — e.g. an SRT caller). Its address is
 //!   unknown up front and is *learned* from the first datagram this
 //!   socket receives whose source isn't `forward` (see below). Every
-//!   datagram from the learned client peer is the one [`impair::Engine`]
-//!   governs: `Engine::decide` runs, and the result (drop / forward /
+//!   datagram from the learned client peer is the one [`crate::impair::
+//!   Engine`] governs: `Engine::decide` runs, and the result (drop / forward /
 //!   dup-forward, each with its own delay) determines what — if
 //!   anything — gets relayed on to `forward`, and when.
 //! - The **real destination** at `forward` (e.g. the actual SRT
@@ -69,7 +69,7 @@
 //! # Stats
 //!
 //! [`ProxyStats`] is written to `stats_json` (if given) every
-//! [`STATS_INTERVAL`] and once more, unconditionally, right before
+//! `STATS_INTERVAL` and once more, unconditionally, right before
 //! [`run`] returns — atomically (write to a sibling `.tmp` path, then
 //! `rename`) so a concurrent reader never observes a half-written file.
 
@@ -375,7 +375,16 @@ pub fn run(
 
         if let Some(path) = &stats_json {
             if last_stats_write.elapsed() >= STATS_INTERVAL {
-                write_stats_atomic(path, &stats)?;
+                // A transient write failure (e.g. the containing
+                // directory got removed mid-soak) must not abort the
+                // relay itself — that would silently stop forwarding
+                // real traffic over a problem with an evidence
+                // side-channel. Log and keep relaying; the next
+                // interval (or the unconditional write at exit) gets
+                // another chance.
+                if let Err(e) = write_stats_atomic(path, &stats) {
+                    eprintln!("proxy: periodic stats write failed (continuing to relay): {e}");
+                }
                 last_stats_write = Instant::now();
             }
         }
@@ -396,7 +405,16 @@ pub fn run(
     );
 
     if let Some(path) = &stats_json {
-        write_stats_atomic(path, &stats)?;
+        // Same reasoning as the periodic write above: a run that
+        // otherwise completed cleanly must not be reported as failed
+        // just because its LAST stats write hit a transient FS problem
+        // — that would mask a successful relay (and, for the CLI path,
+        // exit non-zero) over what's ultimately a side-channel write.
+        // The in-process API (this function's return value) still
+        // carries the real, final `ProxyStats` regardless.
+        if let Err(e) = write_stats_atomic(path, &stats) {
+            eprintln!("proxy: final stats write failed (relay itself completed normally): {e}");
+        }
     }
 
     Ok(stats)
@@ -448,7 +466,7 @@ fn parse_duration_unit(s: &str) -> Option<u64> {
 }
 
 /// Parse `--outage period=DUR,dur=DUR` (each `DUR` an integer with an
-/// optional `h`/`m`/`s` unit suffix — see [`parse_duration_unit`]) into
+/// optional `h`/`m`/`s` unit suffix — see `parse_duration_unit`) into
 /// `(outage_period_s, outage_dur_s)`. Both keys are required whenever
 /// `--outage` is passed at all: a period with no duration (or vice
 /// versa) would silently parse into `ImpairConfig{ outage_period_s:

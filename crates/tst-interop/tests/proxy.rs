@@ -1,7 +1,7 @@
 //! Integration tests for `proxy::run`: transparent relay (byte
-//! transparency at loss=0), scheduled outage windows, and an
-//! end-to-end SRT-through-proxy cell (SRT's own retransmission
-//! recovering from a lossy/jittered link).
+//! transparency at loss=0), scheduled outage windows, resilience to an
+//! unwritable stats path, and an end-to-end SRT-through-proxy cell
+//! (SRT's own retransmission recovering from a lossy/jittered link).
 //!
 //! # nextest group placement
 //!
@@ -20,17 +20,19 @@
 //! hard kill; 40s on Windows via the platform override) instead of the
 //! default profile's 30s/2 (60s) global safety net.
 //!
-//! The other two tests ([`transparent_relay_preserves_order_and_bytes`],
-//! [`outage_windows_produce_periodic_gaps`]) are left unmatched
-//! (default group, full parallelism): both use ephemeral OS-assigned
+//! The other three tests ([`transparent_relay_preserves_order_and_bytes`],
+//! [`outage_windows_produce_periodic_gaps`],
+//! [`unwritable_stats_path_does_not_fail_the_relay`]) are left unmatched
+//! (default group, full parallelism): all three use ephemeral OS-assigned
 //! ports (no cross-test port contention) and are written with generous
-//! tolerances rather than tight wall-clock assertions, so ordinary CPU
-//! contention from sibling tests shouldn't flake them. `outage_windows_
-//! produce_periodic_gaps` is the one with any real wall-clock-shape
-//! assertion (a gap between arrivals) — if it's ever observed to flake
-//! under load, promoting it into the `network` group (rename to include
-//! e.g. `round_trip`, or add a `.config/nextest.toml` override) is the
-//! fix; nothing about that decision belongs in `proxy.rs` itself.
+//! tolerances (or no wall-clock assertion at all) rather than tight
+//! timing checks, so ordinary CPU contention from sibling tests shouldn't
+//! flake them. `outage_windows_produce_periodic_gaps` is the one with
+//! any real wall-clock-shape assertion (gap counts between arrivals) —
+//! if it's ever observed to flake under load, promoting it into the
+//! `network` group (rename to include e.g. `round_trip`, or add a
+//! `.config/nextest.toml` override) is the fix; nothing about that
+//! decision belongs in `proxy.rs` itself.
 //!
 //! Deterministic-test policy (mirrors `tests/loopback.rs`/`tests/
 //! serve.rs`): ports are ephemeral (OS-assigned via a throwaway bind);
@@ -214,10 +216,28 @@ fn transparent_relay_preserves_order_and_bytes() {
     assert_eq!(stats.duped, 0);
 }
 
-/// `outage_period_s=2, outage_dur_s=1` at 10Hz for ~4s: the receiver
-/// must observe periodic ~1s gaps where the outage windows suppressed
-/// traffic, and the stats JSON written at exit must agree with `proxy::
-/// run`'s own returned counters.
+/// `outage_period_s=2, outage_dur_s=1` at 10Hz for ~6s (3 full periods):
+/// the receiver must observe MULTIPLE periodic ~1s gaps where the outage
+/// windows suppressed traffic — not just one contiguous pause — and the
+/// stats JSON written at exit must agree with `proxy::run`'s own
+/// returned counters.
+///
+/// Three periods (not two) is deliberate: a single-max-gap check can't
+/// tell "period=2s,dur=1s repeating" apart from a proxy bug that (say)
+/// computed `elapsed_ms` from the wrong reference instant and produced
+/// one contiguous ~2s pause instead of two separate ~1s ones — both
+/// shapes have the same max gap and roughly the same drop fraction. This
+/// test instead asserts on the COUNT of qualifying gaps. A gap only
+/// shows up in `arrivals.windows(2)` when there's a real delivery both
+/// immediately before AND after it (the very first and very last outage
+/// windows the send loop happens to straddle are NOT bounded this way,
+/// since there's no prior/subsequent arrival to diff against) — so with
+/// only 2 periods (one interior down window) an unlucky phase alignment
+/// could leave zero or one FULLY interior down window observable
+/// regardless of correctness. 3 periods guarantees at least 2 fully
+/// interior down windows land inside the observed arrivals no matter
+/// where in the cycle the send loop happens to start (worked through in
+/// the review-fix report).
 #[test]
 fn outage_windows_produce_periodic_gaps() {
     let dest_sock = UdpSocket::bind("127.0.0.1:0").expect("bind destination socket");
@@ -245,21 +265,21 @@ fn outage_windows_produce_periodic_gaps() {
         dest_addr,
         cfg,
         Some(stats_path.clone()),
-        6,
+        8,
     );
 
     const HZ: u32 = 10;
-    const TOTAL: u32 = HZ * 4; // ~4s at 10Hz
-    // Send window is ~4s; give the collector a further 2s margin past
+    const TOTAL: u32 = HZ * 6; // ~6s at 10Hz -- 3 full outage periods, see the test's own doc comment
+    // Send window is ~6s; give the collector a further 2s margin past
     // that for the last few packets' proxy-relay + wire latency to
     // land. Runs on its own thread, CONCURRENTLY with the paced send
     // loop below — reading only AFTER the send loop finished would just
     // batch-drain whatever piled up in the kernel receive buffer over
-    // the whole 4s window, and every arrival would then read back nearly
+    // the whole 6s window, and every arrival would then read back nearly
     // simultaneously: the real wall-clock gaps this test's assertions
     // depend on only exist if arrivals are timestamped as they actually
     // land, not after the fact.
-    let collect_for = Duration::from_secs(4) + Duration::from_secs(2);
+    let collect_for = Duration::from_secs(6) + Duration::from_secs(2);
     let receiver = thread::spawn(move || {
         let deadline = Instant::now() + collect_for;
         let mut arrivals: Vec<Instant> = Vec::new();
@@ -303,19 +323,28 @@ fn outage_windows_produce_periodic_gaps() {
         arrivals.len()
     );
 
-    // At least one gap between consecutive arrivals should be
-    // consistent with a ~1s outage window (nominal ~100ms between
-    // packets while a window is up) — generous threshold (500ms, half
-    // the configured 1s outage) so ordinary scheduling jitter can't
-    // flake this.
-    let max_gap = arrivals
+    // Count, not just detect, outage-sized gaps between consecutive
+    // arrivals — a single contiguous pause (e.g. a proxy bug that
+    // dropped for one long stretch instead of periodically) would also
+    // produce one big max gap, so a max-gap-only check can't tell
+    // "periodic" apart from "one pause" (see this test's own doc
+    // comment). Threshold (500ms) is generous — half the configured 1s
+    // outage — so ordinary scheduling jitter can't flake this; requiring
+    // >= 2 qualifying gaps is what actually exercises the periodicity
+    // wiring (the elapsed-ms reference instant and the period/duration
+    // math), not just "a pause happened somewhere."
+    let big_gaps: Vec<Duration> = arrivals
         .windows(2)
         .map(|w| w[1].duration_since(w[0]))
-        .max()
-        .unwrap_or(Duration::ZERO);
+        .filter(|&gap| gap >= Duration::from_millis(500))
+        .collect();
     assert!(
-        max_gap >= Duration::from_millis(500),
-        "expected an outage-sized gap (>=500ms) between arrivals, largest observed was {max_gap:?}"
+        big_gaps.len() >= 2,
+        "expected at least 2 separate outage-sized (>=500ms) gaps between arrivals — \
+         period=2s,dur=1s over a 6s send window should straddle multiple periodic outage \
+         windows, not one contiguous pause; found {} qualifying gap(s): {:?}",
+        big_gaps.len(),
+        big_gaps
     );
 
     let stats =
@@ -328,10 +357,10 @@ fn outage_windows_produce_periodic_gaps() {
         stats.forwarded > 0,
         "expected some packets to survive the up windows"
     );
-    // Roughly half of a 4s send window falls inside outage windows
-    // (period=2s, dur=1s) — generous 30%/70% band around that 50%
-    // nominal split to tolerate where the 4s window happens to land
-    // relative to the proxy's own outage-window phase.
+    // Roughly half of a 6s send window (3 full 2s periods) falls inside
+    // outage windows (period=2s, dur=1s) — generous 30%/70% band around
+    // that 50% nominal split to tolerate where the 6s window happens to
+    // land relative to the proxy's own outage-window phase.
     let total = stats.dropped + stats.forwarded;
     let dropped_frac = stats.dropped as f64 / total as f64;
     assert!(
@@ -353,6 +382,72 @@ fn outage_windows_produce_periodic_gaps() {
     assert_eq!(parsed.config.outage_dur_s, cfg.outage_dur_s);
 
     let _ = std::fs::remove_file(&stats_path);
+}
+
+/// A `stats_json` whose containing directory doesn't exist must not
+/// turn an otherwise-successful relay into a failure — see `proxy::run`'s
+/// module doc's "Stats" section. This exercises `run`'s FINAL (at-exit)
+/// stats write, the one guaranteed to fire even for a short run (the
+/// periodic write only fires past `STATS_INTERVAL`, well beyond what
+/// this test's short `run_seconds` needs to cover). Real traffic must
+/// still flow, and `proxy::run` must still return `Ok` carrying the
+/// correct counters, despite the doomed write.
+#[test]
+fn unwritable_stats_path_does_not_fail_the_relay() {
+    let dest_sock = UdpSocket::bind("127.0.0.1:0").expect("bind destination socket");
+    dest_sock
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+    let dest_addr = dest_sock.local_addr().expect("destination local_addr");
+
+    // A path whose PARENT directory doesn't exist: `write_stats_atomic`'s
+    // `fs::write` (into a sibling `.tmp` path, same containing directory)
+    // fails with `NotFound` every time, deterministically — no reliance
+    // on real filesystem permissions, which would vary across CI
+    // platforms/users.
+    let bogus_dir = std::env::temp_dir().join(format!(
+        "tst-interop-proxy-nonexistent-dir-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before UNIX_EPOCH")
+            .as_nanos(),
+    ));
+    let stats_path = bogus_dir.join("stats.json");
+    assert!(
+        !bogus_dir.exists(),
+        "the whole point of this test is that this directory does NOT exist"
+    );
+
+    let (proxy_addr, proxy_handle) = spawn_proxy(
+        "127.0.0.1:0".parse().unwrap(),
+        dest_addr,
+        ImpairConfig::default(),
+        Some(stats_path.clone()),
+        2,
+    );
+
+    let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender socket");
+    sender
+        .send_to(b"hello", proxy_addr)
+        .expect("send datagram to proxy");
+
+    // Real traffic must still be relayed despite the doomed stats path.
+    let mut buf = [0u8; 16];
+    let n = dest_sock
+        .recv(&mut buf)
+        .expect("datagram must still be relayed despite an unwritable stats path");
+    assert_eq!(&buf[..n], b"hello");
+
+    let stats = join_with_timeout(proxy_handle, Duration::from_secs(10))
+        .expect("proxy::run must still return Ok even though its stats write failed");
+    assert_eq!(stats.forwarded, 1);
+    assert_eq!(stats.dropped, 0);
+
+    assert!(
+        !stats_path.exists(),
+        "sanity check: the stats file was genuinely never written (parent directory never existed)"
+    );
 }
 
 /// SRT sender -> impaired proxy (2% loss, 10ms jitter, fixed seed) ->

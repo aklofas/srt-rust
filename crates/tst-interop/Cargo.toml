@@ -16,3 +16,4 @@ tst-rtp = { path = "../tst-rtp" }
 tst-hls = { path = "../tst-hls" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
+sha2 = "0.10"

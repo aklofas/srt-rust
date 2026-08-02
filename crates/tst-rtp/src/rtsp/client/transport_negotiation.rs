@@ -102,43 +102,74 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
 /// Parse a strict `lo-hi` `u16` port range. Rejects non-numeric,
 /// out-of-range, reversed (`hi < lo`), and single-value forms whose
 /// fabricated companion (`lo+1`) would overflow.
+///
+/// The caller-facing error stays the bare [`RtspError::UnsupportedTransport`]
+/// (wire behavior is a plain rejection); the specific failed check is
+/// reported via a `debug!`-level log line so a rejected SETUP can be
+/// diagnosed without a packet capture.
 fn parse_u16_pair(value: &str) -> Result<(u16, u16), RtspError> {
+    parse_u16_pair_detail(value).map_err(|reason| {
+        tracing::debug!(target: "tst_rtp", value, reason, "rejecting Transport port range");
+        RtspError::UnsupportedTransport
+    })
+}
+
+/// [`parse_u16_pair`] with the failed check named in the error.
+fn parse_u16_pair_detail(value: &str) -> Result<(u16, u16), &'static str> {
     let mut it = value.split('-');
     let lo: u16 = it
         .next()
         .and_then(|s| s.trim().parse().ok())
-        .ok_or(RtspError::UnsupportedTransport)?;
+        .ok_or("port is not an integer in 0-65535")?;
     let hi: u16 = match it.next() {
         Some(s) => s
             .trim()
             .parse()
-            .map_err(|_| RtspError::UnsupportedTransport)?,
+            .map_err(|_| "port is not an integer in 0-65535")?,
         // No explicit hi: derive the RTCP companion, rejecting overflow.
-        None => lo.checked_add(1).ok_or(RtspError::UnsupportedTransport)?,
+        None => lo
+            .checked_add(1)
+            .ok_or("single-port form has no valid companion (port+1 overflows 65535)")?,
     };
-    if it.next().is_some() || hi < lo {
-        return Err(RtspError::UnsupportedTransport);
+    if it.next().is_some() {
+        return Err("more than two ports in range");
+    }
+    if hi < lo {
+        return Err("pair must be ascending (lo-hi)");
     }
     Ok((lo, hi))
 }
 
 /// Parse a strict `lo-hi` `u8` interleaved-channel range. Same rejection
-/// rules as [`parse_u16_pair`], scoped to `u8`.
+/// rules (and logging) as [`parse_u16_pair`], scoped to `u8`.
 fn parse_u8_pair(value: &str) -> Result<(u8, u8), RtspError> {
+    parse_u8_pair_detail(value).map_err(|reason| {
+        tracing::debug!(target: "tst_rtp", value, reason, "rejecting Transport channel range");
+        RtspError::UnsupportedTransport
+    })
+}
+
+/// [`parse_u8_pair`] with the failed check named in the error.
+fn parse_u8_pair_detail(value: &str) -> Result<(u8, u8), &'static str> {
     let mut it = value.split('-');
     let lo: u8 = it
         .next()
         .and_then(|s| s.trim().parse().ok())
-        .ok_or(RtspError::UnsupportedTransport)?;
+        .ok_or("channel is not an integer in 0-255")?;
     let hi: u8 = match it.next() {
         Some(s) => s
             .trim()
             .parse()
-            .map_err(|_| RtspError::UnsupportedTransport)?,
-        None => lo.checked_add(1).ok_or(RtspError::UnsupportedTransport)?,
+            .map_err(|_| "channel is not an integer in 0-255")?,
+        None => lo
+            .checked_add(1)
+            .ok_or("single-channel form has no valid companion (channel+1 overflows 255)")?,
     };
-    if it.next().is_some() || hi < lo {
-        return Err(RtspError::UnsupportedTransport);
+    if it.next().is_some() {
+        return Err("more than two channels in range");
+    }
+    if hi < lo {
+        return Err("pair must be ascending (lo-hi)");
     }
     Ok((lo, hi))
 }
@@ -308,6 +339,83 @@ mod tests {
         // can also overflow at 65535).
         let r = parse_transport_response("RTP/AVP;unicast;client_port=65535");
         assert!(r.is_err(), "missing hi port must be rejected");
+    }
+
+    // --- failure-reason classification (server SETUP 400 diagnostics) ---
+    // The wire behavior above must stay a bare rejection; these pin the
+    // human-readable reason each failure mode reports so log lines can
+    // name which Transport-header check failed.
+
+    #[test]
+    fn u16_pair_detail_accepts_valid_pair_and_single() {
+        assert_eq!(parse_u16_pair_detail("5004-5005"), Ok((5004, 5005)));
+        // Single-value form fabricates the RTCP companion.
+        assert_eq!(parse_u16_pair_detail("5004"), Ok((5004, 5005)));
+    }
+
+    #[test]
+    fn u16_pair_detail_names_reversed_pair() {
+        let reason = parse_u16_pair_detail("5005-5004").unwrap_err();
+        assert!(
+            reason.contains("ascending"),
+            "reversed pair must name the ascending-order check, got: {reason}"
+        );
+    }
+
+    #[test]
+    fn u16_pair_detail_names_non_integer_port() {
+        let reason = parse_u16_pair_detail("abc-def").unwrap_err();
+        assert!(
+            reason.contains("not an integer"),
+            "non-numeric port must name the integer check, got: {reason}"
+        );
+        // Out-of-range values fail the same u16 parse and share the reason.
+        let reason = parse_u16_pair_detail("70000-70001").unwrap_err();
+        assert!(
+            reason.contains("not an integer"),
+            "out-of-range port must name the integer check, got: {reason}"
+        );
+    }
+
+    #[test]
+    fn u16_pair_detail_names_companion_overflow() {
+        let reason = parse_u16_pair_detail("65535").unwrap_err();
+        assert!(
+            reason.contains("companion"),
+            "single 65535 must name the companion-port overflow, got: {reason}"
+        );
+    }
+
+    #[test]
+    fn u16_pair_detail_names_extra_tokens() {
+        let reason = parse_u16_pair_detail("1-2-3").unwrap_err();
+        assert!(
+            reason.contains("more than two"),
+            "triple range must name the token-count check, got: {reason}"
+        );
+    }
+
+    #[test]
+    fn u8_pair_detail_reasons_mirror_u16() {
+        assert_eq!(parse_u8_pair_detail("0-1"), Ok((0, 1)));
+        assert!(
+            parse_u8_pair_detail("1-0")
+                .unwrap_err()
+                .contains("ascending"),
+            "reversed channel pair must name the ascending-order check"
+        );
+        assert!(
+            parse_u8_pair_detail("300-301")
+                .unwrap_err()
+                .contains("not an integer"),
+            "out-of-range channel must name the integer check"
+        );
+        assert!(
+            parse_u8_pair_detail("255")
+                .unwrap_err()
+                .contains("companion"),
+            "single channel 255 must name the companion-channel overflow"
+        );
     }
 
     #[test]

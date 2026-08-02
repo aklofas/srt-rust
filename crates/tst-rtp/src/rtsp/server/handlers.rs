@@ -300,15 +300,32 @@ pub(crate) fn handle_setup(
     };
     drop(mounts);
 
-    // Parse the Transport request header.
+    // Parse the Transport request header. The wire response stays a bare
+    // 400 either way (a client gains nothing from the distinction); the
+    // debug lines exist so a server operator can tell a missing header
+    // from a malformed one — the parse layer's own debug line (see
+    // `parse_u16_pair`) names which specific check failed.
     let transport_str = match req.headers.get("transport") {
         Some(t) => t.as_str(),
-        None => return error_response(req, 400, "Bad Request"),
+        None => {
+            tracing::debug!(
+                target: "tst_rtp::server",
+                "SETUP rejected 400: no Transport header"
+            );
+            return error_response(req, 400, "Bad Request");
+        }
     };
     let parsed =
         match crate::rtsp::client::transport_negotiation::parse_transport_response(transport_str) {
             Ok(p) => p,
-            Err(_) => return error_response(req, 400, "Bad Request"),
+            Err(_) => {
+                tracing::debug!(
+                    target: "tst_rtp::server",
+                    transport = transport_str,
+                    "SETUP rejected 400: malformed Transport header"
+                );
+                return error_response(req, 400, "Bad Request");
+            }
         };
 
     // Per RFC 7826 §13.3: TCP-interleaved is incompatible with multicast.

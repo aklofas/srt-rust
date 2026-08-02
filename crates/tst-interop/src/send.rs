@@ -29,21 +29,6 @@ use crate::verify;
 /// 90 kHz ticks per second — see `gen.rs`'s constant of the same name.
 const PTS_HZ: u32 = 90_000;
 
-/// Grace pause between the last push and closing the transport.
-///
-/// `Transport::close` tears the connection down promptly on transports
-/// with an internal send buffer / retransmit window (SRT, RIST) — it
-/// does not wait for that buffer to drain. Without a beat here, the
-/// last few in-flight TS packets can lose the race against the close
-/// and never reach the peer, so a receiver ends up with fewer bytes
-/// than were pushed. Same fix `examples/sending/encrypted_send_recv.rs`
-/// applies for the identical reason (see its own comment on this exact
-/// race), generalized to every scheme here since it's harmless for
-/// transports that don't need it (UDP/TCP hand bytes to the kernel
-/// synchronously per `send_bytes` call, so there's nothing left to
-/// drain).
-const DRAIN_BEFORE_CLOSE: Duration = Duration::from_millis(300);
-
 /// One scheduled push. See `gen.rs`'s `Event` — same shape and sort
 /// order — but consumed here by a wall-clock-paced loop instead of an
 /// as-fast-as-possible file write.
@@ -202,14 +187,20 @@ pub fn send_over_transport(
         }
     }
 
-    // See DRAIN_BEFORE_CLOSE's doc comment — let in-flight bytes clear
-    // the transport's internal buffer before we tear it down.
-    thread::sleep(DRAIN_BEFORE_CLOSE);
-
-    // Explicit close + drop before reading the tee tally back —
-    // `tee_tally` requires the `Teeing` (owned by `sender`'s inner
-    // muxer/transport state) to have no other owner.
-    sender.close();
+    // Drop (not `sender.close()`) before reading the tee tally back.
+    // `MuxSender::close()` cancels the transport's cancel handle FIRST
+    // (needed so a `close()` racing another thread parked inside
+    // `send_bytes` doesn't deadlock on the inner mutex) and only drains
+    // `pending_bytes` afterward — for a transport with a real cancel
+    // handle (SRT, RIST; a plain in-memory test mock has none) that
+    // cancel already tears the connection down, so anything still
+    // sitting in `pending_bytes` fails to send and is discarded.
+    // `Drop`'s impl does the same drain but BEFORE closing the
+    // transport, so nothing pending is lost — this crate's single
+    // sender thread never needs `close()`'s cross-thread-safe ordering,
+    // so plain `drop` is both correct and simpler here. (`tee_tally`
+    // also requires the `Teeing` — owned by `sender`'s inner transport
+    // state — to have no other owner, which `drop` satisfies too.)
     drop(sender);
     let (bytes, stream_sha256) = transport::tee_tally(tap);
 

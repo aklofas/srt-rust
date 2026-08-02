@@ -41,6 +41,28 @@
 //! never closes/breaks the connection would hang the deadline loop.
 //! Not exercised by this crate's loopback tests today (udp + srt only);
 //! revisit if a future TCP interop cell needs the same bound.
+//!
+//! # Drain-before-close
+//!
+//! SRT and RIST each run their own user-space reliability engine on a
+//! background thread and deliver to the *peer's* application on their
+//! own schedule (SRT's TSBPD latency window; RIST's recovery buffer);
+//! unlike TCP (kernel-owned buffers keep draining after `shutdown()`
+//! regardless of process-level close timing) and UDP (`send_bytes` is a
+//! single synchronous syscall, nothing queued on either side), tearing
+//! that engine down right after the last push can cut the connection
+//! before the peer has actually delivered the tail of the stream to its
+//! own application. `srt_socket` sets `SRTO_LINGER` (protects the
+//! *local* send-side queue — a real, distinct concern from the above;
+//! see its own doc comment) and [`GracefulSrtClose`] additionally waits
+//! past the negotiated `SRTO_LATENCY` before closing (the mechanism this
+//! crate's own srt loopback test needed — confirmed by instrumenting
+//! `Teeing::send_bytes`: every send returned `Ok`, so linger alone had
+//! nothing left to drain). `tst-rist` exposes no linger-equivalent
+//! option at all, so [`GracefulRistClose`] uses the same scoped grace
+//! sleep for both concerns at once (see its own doc comment for the
+//! caveat that this one is unverified — this crate's tests don't
+//! exercise a RIST cell yet).
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -69,6 +91,29 @@ const DEFAULT_SRT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// "Bounded receive" section.
 const UDP_RECV_POLL: Duration = Duration::from_millis(200);
 
+/// `SRTO_LINGER` applied to every SRT socket/listener this module
+/// builds. Mirrors the value `SocketConfig::sender_defaults()` uses
+/// (`crates/tst-srt/src/config.rs`'s `SENDER_DEFAULT_LINGER`) — not
+/// reused directly (it's a private const, and `sender_defaults()`/
+/// `merge_sender_defaults()` also forces `role = Sender`, which is
+/// wrong for a socket `srt_socket` might build for a pure receiver; see
+/// `srt_socket`'s doc comment).
+const SRT_LINGER: Duration = Duration::from_secs(5);
+
+/// `SRTO_LATENCY` (TSBPD delay) applied to every SRT socket/listener
+/// this module builds, unless the URL overrides it. Matches
+/// `examples/sending/encrypted_send_recv.rs`'s own choice. Explicit
+/// (rather than relying on whatever libsrt's compiled default is)
+/// because [`GracefulSrtClose`]'s drain wait needs to know it's waiting
+/// longer than the negotiated delivery delay — see that wrapper's doc
+/// comment.
+const SRT_LATENCY: Duration = Duration::from_millis(120);
+
+/// Grace pause [`GracefulSrtClose`] waits before tearing down an SRT
+/// send-side socket — see that wrapper's doc comment. Also the pause
+/// [`GracefulRistClose`] waits before tearing down the librist context.
+const CLOSE_DRAIN: Duration = Duration::from_millis(300);
+
 /// Build the sending (caller/push) half of `url`'s scheme.
 pub fn make_send(url: &str) -> Result<Box<dyn Transport>, String> {
     match scheme_of(url)? {
@@ -77,11 +122,13 @@ pub fn make_send(url: &str) -> Result<Box<dyn Transport>, String> {
             .map_err(|e| format!("udp connect {url}: {e}")),
         "tcp" | "tcps" => tcp_transport(url).map(|t| Box::new(t) as Box<dyn Transport>),
         "rist" => tst_rist::RistTransport::connect(url)
-            .map(|t| Box::new(t) as Box<dyn Transport>)
+            .map(|t| Box::new(GracefulRistClose { inner: t }) as Box<dyn Transport>)
             .map_err(|e| format!("rist connect {url}: {e}")),
-        "srt" => {
-            srt_socket(url).map(|s| Box::new(tst_srt::SrtTransport::new(s)) as Box<dyn Transport>)
-        }
+        "srt" => srt_socket(url).map(|s| {
+            Box::new(GracefulSrtClose {
+                inner: tst_srt::SrtTransport::new(s),
+            }) as Box<dyn Transport>
+        }),
         other => Err(format!("unsupported scheme for send: {other}://")),
     }
 }
@@ -137,6 +184,40 @@ fn tcp_transport(url: &str) -> Result<tst_tcp::TcpTransport, String> {
 /// `examples/sending/sender_from_url.rs`: build via a builder (for the
 /// crate-side defaults above), clone out the config, apply the URL's
 /// overlay (which wins on conflict), then connect/bind with the result.
+///
+/// Every socket/listener built here gets `SRTO_LINGER` set to
+/// [`SRT_LINGER`] and an explicit `SRTO_LATENCY` set to [`SRT_LATENCY`].
+///
+/// **Linger** — without it, `close()` returns immediately and
+/// **discards** any payload libsrt has accepted but not yet flushed to
+/// the wire (`crates/tst-srt/src/socket.rs`'s `set_linger` doc comment).
+/// `tst-srt`'s own `SocketConfig::sender_defaults()`/
+/// `merge_sender_defaults()` (`crates/tst-srt/src/config.rs:109-133,
+/// 157-167`) sets the identical linger value alongside `connect_timeout
+/// = 15s` and `role = Sender` — not used here because this function is
+/// shared by both `make_send` and `make_recv`, and forcing `role =
+/// Sender` would be wrong for a socket built purely to receive (`role`
+/// only affects legacy-HSv4-peer compatibility, per `SocketConfig::
+/// role`'s doc, so leaving it at the default `Role::Receiver` costs
+/// nothing for actual send use against this workspace's own HSv5
+/// peers). Linger itself is harmless to set on a receive-only socket —
+/// `merge_receiver_defaults` deliberately leaves linger unset "because
+/// receivers have no outbound queue to drain" (`config.rs:176`), i.e.
+/// it would simply have nothing to do, not misbehave.
+///
+/// **Latency + [`GracefulSrtClose`]** — linger alone did NOT fix the
+/// tail-of-stream loss this crate's srt loopback test first caught
+/// (confirmed by instrumenting every `send_bytes` call: 100% returned
+/// `Ok`, so nothing was ever left unsent for linger to drain). SRT's
+/// live mode delivers received packets to the peer's application only
+/// once their TSBPD deadline (arrival + negotiated latency) has passed
+/// — same mechanism `examples/sending/encrypted_send_recv.rs`'s own
+/// comment describes ("sleeping more than latency lets the tail of the
+/// stream get ACKed and delivered before the socket goes away"). Tearing
+/// the connection down right after the last push can cut that off
+/// before the peer's buffered tail packets reach their deadline. Set
+/// explicitly (rather than trusting whatever libsrt's compiled default
+/// is) so [`GracefulSrtClose`]'s drain wait knows it's exceeding it.
 fn srt_socket(url: &str) -> Result<tst_srt::Socket, String> {
     let parsed = tst_srt::SrtUrl::parse(url).map_err(|e| format!("srt url {url}: {e}"))?;
     match parsed.mode {
@@ -144,6 +225,8 @@ fn srt_socket(url: &str) -> Result<tst_srt::Socket, String> {
             let mut b = tst_srt::SocketBuilder::new();
             b.recv_timeout(DEFAULT_SRT_RECV_TIMEOUT);
             b.connect_timeout(DEFAULT_SRT_CONNECT_TIMEOUT);
+            b.linger(SRT_LINGER);
+            b.latency(SRT_LATENCY);
             let mut cfg = b.config();
             parsed.overlay.apply_to_socket(&mut cfg);
             tst_srt::Socket::connect_with(&cfg, (parsed.host.as_str(), parsed.port))
@@ -152,6 +235,14 @@ fn srt_socket(url: &str) -> Result<tst_srt::Socket, String> {
         tst_srt::url::Mode::Listener => {
             let mut b = tst_srt::ListenerBuilder::new();
             b.recv_timeout(DEFAULT_SRT_RECV_TIMEOUT);
+            // `ListenerConfig::linger` is a libsrt PRE option: set on the
+            // listener, inherited by every socket it accepts
+            // (`crates/tst-srt/src/config.rs:244-248`) — needed here too
+            // in case the accepted socket ends up on the send side (a
+            // listener-mode SRT cell where the listener pushes and the
+            // caller receives is just as legal as the reverse).
+            b.linger(SRT_LINGER);
+            b.latency(SRT_LATENCY);
             let mut cfg = b.config();
             parsed.overlay.apply_to_listener(&mut cfg);
             // Empty host (`srt://:port?mode=listener`) means "bind every
@@ -223,6 +314,91 @@ impl RecvTransport for BoundedUdpRecv {
     }
 }
 
+/// Send-side SRT adapter. `SrtTransport::close()`/`Drop` set
+/// `SRTO_LINGER` (see `srt_socket`'s doc comment for what that alone
+/// does and doesn't fix) but don't wait for the *peer's* TSBPD delivery
+/// deadline — this wrapper adds that wait, giving the receiver's
+/// buffered tail packets time to reach their scheduled delivery time
+/// (`SRT_LATENCY` past arrival) before the connection goes away. Only
+/// wraps the send side (`make_send`); a recv-only socket isn't the one
+/// whose teardown could cut the peer's delivery off early.
+struct GracefulSrtClose {
+    inner: tst_srt::SrtTransport,
+}
+
+// `SrtTransport` implements both `Transport` and `RecvTransport` over
+// the same methods (`close`/`cancel_handle`/`socket_stats`), so every
+// delegated call here must be fully qualified to pick the `Transport`
+// half — `self.inner.foo()` is ambiguous.
+impl Transport for GracefulSrtClose {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        Transport::send_bytes(&mut self.inner, msg)
+    }
+
+    fn max_payload(&self) -> usize {
+        Transport::max_payload(&self.inner)
+    }
+
+    fn is_alive(&self) -> bool {
+        Transport::is_alive(&self.inner)
+    }
+
+    fn close(&mut self) {
+        std::thread::sleep(CLOSE_DRAIN);
+        Transport::close(&mut self.inner);
+    }
+
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+        Transport::cancel_handle(&self.inner)
+    }
+
+    fn socket_stats(&self) -> Option<SocketStats> {
+        Transport::socket_stats(&self.inner)
+    }
+}
+
+/// Send-side RIST adapter — see the module doc's "Drain-before-close"
+/// section. `rist_destroy` (`vendor/librist/src/rist.c`'s
+/// `rist_sender_destroy`, ~line 1590) sets a shutdown flag and joins
+/// librist's sender thread with no step that waits for its
+/// recovery/retransmit buffer to flush first, and `tst-rist` exposes no
+/// linger/drain option (unlike `tst-srt`'s `SRTO_LINGER`) to ask for
+/// one. [`CLOSE_DRAIN`] is a defensive mirror of the *confirmed* SRT
+/// race (see [`GracefulSrtClose`]) rather than something reproduced
+/// against a live RIST peer — this crate's tests don't exercise a RIST
+/// cell yet. Only wraps the send side (`make_send`); recv-only RIST has
+/// no outbound buffer to drain.
+struct GracefulRistClose {
+    inner: tst_rist::RistTransport,
+}
+
+impl Transport for GracefulRistClose {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        self.inner.send_bytes(msg)
+    }
+
+    fn max_payload(&self) -> usize {
+        self.inner.max_payload()
+    }
+
+    fn is_alive(&self) -> bool {
+        self.inner.is_alive()
+    }
+
+    fn close(&mut self) {
+        std::thread::sleep(CLOSE_DRAIN);
+        self.inner.close();
+    }
+
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+        self.inner.cancel_handle()
+    }
+
+    fn socket_stats(&self) -> Option<SocketStats> {
+        self.inner.socket_stats()
+    }
+}
+
 /// Shared running tally a [`Teeing`] wrapper accumulates.
 pub(crate) struct TeeState {
     bytes: u64,
@@ -272,12 +448,16 @@ impl<T> Teeing<T> {
 
 impl<T: Transport> Transport for Teeing<T> {
     fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
-        {
+        // Tally only on success: a rejected send never reached the wire,
+        // so counting it would inflate the sent-side ground truth beyond
+        // what a receiver could ever actually see.
+        let r = self.inner.send_bytes(msg);
+        if r.is_ok() {
             let mut s = self.tap.lock().expect("tee mutex poisoned");
             s.bytes += msg.len() as u64;
             s.hasher.update(msg);
         }
-        self.inner.send_bytes(msg)
+        r
     }
     fn max_payload(&self) -> usize {
         self.inner.max_payload()

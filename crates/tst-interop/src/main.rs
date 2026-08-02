@@ -1,9 +1,12 @@
 use std::env;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use tst_interop::cli;
 use tst_interop::r#gen;
+use tst_interop::impair::ImpairConfig;
 use tst_interop::profiles;
+use tst_interop::proxy;
 use tst_interop::recv;
 use tst_interop::send;
 use tst_interop::serve;
@@ -18,7 +21,7 @@ Subcommands:
             serve instead of connecting — see `send`'s own doc comment)
   recv      Receive test data from endpoint
   verify    Verify interop test results
-  proxy     Proxy between endpoints
+  proxy     UDP impairment relay (loss/dup/reorder/jitter/scheduled outage)
   report    Generate interop report
 
 Options:
@@ -45,10 +48,7 @@ fn main() {
         "send" => run_send(&args[2..]),
         "recv" => run_recv(&args[2..]),
         "verify" => run_verify(&args[2..]),
-        "proxy" => {
-            eprintln!("proxy: not implemented");
-            std::process::exit(2);
-        }
+        "proxy" => run_proxy(&args[2..]),
         "report" => {
             eprintln!("report: not implemented");
             std::process::exit(2);
@@ -360,4 +360,157 @@ fn run_verify(args: &[String]) -> ! {
     }
 
     std::process::exit(if report.pass { 0 } else { 1 });
+}
+
+/// `proxy --listen ADDR --forward ADDR [--loss PCT] [--dup PCT]
+/// [--reorder PCT,HOLD_MS] [--jitter MS] [--seed N]
+/// [--outage period=DUR,dur=DUR] [--stats-json PATH] [--run-seconds N]`
+///
+/// Binds a UDP impairment relay at `--listen` (an ephemeral `:0` port is
+/// printed as `{"listening": "..."}` on stdout as soon as it's bound —
+/// see `proxy::run`'s doc comment) and relays to `--forward` under the
+/// configured impairment. Every impairment knob defaults to fully
+/// transparent (`ImpairConfig::default()`) when its flag is omitted.
+/// `--run-seconds` bounds how long the relay runs before exiting (the
+/// default, omitted, runs until the process is killed — this
+/// subcommand's normal long-running CLI mode). Exits 0 on a clean
+/// finish, 2 on a usage or IO error.
+fn run_proxy(args: &[String]) -> ! {
+    let mut listen: Option<SocketAddr> = None;
+    let mut forward: Option<SocketAddr> = None;
+    let mut loss_pct = 0.0f64;
+    let mut dup_pct = 0.0f64;
+    let mut reorder_pct = 0.0f64;
+    let mut reorder_hold = 0u32;
+    let mut jitter_ms_max = 0u32;
+    let mut seed = 0u64;
+    let mut outage_period_s: Option<u64> = None;
+    let mut outage_dur_s = 0u64;
+    let mut stats_json: Option<PathBuf> = None;
+    let mut run_seconds: Option<u64> = None;
+
+    let bad_arg = |flag: &str, expected: &str| -> ! {
+        eprintln!("proxy: --{flag} must be {expected}");
+        std::process::exit(2);
+    };
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--listen" => {
+                listen = Some(
+                    args.get(i + 1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or_else(|| bad_arg("listen", "a socket address (host:port)")),
+                );
+                i += 2;
+            }
+            "--forward" => {
+                forward = Some(
+                    args.get(i + 1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or_else(|| bad_arg("forward", "a socket address (host:port)")),
+                );
+                i += 2;
+            }
+            "--loss" => {
+                loss_pct = args
+                    .get(i + 1)
+                    .and_then(|s| proxy::parse_percent(s))
+                    .unwrap_or_else(|| bad_arg("loss", "a percent in 0..=100"));
+                i += 2;
+            }
+            "--dup" => {
+                dup_pct = args
+                    .get(i + 1)
+                    .and_then(|s| proxy::parse_percent(s))
+                    .unwrap_or_else(|| bad_arg("dup", "a percent in 0..=100"));
+                i += 2;
+            }
+            "--reorder" => {
+                let (pct, hold) = args
+                    .get(i + 1)
+                    .and_then(|s| proxy::parse_reorder(s))
+                    .unwrap_or_else(|| bad_arg("reorder", "PCT,HOLD_MS (e.g. 1,200)"));
+                reorder_pct = pct;
+                reorder_hold = hold;
+                i += 2;
+            }
+            "--jitter" => {
+                jitter_ms_max = args
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| bad_arg("jitter", "a non-negative integer (milliseconds)"));
+                i += 2;
+            }
+            "--seed" => {
+                seed = args
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| bad_arg("seed", "a non-negative integer"));
+                i += 2;
+            }
+            "--outage" => {
+                let (period, dur) = args
+                    .get(i + 1)
+                    .and_then(|s| proxy::parse_outage(s))
+                    .unwrap_or_else(|| {
+                        bad_arg("outage", "period=DUR,dur=DUR (e.g. period=6h,dur=90s)")
+                    });
+                outage_period_s = Some(period);
+                outage_dur_s = dur;
+                i += 2;
+            }
+            "--stats-json" => {
+                stats_json = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--run-seconds" => {
+                run_seconds = Some(
+                    args.get(i + 1)
+                        .and_then(|s| proxy::parse_run_seconds(s))
+                        .unwrap_or_else(|| bad_arg("run-seconds", "a positive integer")),
+                );
+                i += 2;
+            }
+            other => {
+                eprintln!("proxy: unknown argument: {other}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let listen = listen.unwrap_or_else(|| {
+        eprintln!("proxy: --listen is required (host:port)");
+        std::process::exit(2);
+    });
+    let forward = forward.unwrap_or_else(|| {
+        eprintln!("proxy: --forward is required (host:port)");
+        std::process::exit(2);
+    });
+
+    let cfg = ImpairConfig {
+        loss_pct,
+        dup_pct,
+        reorder_pct,
+        reorder_hold,
+        jitter_ms_max,
+        seed,
+        outage_period_s,
+        outage_dur_s,
+    };
+
+    match proxy::run(listen, forward, cfg, stats_json, run_seconds, None) {
+        Ok(stats) => {
+            eprintln!(
+                "proxy: forwarded={} dropped={} duped={} reordered={}",
+                stats.forwarded, stats.dropped, stats.duped, stats.reordered
+            );
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("proxy: {e}");
+            std::process::exit(2);
+        }
+    }
 }

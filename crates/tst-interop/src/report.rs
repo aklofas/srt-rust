@@ -439,6 +439,13 @@ fn read_cells_dir(dir: &Path) -> Result<Vec<RawCell>, String> {
 /// verbatim, and write the result to `out_path`. Returns the same
 /// [`Results`] that was written — the caller decides the process exit
 /// code from `results.summary.fail` (see the module doc).
+///
+/// Errors (rather than returning an empty, trivially-all-PASS
+/// [`Results`]) if `cells_dir` contains zero `*.json` files — the same
+/// "never silently absorbed" property the module doc describes for
+/// individual failures also has to hold for the degenerate case of an
+/// orchestrator that crashed before writing any cell at all, or a
+/// `--cells-dir` typo.
 pub fn merge(
     cells_dir: &Path,
     expectations_path: &Path,
@@ -456,6 +463,14 @@ pub fn merge(
         .map_err(|e| format!("parse {}: {e}", meta_path.display()))?;
 
     let raw_cells = read_cells_dir(cells_dir)?;
+    if raw_cells.is_empty() {
+        return Err(format!(
+            "no *.json cell files found in {} — refusing to write a clean all-PASS report for \
+             zero cells (an empty --cells-dir most likely means the orchestrator crashed \
+             before writing any cell, or the path is wrong)",
+            cells_dir.display()
+        ));
+    }
     let results = build_results(raw_cells, &expectations, meta);
 
     let json = serde_json::to_string_pretty(&results).expect("Results always serializes");
@@ -1158,6 +1173,48 @@ reason = \"intermittent timeout\"
         let appended = fs::read_to_string(&summary_path).expect("read summary");
         assert!(appended.starts_with("# Interop Report"));
         assert!(appended.trim_end().ends_with("more"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// An empty `--cells-dir` must never produce a clean, all-PASS
+    /// `results.json` — that's the worst failure mode for this tool (a
+    /// crashed orchestrator, or a `--cells-dir` typo, silently rendering
+    /// as green evidence). `merge` must error instead of returning an
+    /// empty-but-successful `Results`, and must not write `--out`.
+    #[test]
+    fn merge_with_empty_cells_dir_is_a_hard_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "tst-interop-report-merge-empty-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time moves forward")
+                .as_nanos()
+        ));
+        let cells_dir = dir.join("cells");
+        fs::create_dir_all(&cells_dir).expect("create empty cells dir");
+        // A non-`.json` file must not be mistaken for a cell either.
+        fs::write(cells_dir.join("README.txt"), "not a cell").expect("write stray file");
+
+        let expectations_path = dir.join("expectations.toml");
+        fs::write(&expectations_path, "# no expectations\n").expect("write expectations");
+
+        let meta_path = dir.join("meta.json");
+        fs::write(&meta_path, r#"{"host": "test-host"}"#).expect("write meta");
+
+        let out_path = dir.join("results.json");
+        let err = merge(&cells_dir, &expectations_path, &meta_path, &out_path)
+            .expect_err("merge over zero cell files must be an error, not a clean empty report");
+
+        assert!(
+            err.contains(&cells_dir.display().to_string()),
+            "error must name the empty directory: {err}"
+        );
+        assert!(
+            !out_path.exists(),
+            "merge must not write --out on this error path"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

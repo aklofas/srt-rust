@@ -27,6 +27,13 @@
 # is reported non-fatally (labeled KNOWN-FLAKY in the rendered report)
 # and a PASS is simply normal — never flagged stale.
 #
+# Matching rules: `cell` may only use `*` as a trailing prefix-match glob
+# (e.g. "decode/*" — never mid-string); `profile` is always an exact
+# match, never a glob. If more than one `[[expect]]` block matches the
+# same (cell, profile), the FIRST one in this file wins — keep blocks
+# for the same cell/profile pattern non-overlapping, or ordered so the
+# intended one comes first.
+#
 # This file intentionally has zero real `[[expect]]` blocks for now.
 # An empty (or all-comment) expectations file is valid input to
 # `report merge`: with no expectations, every FAIL is unexpected. Real

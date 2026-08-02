@@ -9,6 +9,7 @@ members = [
     "crates/tst-core",
     "crates/tst-hls",
     "crates/tst-integration",
+    "crates/tst-interop",
     "crates/tst-pipeline",
     "bindings/python",
     "bindings/jvm",

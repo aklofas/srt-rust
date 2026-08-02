@@ -319,9 +319,11 @@ pub(crate) fn handle_setup(
         match crate::rtsp::client::transport_negotiation::parse_transport_response(transport_str) {
             Ok(p) => p,
             Err(_) => {
+                // Debug-capture (`?`): the header is untrusted wire input;
+                // escape control characters instead of logging them raw.
                 tracing::debug!(
                     target: "tst_rtp::server",
-                    transport = transport_str,
+                    transport = ?transport_str,
                     "SETUP rejected 400: malformed Transport header"
                 );
                 return error_response(req, 400, "Bad Request");

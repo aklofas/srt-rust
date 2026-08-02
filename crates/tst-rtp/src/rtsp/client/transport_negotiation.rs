@@ -109,7 +109,14 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
 /// diagnosed without a packet capture.
 fn parse_u16_pair(value: &str) -> Result<(u16, u16), RtspError> {
     parse_u16_pair_detail(value).map_err(|reason| {
-        tracing::debug!(target: "tst_rtp", value, reason, "rejecting Transport port range");
+        // Debug-capture (`?value`): the range comes off the wire, so
+        // control characters must be escaped, not passed through to logs.
+        tracing::debug!(
+            target: "tst_rtp::rtsp::transport_negotiation",
+            ?value,
+            reason,
+            "rejecting Transport port range"
+        );
         RtspError::UnsupportedTransport
     })
 }
@@ -144,7 +151,12 @@ fn parse_u16_pair_detail(value: &str) -> Result<(u16, u16), &'static str> {
 /// rules (and logging) as [`parse_u16_pair`], scoped to `u8`.
 fn parse_u8_pair(value: &str) -> Result<(u8, u8), RtspError> {
     parse_u8_pair_detail(value).map_err(|reason| {
-        tracing::debug!(target: "tst_rtp", value, reason, "rejecting Transport channel range");
+        tracing::debug!(
+            target: "tst_rtp::rtsp::transport_negotiation",
+            ?value,
+            reason,
+            "rejecting Transport channel range"
+        );
         RtspError::UnsupportedTransport
     })
 }

@@ -228,6 +228,37 @@ impl Socket {
             cached_stream_id,
             cached_payload_limit,
         };
+        // Force blocking mode (`SRTO_SNDSYN`/`SRTO_RCVSYN` = true) on every
+        // accepted socket, regardless of whatever those POST options may
+        // have inherited from the listener at accept time. libsrt builds a
+        // newly accepted socket as a copy of the listener's live state
+        // (`CUDTUnited::newConnection`, `srtcore/api.cpp`: `new
+        // CUDTSocket(*ls)`) at the moment its OWN internal handshake-
+        // processing thread completes the connection — asynchronously and
+        // independently of when the application calls `srt_accept`. A
+        // caller that transiently toggles `SRTO_RCVSYN` false on the
+        // listener (`Listener::accept_timeout`'s non-blocking probe,
+        // `try_accept_nonblocking`) can therefore have a real, concurrent
+        // handshake complete while that toggle is in effect, and the
+        // resulting accepted socket inherits `RCVSYN=false` PERMANENTLY —
+        // `set_bool`/`read_bool` on the listener only ever affects the
+        // listener's own future `accept()` calls, never a socket that's
+        // already been split off. Every socket this crate hands out is
+        // designed to be blocking-with-timeout (`SRTO_RCVTIMEO`/
+        // `SRTO_SNDTIMEO`, applied below, gate how long that block lasts);
+        // a non-blocking accepted socket breaks that invariant silently:
+        // `srt_recv()` on it returns `SRT_EASYNCRCV` ("no data available
+        // for reading") the instant nothing happens to be ready yet,
+        // instead of blocking — `is_timeout`'s message-substring check
+        // doesn't recognize that error (only `SRT_ETIMEOUT`'s "timed out"
+        // wording matches), so it's classified as `RecvError::Other` and
+        // `SrtTransport::recv_bytes`'s catch-all treats that as a fatal
+        // `TransportError::Broken`, killing an otherwise-healthy
+        // connection the moment its first read has no data ready yet.
+        set_bool(socket.handle, srt_sys::SRT_SOCKOPT_SRTO_SNDSYN, true)
+            .map_err(io_from_option_error)?;
+        set_bool(socket.handle, srt_sys::SRT_SOCKOPT_SRTO_RCVSYN, true)
+            .map_err(io_from_option_error)?;
         if let Some(t) = send_timeout {
             set_int(
                 socket.handle,
@@ -1133,6 +1164,67 @@ mod tests {
 
         // Dropping the Socket closes the accepted handle (no leak on the
         // success path either).
+        drop(socket);
+    }
+
+    // Regression for the bug `Listener::accept_timeout`'s non-blocking probe
+    // exposed: libsrt builds a newly-accepted socket as a live copy of the
+    // listener's own socket state at the moment its internal
+    // handshake-processing thread completes the connection
+    // (`srtcore/api.cpp`'s `newConnection`: `new CUDTSocket(*ls)`) —
+    // asynchronously and independently of when the application calls
+    // `srt_accept`. `try_accept_nonblocking` transiently sets
+    // `SRTO_RCVSYN=false` on the *listener* around one non-blocking probe
+    // call; a connection whose handshake completion races that toggle used
+    // to inherit `RCVSYN=false` PERMANENTLY, because `from_accepted` never
+    // reset it. A non-blocking accepted socket's `recv()` returns
+    // `SRT_EASYNCRCV` instead of blocking for `SRTO_RCVTIMEO`, which
+    // `tst-interop`'s CI hit as a total-zero-delivery regression: the raw
+    // error message ("no data available for reading") doesn't match
+    // `is_timeout`'s "timed out" substring check, so it gets classified as
+    // a fatal broken connection the instant there's nothing to read yet.
+    //
+    // Can't reliably force the real race (it's a TOCTOU against libsrt's
+    // own internal thread, not something this test can synchronize
+    // against), so this instead tests `from_accepted`'s own contract
+    // directly: feed it a handle that already has `RCVSYN=false` (simulating
+    // exactly what an unlucky inherited-copy would look like) and assert it
+    // normalizes the result back to blocking mode regardless.
+    #[test]
+    fn from_accepted_forces_blocking_mode_regardless_of_inherited_rcvsyn() {
+        use std::time::Duration;
+
+        let Some((accepted, _cleanup)) = accept_one_live() else {
+            eprintln!("SKIP: loopback unavailable");
+            return;
+        };
+
+        // Simulate an accepted handle that inherited non-blocking mode from
+        // the listener (the exact state a raced accept_timeout probe used to
+        // leave behind).
+        super::set_bool(accepted, srt_sys::SRT_SOCKOPT_SRTO_RCVSYN, false)
+            .expect("set_bool RCVSYN=false on a live accepted handle");
+        super::set_bool(accepted, srt_sys::SRT_SOCKOPT_SRTO_SNDSYN, false)
+            .expect("set_bool SNDSYN=false on a live accepted handle");
+
+        let socket = super::Socket::from_accepted(
+            accepted,
+            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(5)),
+        )
+        .expect("from_accepted should succeed on a freshly-accepted live socket");
+
+        assert!(
+            super::read_bool(socket.handle, srt_sys::SRT_SOCKOPT_SRTO_RCVSYN)
+                .expect("read back RCVSYN"),
+            "from_accepted must force RCVSYN back to blocking mode, not leave an inherited false"
+        );
+        assert!(
+            super::read_bool(socket.handle, srt_sys::SRT_SOCKOPT_SRTO_SNDSYN)
+                .expect("read back SNDSYN"),
+            "from_accepted must force SNDSYN back to blocking mode, not leave an inherited false"
+        );
+
         drop(socket);
     }
 

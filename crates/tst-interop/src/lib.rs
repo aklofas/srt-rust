@@ -12,6 +12,7 @@ pub mod mux_setup;
 pub mod profiles;
 pub mod proxy;
 pub mod recv;
+pub mod report;
 pub mod report_types;
 pub mod schedule;
 pub mod send;

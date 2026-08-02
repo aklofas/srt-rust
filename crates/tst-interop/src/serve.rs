@@ -28,6 +28,7 @@
 //! calling `stop()`.
 
 use std::net::SocketAddr;
+use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -99,9 +100,27 @@ pub fn run_hls(p: &Profile, bind_addr: SocketAddr, seconds: f64) -> Result<(), S
         unique_suffix(),
     ));
 
+    let result = run_hls_inner(p, bind_addr, seconds, &out_dir);
+    // Best-effort cleanup on every path (success or error): the segments
+    // + playlist HlsPublisherBuilder wrote under out_dir have already
+    // been fully served (or never will be, on an error exit) by the
+    // time this function returns, so nothing further needs them.
+    // Ignore failures — a leftover temp dir is a nuisance, not a
+    // correctness problem, and panicking here would mask the real
+    // result from `run_hls_inner`.
+    let _ = std::fs::remove_dir_all(&out_dir);
+    result
+}
+
+fn run_hls_inner(
+    p: &Profile,
+    bind_addr: SocketAddr,
+    seconds: f64,
+    out_dir: &Path,
+) -> Result<(), String> {
     let publisher = HlsPublisherBuilder::new()
         .bind(bind_addr)
-        .output_dir(&out_dir)
+        .output_dir(out_dir)
         .segment_duration(HLS_SEGMENT_DURATION)
         .mode(HlsMode::Event)
         .build()

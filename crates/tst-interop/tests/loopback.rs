@@ -131,6 +131,37 @@ fn send_with_retry(
     }
 }
 
+/// A listener-mode `srt://` recv against a port nobody ever connects to
+/// must fail cleanly within a bound, not hang forever. `Listener::
+/// accept()` (libsrt's plain accept call) has no timeout at all — see
+/// `transport::srt_socket`'s doc comment on why it uses `accept_timeout`
+/// instead — so this proves that fix actually bounds the wait.
+///
+/// Overrides the URL's `conntimeo`/`connect_timeout` overlay (which
+/// `transport::srt_socket` reuses as its accept-timeout bound in
+/// listener mode — see `SRT_ACCEPT_TIMEOUT`'s doc comment) down to 2s so
+/// this test stays fast, rather than waiting out the 15s production
+/// default and eating most of the network test-group's 20s per-test
+/// kill.
+#[test]
+fn srt_listener_accept_times_out_when_nobody_connects() {
+    let port = free_port();
+    let url = format!("srt://127.0.0.1:{port}?mode=listener&conntimeo=2000");
+
+    let started = Instant::now();
+    let result = transport::make_recv(&url);
+    let elapsed = started.elapsed();
+
+    assert!(
+        result.is_err(),
+        "accept against a port nobody connects to must fail, not silently return"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "accept must return within its bounded timeout (~2s), not hang; took {elapsed:?}"
+    );
+}
+
 #[test]
 fn srt_baseline_loopback_round_trips_and_matches() {
     let profile = profiles::by_name("baseline").expect("baseline profile must exist");

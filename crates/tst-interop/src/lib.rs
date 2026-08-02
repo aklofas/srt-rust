@@ -7,6 +7,7 @@ pub mod fixtures;
 // syntax) — the module still lives at `src/gen.rs` / is invoked as the
 // `gen` CLI subcommand, just spelled `r#gen` at every Rust use site.
 pub mod r#gen;
+pub mod impair;
 pub mod mux_setup;
 pub mod profiles;
 pub mod recv;

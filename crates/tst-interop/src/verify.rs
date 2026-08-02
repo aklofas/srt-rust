@@ -100,7 +100,11 @@ fn pts_is_monotonic_step(now: u64, last: u64) -> bool {
 }
 
 /// Hex-encode `bytes` (lowercase, no separator).
-fn to_hex(bytes: &[u8]) -> String {
+///
+/// `pub(crate)`: `send.rs` reuses this to build `klv_set_sha256` from
+/// the records it pushes and `transport.rs`'s `Teeing` tap reuses it for
+/// `stream_sha256` — one hex-encoding decision for the whole crate.
+pub(crate) fn to_hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -112,7 +116,11 @@ fn to_hex(bytes: &[u8]) -> String {
 /// Order-insensitive fingerprint of a KLV record set: sort the per-record
 /// hex digests, then sha256 the concatenation. See
 /// [`CellMetrics::klv_set_sha256`].
-fn klv_set_hash(record_digests: &[String]) -> String {
+///
+/// `pub(crate)`: `send.rs` computes this same fingerprint over the
+/// records it pushes (sent-side ground truth), reusing this function
+/// rather than re-deciding the hash shape.
+pub(crate) fn klv_set_hash(record_digests: &[String]) -> String {
     let mut sorted = record_digests.to_vec();
     sorted.sort_unstable();
     let mut hasher = Sha256::new();
@@ -126,7 +134,11 @@ fn klv_set_hash(record_digests: &[String]) -> String {
 /// capture must clear to pass. Real captures commonly truncate a fraction
 /// of a second at either end (peer startup/teardown), so requiring the
 /// exact nominal count would fail otherwise-healthy captures.
-const NOMINAL_COUNT_SLACK: f64 = 0.7;
+///
+/// `pub(crate)`: `recv.rs` uses the same slack for live-capture
+/// `Tally::finish` calls, so a live cell and an offline `verify_file`
+/// run are held to the identical bar.
+pub(crate) const NOMINAL_COUNT_SLACK: f64 = 0.7;
 
 /// Accumulates wire-format facts from a stream of [`DemuxEvent`]s.
 pub struct Tally {

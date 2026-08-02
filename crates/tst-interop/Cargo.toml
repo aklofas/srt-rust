@@ -1,0 +1,18 @@
+[package]
+name = "tst-interop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+tst-core = { path = "../tst-core" }
+tst-pipeline = { path = "../tst-pipeline" }
+tst-srt = { path = "../tst-srt" }
+tst-udp = { path = "../tst-udp" }
+tst-tcp = { path = "../tst-tcp" }
+tst-rist = { path = "../tst-rist" }
+tst-rtp = { path = "../tst-rtp" }
+tst-hls = { path = "../tst-hls" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }

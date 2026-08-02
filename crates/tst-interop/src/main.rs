@@ -1,6 +1,6 @@
 use std::env;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tst_interop::cli;
 use tst_interop::r#gen;
@@ -8,6 +8,7 @@ use tst_interop::impair::ImpairConfig;
 use tst_interop::profiles;
 use tst_interop::proxy;
 use tst_interop::recv;
+use tst_interop::report;
 use tst_interop::send;
 use tst_interop::serve;
 use tst_interop::verify;
@@ -49,10 +50,7 @@ fn main() {
         "recv" => run_recv(&args[2..]),
         "verify" => run_verify(&args[2..]),
         "proxy" => run_proxy(&args[2..]),
-        "report" => {
-            eprintln!("report: not implemented");
-            std::process::exit(2);
-        }
+        "report" => run_report(&args[2..]),
         _ => {
             eprintln!("Unknown subcommand: {}", subcommand);
             println!("{}", usage());
@@ -517,4 +515,163 @@ fn run_proxy(args: &[String]) -> ! {
             std::process::exit(2);
         }
     }
+}
+
+/// `report merge|render` — dispatches to the two `report` sub-subcommands.
+fn run_report(args: &[String]) -> ! {
+    if args.is_empty() {
+        eprintln!("report: expected a subcommand (merge|render)");
+        std::process::exit(2);
+    }
+    match args[0].as_str() {
+        "merge" => run_report_merge(&args[1..]),
+        "render" => run_report_render(&args[1..]),
+        other => {
+            eprintln!("report: unknown subcommand: {other}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// `report merge --cells-dir DIR --expectations FILE --meta FILE --out
+/// results.json`
+///
+/// Reads every per-cell JSON file in `--cells-dir`, applies
+/// `--expectations`, embeds `--meta` verbatim, and writes `--out`. Exits
+/// 1 iff any cell's `FAIL` matched no expectation (see
+/// `tst_interop::report`'s module doc for why this is the load-bearing
+/// property of the whole subcommand); exits 2 on a usage/IO/parse error.
+fn run_report_merge(args: &[String]) -> ! {
+    let mut cells_dir: Option<PathBuf> = None;
+    let mut expectations: Option<PathBuf> = None;
+    let mut meta: Option<PathBuf> = None;
+    let mut out: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--cells-dir" => {
+                cells_dir = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--expectations" => {
+                expectations = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--meta" => {
+                meta = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--out" => {
+                out = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            other => {
+                eprintln!("report merge: unknown argument: {other}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let cells_dir = cells_dir.unwrap_or_else(|| {
+        eprintln!("report merge: --cells-dir is required");
+        std::process::exit(2);
+    });
+    let expectations = expectations.unwrap_or_else(|| {
+        eprintln!("report merge: --expectations is required");
+        std::process::exit(2);
+    });
+    let meta = meta.unwrap_or_else(|| {
+        eprintln!("report merge: --meta is required");
+        std::process::exit(2);
+    });
+    let out = out.unwrap_or_else(|| {
+        eprintln!("report merge: --out is required");
+        std::process::exit(2);
+    });
+
+    let results = report::merge(&cells_dir, &expectations, &meta, &out).unwrap_or_else(|e| {
+        eprintln!("report merge: {e}");
+        std::process::exit(2);
+    });
+
+    for stale in &results.summary.stale_expectations {
+        eprintln!(
+            "report merge: WARNING stale expectation: cell={} profile={} reason={}",
+            stale.cell, stale.profile, stale.reason
+        );
+    }
+
+    eprintln!(
+        "report merge: total={} pass={} fail={} expected_unsupported={} skipped={}",
+        results.summary.total,
+        results.summary.pass,
+        results.summary.fail,
+        results.summary.expected_unsupported,
+        results.summary.skipped_tool_missing
+    );
+
+    std::process::exit(if results.summary.fail > 0 { 1 } else { 0 });
+}
+
+/// `report render --in results.json --out results.md [--github-summary]`
+///
+/// Renders `--in`'s `Results` JSON to markdown and writes it to `--out`.
+/// `--github-summary` additionally appends the same markdown to the file
+/// named by the `GITHUB_STEP_SUMMARY` environment variable, exiting 2 if
+/// that variable is unset. Exits 2 on any usage/IO/parse error.
+fn run_report_render(args: &[String]) -> ! {
+    let mut in_path: Option<PathBuf> = None;
+    let mut out: Option<PathBuf> = None;
+    let mut github_summary = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--in" => {
+                in_path = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--out" => {
+                out = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--github-summary" => {
+                github_summary = true;
+                i += 1;
+            }
+            other => {
+                eprintln!("report render: unknown argument: {other}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let in_path = in_path.unwrap_or_else(|| {
+        eprintln!("report render: --in is required");
+        std::process::exit(2);
+    });
+    let out = out.unwrap_or_else(|| {
+        eprintln!("report render: --out is required");
+        std::process::exit(2);
+    });
+
+    let md = report::render(&in_path, &out).unwrap_or_else(|e| {
+        eprintln!("report render: {e}");
+        std::process::exit(2);
+    });
+
+    if github_summary {
+        let summary_path = env::var("GITHUB_STEP_SUMMARY").unwrap_or_else(|_| {
+            eprintln!("report render: --github-summary given but GITHUB_STEP_SUMMARY is unset");
+            std::process::exit(2);
+        });
+        if let Err(e) = report::append_github_summary(Path::new(&summary_path), &md) {
+            eprintln!("report render: {e}");
+            std::process::exit(2);
+        }
+    }
+
+    eprintln!("report render: wrote {}", out.display());
+    std::process::exit(0);
 }

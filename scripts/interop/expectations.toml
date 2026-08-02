@@ -1,0 +1,34 @@
+# tst-interop expectations file.
+#
+# Each `[[expect]]` block declares a known outcome for a (cell, profile)
+# pair so `report merge` doesn't fail the whole interop matrix on a
+# documented, already-understood gap. Every FAIL that has no matching
+# block here stays fatal — see crates/tst-interop/src/report.rs's module
+# doc for why that's the load-bearing property of this file.
+#
+# Grammar (hand-parsed by `report::parse_expectations` — read that
+# function for the exact rules; every line is either a `#` comment, a
+# blank line, a literal `[[expect]]` block marker, or a `key = "value"`
+# line inside a block):
+#
+#   [[expect]]
+#   cell = "decode/mpv"                  # exact cell id, or a trailing "*" glob (e.g. "decode/*")
+#   profile = "baseline"                 # exact profile name (see crates/tst-interop/src/profiles.rs)
+#   verdict = "expected_unsupported"     # or "known_flaky"
+#   reason = "mpv has no async KLV support (see linked ticket)"
+#   ref = "https://example.invalid/TICKET-123"   # optional
+#
+# `expected_unsupported`: this (cell, profile) pair is known to fail and
+# is not expected to ever pass — if it starts passing, `report merge`
+# flags the expectation as stale (a warning, never fatal) so it can be
+# removed.
+#
+# `known_flaky`: this (cell, profile) pair intermittently fails; a FAIL
+# is reported non-fatally (labeled KNOWN-FLAKY in the rendered report)
+# and a PASS is simply normal — never flagged stale.
+#
+# This file intentionally has zero real `[[expect]]` blocks for now.
+# An empty (or all-comment) expectations file is valid input to
+# `report merge`: with no expectations, every FAIL is unexpected. Real
+# rows land once the format-axis cell matrix runs and surfaces genuine,
+# understood gaps (see the interop-evidence arc's later matrix task).

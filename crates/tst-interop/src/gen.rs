@@ -55,8 +55,14 @@ enum Event {
 /// configured program's handles at the same PTS — the "duplicate the
 /// video+KLV pair in program 2" shape.
 pub fn run(p: &Profile, seconds: f64, out_path: &Path) -> io::Result<()> {
-    let (cfg, handles) = mux_setup::build_config(p);
+    let cfg = mux_setup::build_config(p);
     let mut mux = Muxer::new(cfg).expect("mux_setup::build_config always returns a valid config");
+    // Handles must come from THIS muxer, not a throwaway one built from a
+    // cloned config elsewhere — see mux_setup's doc comment on why
+    // build_config doesn't hand them back itself.
+    let video_handles = mux.video_handles();
+    let klv_handles = mux.klv_handles();
+    let audio_handle = mux.audio_handles().into_iter().next();
     let mut out = File::create(out_path)?;
 
     let video_step_ticks = (PTS_HZ / p.fps) as i64;
@@ -90,7 +96,7 @@ pub fn run(p: &Profile, seconds: f64, out_path: &Path) -> io::Result<()> {
         match event {
             Event::Video { frame_idx } => {
                 let (au, keyframe) = fixtures::video_au(p.video, frame_idx);
-                for &handle in &handles.video {
+                for &handle in &video_handles {
                     if p.klv == KlvMode::AsyncWithMisp {
                         // ST 0604 SEI carriage is H.264/H.265-only; the
                         // `misp` profile is always H.264 (see
@@ -110,13 +116,13 @@ pub fn run(p: &Profile, seconds: f64, out_path: &Path) -> io::Result<()> {
             }
             Event::Klv { seq } => {
                 let record = fixtures::klv_record(seq);
-                for &handle in &handles.klv {
+                for &handle in &klv_handles {
                     mux.push_klv_to(handle, &record, pts, 0x00)
                         .map_err(io::Error::other)?;
                 }
             }
             Event::Audio { frame_idx } => {
-                if let Some(handle) = handles.audio {
+                if let Some(handle) = audio_handle {
                     let frame = fixtures::aac_frame(frame_idx);
                     mux.push_audio_to(handle, pts, &frame)
                         .map_err(io::Error::other)?;

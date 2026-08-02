@@ -98,27 +98,12 @@ impl UdpUrl {
         // IP literals stay a pure parse; anything else is treated as a
         // hostname and resolved via the system resolver — matching
         // tst-srt and tst-tcp, which both accept hostnames (containerized
-        // consumers address peers by service name). The FIRST resolved
-        // address wins; on dual-stack hosts that may be the IPv6 one.
-        // Multicast classification runs on the resolved address either
-        // way; group addresses are conventionally written as literals.
+        // consumers address peers by service name). Multicast
+        // classification runs on the resolved address either way; group
+        // addresses are conventionally written as literals.
         let addr: IpAddr = match host_str.parse() {
             Ok(a) => a,
-            Err(_) => {
-                use std::net::ToSocketAddrs;
-                (host_str, port)
-                    .to_socket_addrs()
-                    .map_err(|e| UdpUrlError::HostResolve {
-                        host: host_str.to_string(),
-                        detail: e.to_string(),
-                    })?
-                    .next()
-                    .ok_or_else(|| UdpUrlError::HostResolve {
-                        host: host_str.to_string(),
-                        detail: "resolved to no addresses".to_string(),
-                    })?
-                    .ip()
-            }
+            Err(_) => resolve_host(host_str, port)?,
         };
 
         let mut iface = None;
@@ -174,6 +159,51 @@ impl UdpUrl {
             IpAddr::V6(v6) => v6.is_multicast(),
         }
     }
+}
+
+/// Resolve a non-literal host via the system resolver and pick a usable
+/// address.
+///
+/// tst-tcp and tst-srt walk every resolved address and keep the first
+/// successful *connection* — connection feedback UDP does not have. The
+/// UDP equivalent: probe each candidate with a local socket
+/// `bind` + `connect` (no packets are sent; a UDP `connect` only sets the
+/// default destination), which fails fast for an address family that is
+/// unconfigured or unroutable on this host (e.g. an AAAA record arriving
+/// first while IPv6 is disabled). The first candidate that probes clean
+/// wins; if every probe fails, fall back to the first resolved address so
+/// the real send path surfaces the OS error — never worse than not
+/// probing at all.
+fn resolve_host(host: &str, port: u16) -> Result<IpAddr, UdpUrlError> {
+    use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+
+    let candidates: Vec<SocketAddr> = (host, port)
+        .to_socket_addrs()
+        .map_err(|e| UdpUrlError::HostResolve {
+            host: host.to_string(),
+            detail: e.to_string(),
+        })?
+        .collect();
+    let first = candidates
+        .first()
+        .copied()
+        .ok_or_else(|| UdpUrlError::HostResolve {
+            host: host.to_string(),
+            detail: "resolved to no addresses".to_string(),
+        })?;
+    for sa in &candidates {
+        let unspec: SocketAddr = if sa.is_ipv4() {
+            (std::net::Ipv4Addr::UNSPECIFIED, 0).into()
+        } else {
+            (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
+        };
+        if let Ok(probe) = UdpSocket::bind(unspec) {
+            if probe.connect(sa).is_ok() {
+                return Ok(sa.ip());
+            }
+        }
+    }
+    Ok(first.ip())
 }
 
 fn parse_u8_hex_or_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {

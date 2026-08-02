@@ -191,15 +191,18 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::transport::UdpTranspor
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::transport::UdpTransport
 pub mod tst_udp::url
 #[non_exhaustive] pub enum tst_udp::url::UdpUrlError
-pub tst_udp::url::UdpUrlError::BadHost(alloc::string::String)
 pub tst_udp::url::UdpUrlError::BadQueryValue
 pub tst_udp::url::UdpUrlError::BadQueryValue::detail: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadQueryValue::key: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadQueryValue::value: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadScheme(alloc::string::String)
+pub tst_udp::url::UdpUrlError::HostResolve
+pub tst_udp::url::UdpUrlError::HostResolve::detail: alloc::string::String
+pub tst_udp::url::UdpUrlError::HostResolve::host: alloc::string::String
 pub tst_udp::url::UdpUrlError::MissingPort
 pub tst_udp::url::UdpUrlError::Parse(tst_core::url::common::UrlError)
 pub tst_udp::url::UdpUrlError::RecvPktSize
+pub tst_udp::url::UdpUrlError::SendRecvMismatch(alloc::string::String)
 impl core::convert::From<tst_core::url::common::UrlError> for tst_udp::url::UdpUrlError
 pub fn tst_udp::url::UdpUrlError::from(tst_core::url::common::UrlError) -> Self
 impl core::convert::From<tst_udp::url::UdpUrlError> for tst_udp::error::UdpError
@@ -302,15 +305,18 @@ impl core::marker::UnsafeUnpin for tst_udp::error::UdpErrorKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::error::UdpErrorKind
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::error::UdpErrorKind
 #[non_exhaustive] pub enum tst_udp::UdpUrlError
-pub tst_udp::UdpUrlError::BadHost(alloc::string::String)
 pub tst_udp::UdpUrlError::BadQueryValue
 pub tst_udp::UdpUrlError::BadQueryValue::detail: alloc::string::String
 pub tst_udp::UdpUrlError::BadQueryValue::key: alloc::string::String
 pub tst_udp::UdpUrlError::BadQueryValue::value: alloc::string::String
 pub tst_udp::UdpUrlError::BadScheme(alloc::string::String)
+pub tst_udp::UdpUrlError::HostResolve
+pub tst_udp::UdpUrlError::HostResolve::detail: alloc::string::String
+pub tst_udp::UdpUrlError::HostResolve::host: alloc::string::String
 pub tst_udp::UdpUrlError::MissingPort
 pub tst_udp::UdpUrlError::Parse(tst_core::url::common::UrlError)
 pub tst_udp::UdpUrlError::RecvPktSize
+pub tst_udp::UdpUrlError::SendRecvMismatch(alloc::string::String)
 impl core::convert::From<tst_core::url::common::UrlError> for tst_udp::url::UdpUrlError
 pub fn tst_udp::url::UdpUrlError::from(tst_core::url::common::UrlError) -> Self
 impl core::convert::From<tst_udp::url::UdpUrlError> for tst_udp::error::UdpError

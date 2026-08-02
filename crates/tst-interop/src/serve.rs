@@ -22,9 +22,9 @@
 //! `crates/tst-hls/tests/hls_e2e.rs`'s
 //! `hls_pipeline_via_ffmpeg_validates_playlist` doc comment.
 //! `finish_serving` keeps the server up — serving the now-complete VOD
-//! asset — for [`LINGER`] past the last push, giving a puller time to
+//! asset — for `LINGER` past the last push, giving a puller time to
 //! grab the whole thing. [`run_rtsp`] mirrors the same idea by keeping
-//! the `RtspServer` running for [`LINGER`] after its last push before
+//! the `RtspServer` running for `LINGER` after its last push before
 //! calling `stop()`.
 
 use std::net::SocketAddr;
@@ -40,9 +40,7 @@ use tst_rtp::RtspServer;
 use crate::fixtures;
 use crate::mux_setup;
 use crate::profiles::{KlvMode, Profile, VideoCodec};
-
-/// 90 kHz ticks per second — see `gen.rs`'s constant of the same name.
-const PTS_HZ: u32 = 90_000;
+use crate::schedule::{self, Event, PTS_HZ};
 
 /// How long a completed serve (HLS `finish_serving` / RTSP
 /// push-complete) stays up before this module tears it down — gives a
@@ -55,47 +53,6 @@ const LINGER: Duration = Duration::from_secs(10);
 /// serve cuts at least one real segment boundary instead of finalizing a
 /// single giant open segment.
 const HLS_SEGMENT_DURATION: Duration = Duration::from_secs(1);
-
-/// One scheduled push — mirrors `send.rs`'s `Event` (same shape, same
-/// sort-by-pts discipline; see that module's doc comment for the
-/// audio-pacing rationale). Consumed here by a producer that pushes onto
-/// a BOUND publisher/server instead of a connected transport.
-enum Event {
-    Video { frame_idx: u32 },
-    Klv { seq: u32 },
-    Audio { frame_idx: u32 },
-}
-
-/// Build the same PTS-ordered event schedule `gen.rs`/`send.rs` build.
-/// Returns `(start_pts_ticks, events)` — `start` is needed alongside the
-/// schedule to compute each event's wall-clock target offset.
-fn build_schedule(p: &Profile, seconds: f64) -> (i64, Vec<(i64, Event)>) {
-    let video_step_ticks = (PTS_HZ / p.fps) as i64;
-    let klv_step_ticks = (PTS_HZ / p.klv_hz) as i64;
-    let video_count = (seconds * p.fps as f64).round() as u32;
-    let klv_count = (seconds * p.klv_hz as f64).round() as u32;
-    let start = p.start_pts_ticks as i64;
-
-    let mut events: Vec<(i64, Event)> =
-        Vec::with_capacity(video_count as usize * (1 + p.audio as usize) + klv_count as usize);
-    for i in 0..video_count {
-        events.push((
-            start + i as i64 * video_step_ticks,
-            Event::Video { frame_idx: i },
-        ));
-        if p.audio {
-            events.push((
-                start + i as i64 * video_step_ticks,
-                Event::Audio { frame_idx: i },
-            ));
-        }
-    }
-    for i in 0..klv_count {
-        events.push((start + i as i64 * klv_step_ticks, Event::Klv { seq: i }));
-    }
-    events.sort_by_key(|(pts_ticks, _)| *pts_ticks);
-    (start, events)
-}
 
 /// Sleep until `pts_ticks`'s offset from `start` has elapsed since
 /// `wall_start` — the same drift-free, recomputed-each-iteration pacing
@@ -125,7 +82,7 @@ fn unique_suffix() -> u128 {
 /// this process can start a puller immediately.
 ///
 /// Blocks for `seconds` (wall-clock paced push), then finalizes via
-/// `finish_serving` and keeps serving for [`LINGER`] before returning.
+/// `finish_serving` and keeps serving for `LINGER` before returning.
 ///
 /// # Scope
 /// `MuxPublisher` (the pipeline shell this function pushes through)
@@ -159,7 +116,7 @@ pub fn run_hls(p: &Profile, bind_addr: SocketAddr, seconds: f64) -> Result<(), S
     let shell = MuxPublisher::with_config(publisher, cfg)
         .map_err(|e| format!("MuxPublisher::with_config: {e}"))?;
 
-    let (start, events) = build_schedule(p, seconds);
+    let (start, events) = schedule::build_schedule(p, seconds);
     let wall_start = Instant::now();
     for (pts_ticks, event) in events {
         sleep_until(wall_start, start, pts_ticks);
@@ -219,7 +176,7 @@ pub fn run_hls(p: &Profile, bind_addr: SocketAddr, seconds: f64) -> Result<(), S
 /// bound — before any traffic is pushed.
 ///
 /// Blocks for `seconds` (wall-clock paced push), then keeps the server up
-/// for [`LINGER`] before calling `stop()`.
+/// for `LINGER` before calling `stop()`.
 ///
 /// # Scope
 /// `MountHandle` (`tst_rtp::rtsp::server::mount::MountHandle`) mirrors
@@ -260,7 +217,7 @@ pub fn run_rtsp(
     let klv_handles = mount_handle.klv_handles();
     let audio_handle = mount_handle.audio_handles().into_iter().next();
 
-    let (start, events) = build_schedule(p, seconds);
+    let (start, events) = schedule::build_schedule(p, seconds);
     let wall_start = Instant::now();
     for (pts_ticks, event) in events {
         sleep_until(wall_start, start, pts_ticks);

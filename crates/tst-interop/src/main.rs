@@ -1,6 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 
+use tst_interop::cli;
 use tst_interop::r#gen;
 use tst_interop::profiles;
 use tst_interop::recv;
@@ -78,7 +79,7 @@ fn run_gen(args: &[String]) -> ! {
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| s.parse().ok());
+                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
                 i += 2;
             }
             "--out" => {
@@ -97,7 +98,7 @@ fn run_gen(args: &[String]) -> ! {
         std::process::exit(2);
     });
     let seconds = seconds.unwrap_or_else(|| {
-        eprintln!("gen: --seconds is required (and must be a number)");
+        eprintln!("gen: --seconds is required and must be a finite, positive number");
         std::process::exit(2);
     });
     let out = out.unwrap_or_else(|| {
@@ -154,7 +155,7 @@ fn run_send(args: &[String]) -> ! {
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| s.parse().ok());
+                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
                 i += 2;
             }
             "--json" => {
@@ -177,7 +178,7 @@ fn run_send(args: &[String]) -> ! {
         std::process::exit(2);
     });
     let seconds = seconds.unwrap_or_else(|| {
-        eprintln!("send: --seconds is required (and must be a number)");
+        eprintln!("send: --seconds is required and must be a finite, positive number");
         std::process::exit(2);
     });
     let p = profiles::by_name(&profile_name).unwrap_or_else(|| {
@@ -237,7 +238,7 @@ fn run_recv(args: &[String]) -> ! {
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| s.parse().ok());
+                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
                 i += 2;
             }
             "--json" => {
@@ -260,7 +261,7 @@ fn run_recv(args: &[String]) -> ! {
         std::process::exit(2);
     });
     let seconds = seconds.unwrap_or_else(|| {
-        eprintln!("recv: --seconds is required (and must be a number)");
+        eprintln!("recv: --seconds is required and must be a finite, positive number");
         std::process::exit(2);
     });
     let profile = profiles::by_name(&expect).unwrap_or_else(|| {
@@ -306,7 +307,7 @@ fn run_verify(args: &[String]) -> ! {
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| s.parse().ok());
+                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
                 i += 2;
             }
             "--json" => {
@@ -329,7 +330,7 @@ fn run_verify(args: &[String]) -> ! {
         std::process::exit(2);
     });
     let seconds = seconds.unwrap_or_else(|| {
-        eprintln!("verify: --seconds is required (and must be a number)");
+        eprintln!("verify: --seconds is required and must be a finite, positive number");
         std::process::exit(2);
     });
     let profile = profiles::by_name(&expect).unwrap_or_else(|| {

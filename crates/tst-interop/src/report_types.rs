@@ -20,7 +20,7 @@ pub struct CellMetrics {
     pub klv_set_sha256: String,
     pub audio_frames: u64,
     pub programs_seen: u8,
-    /// Rollover-aware: see [`crate::verify::pts_is_monotonic_step`] for the
+    /// Rollover-aware: see `verify::pts_is_monotonic_step` for the
     /// exact 33-bit-wrap rule.
     pub pts_monotonic: bool,
     pub misp_sei_seen: bool,

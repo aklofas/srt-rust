@@ -91,6 +91,30 @@ const DEFAULT_SRT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// "Bounded receive" section.
 const UDP_RECV_POLL: Duration = Duration::from_millis(200);
 
+/// Default bound on `Listener::accept_timeout` for the listener-mode SRT
+/// path [`srt_socket`] builds (`srt://:port?mode=listener`). libsrt's
+/// plain `accept()` has no timeout at all (`SRTO_RCVTIMEO` doesn't gate
+/// it — see `Listener::accept_timeout`'s own doc comment on why), so
+/// without a bound here, an `srt://` listener with no peer ever
+/// connecting would block forever instead of failing cleanly. Matches
+/// `recv::NO_DATA_TIMEOUT` (15s) — the budget `recv::
+/// recv_over_transport` already gives an entire transport to come up
+/// before giving up on a connection — rather than the much shorter
+/// [`DEFAULT_SRT_CONNECT_TIMEOUT`] above, which bounds a *caller's*
+/// `SRTO_CONNTIMEO`, not how long a listener should wait for an
+/// incoming peer; a slow-but-legitimate connecting sender shouldn't be
+/// rejected here before that generous caller-side deadline would have
+/// given up anyway.
+///
+/// The URL's `conntimeo`/`connect_timeout` overlay overrides this
+/// default when present, even in listener mode: `apply_to_listener`
+/// deliberately never applies it to `ListenerConfig` (libsrt's
+/// `SRTO_CONNTIMEO` is caller-only), so the parsed value would
+/// otherwise go unused for a listener-mode URL — reusing it here as the
+/// accept bound lets a caller (e.g. a test) ask for a short window
+/// without waiting out this generous production default.
+const SRT_ACCEPT_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// `SRTO_LINGER` applied to every SRT socket/listener this module
 /// builds. Mirrors the value `SocketConfig::sender_defaults()` uses
 /// (`crates/tst-srt/src/config.rs`'s `SENDER_DEFAULT_LINGER`) — not
@@ -258,8 +282,16 @@ fn srt_socket(url: &str) -> Result<tst_srt::Socket, String> {
             let bind_addr = format!("{bind_host}:{}", parsed.port);
             let mut listener = tst_srt::Listener::bind_with(&cfg, bind_addr.as_str())
                 .map_err(|e| format!("srt bind {url}: {e}"))?;
+            // `accept_timeout` (not plain `accept`, which blocks
+            // forever — see `SRT_ACCEPT_TIMEOUT`'s doc comment) so a
+            // sender that never connects fails cleanly instead of
+            // hanging this whole subcommand. `conntimeo`/`connect_timeout`
+            // doubles as the accept bound here — see `SRT_ACCEPT_TIMEOUT`'s
+            // doc comment for why that overlay field is otherwise unused
+            // in listener mode.
+            let accept_timeout = parsed.overlay.connect_timeout.unwrap_or(SRT_ACCEPT_TIMEOUT);
             let (socket, _peer) = listener
-                .accept()
+                .accept_timeout(accept_timeout)
                 .map_err(|e| format!("srt accept {url}: {e}"))?;
             Ok(socket)
         }

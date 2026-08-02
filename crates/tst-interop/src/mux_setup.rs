@@ -1,7 +1,7 @@
 //! Profile → `MuxerConfig` mapping: the single place a [`Profile`] becomes
 //! a concrete mux configuration.
 //!
-//! `gen::run` (this task) and `send::run` (Task 6) both build their muxer
+//! `gen::run` and `send::run` both build their muxer
 //! from [`build_config`], so the wire shape a profile produces is defined
 //! in exactly one place. Stream handles are deliberately NOT returned
 //! here: `VideoStreamHandle`/`KlvStreamHandle`/`AudioStreamHandle` are

@@ -55,13 +55,11 @@
 //! `recv_over_transport` against, because `transport.rs` wraps all of
 //! them (`BoundedUdpRecv`, SRT's `SRTO_RCVTIMEO`, RIST's native poll) so
 //! `recv_bytes` always returns control periodically on its own — but
-//! Task 7 is the first time this crate drives `recv_over_transport`
-//! against a raw, unwrapped transport at all.
+//! this file is the first place this crate drives `recv_over_transport`
+//! against a raw, unwrapped transport (`RtpRecvTransport`) at all.
 //!
-//! [`rtsp_serve_round_trip_via_own_client`] works around this the same
-//! way this project's own JVM-binding live-socket tests handle an
-//! analogous "no internal signal" gap (see the `tst_jni` carry-forward
-//! lessons in CLAUDE.md): obtain the transport's `cancel_handle()`
+//! [`rtsp_serve_round_trip_via_own_client`] works around this with an
+//! external-cancel watchdog: obtain the transport's `cancel_handle()`
 //! BEFORE handing it to `recv_over_transport` (run on its own thread),
 //! then externally fire that handle from a bounded watchdog if the
 //! worker hasn't finished on its own — the watchdog's own bound is what
@@ -215,8 +213,7 @@ fn hls_serve_round_trip_matches_baseline() {
     };
 
     // Fetch every segment_*.ts the playlist lists, in playlist order,
-    // and concatenate the raw bytes — the exact "concatenate segments in
-    // playlist order" shape the task brief asks for.
+    // and concatenate the raw bytes into one contiguous capture.
     let mut ts_bytes = Vec::new();
     for line in playlist.lines() {
         if line.ends_with(".ts") {
@@ -233,7 +230,10 @@ fn hls_serve_round_trip_matches_baseline() {
     let path = std::env::temp_dir().join(format!(
         "tst-interop-hls-serve-{}-{}.ts",
         std::process::id(),
-        Instant::now().elapsed().as_nanos()
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before UNIX_EPOCH")
+            .as_nanos()
     ));
     std::fs::write(&path, &ts_bytes).expect("write fetched TS bytes to a temp file");
     let result = verify::verify_file(&path, profile, SECONDS);

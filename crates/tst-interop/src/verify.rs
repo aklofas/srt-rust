@@ -1,6 +1,6 @@
 //! Verification core: replay a captured MPEG-TS/KLV cell through the
 //! offline [`Demuxer`], tally wire-format facts, and check them against a
-//! [`Profile`]'s [`Invariants`] (see [`crate::profiles`]).
+//! [`Profile`]'s [`profiles::Invariants`] (see [`crate::profiles`]).
 //!
 //! **Classify by event kind, not by PMT `stream_type`.** The `av1-klv-*`
 //! profiles mux AV1 video and async KLV onto the *same* PMT
@@ -360,11 +360,10 @@ impl Tally {
     }
 }
 
-/// Bytes read per `File::read` call, aligned to whole TS packets before
-/// being handed to the `Demuxer` (the brief's "188-byte-aligned chunks" —
-/// `Demuxer::feed` itself tolerates arbitrary slicing, but feeding whole
-/// packets keeps this driver's behavior predictable and easy to reason
-/// about).
+/// Bytes read per `File::read` call, aligned to whole 188-byte TS packets
+/// before being handed to the `Demuxer` — `Demuxer::feed` itself
+/// tolerates arbitrary slicing, but feeding whole packets keeps this
+/// driver's behavior predictable and easy to reason about.
 const TS_PACKET_LEN: usize = 188;
 const READ_CHUNK_PACKETS: usize = 512;
 

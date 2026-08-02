@@ -66,8 +66,8 @@ pub fn run(
 ///   call, see `transport.rs`'s per-scheme docs) and the loop drains to
 ///   `Ok(None)`.
 ///
-/// The deadline starts at [`NO_DATA_TIMEOUT`] (waiting for the stream
-/// to start) and is re-anchored to `seconds + `[`POST_START_GRACE`]
+/// The deadline starts at `NO_DATA_TIMEOUT` (waiting for the stream
+/// to start) and is re-anchored to `seconds + POST_START_GRACE`
 /// once the first event arrives, so a slow connection setup doesn't eat
 /// into the profile's own capture window.
 pub fn recv_over_transport(

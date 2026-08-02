@@ -23,28 +23,9 @@ use crate::fixtures;
 use crate::mux_setup;
 use crate::profiles::{KlvMode, Profile, VideoCodec};
 use crate::report_types::CellMetrics;
+use crate::schedule::{self, Event, PTS_HZ};
 use crate::transport::{self, Teeing};
 use crate::verify;
-
-/// 90 kHz ticks per second — see `gen.rs`'s constant of the same name.
-const PTS_HZ: u32 = 90_000;
-
-/// One scheduled push. See `gen.rs`'s `Event` — same shape and sort
-/// order — but consumed here by a wall-clock-paced loop instead of an
-/// as-fast-as-possible file write.
-enum Event {
-    Video {
-        frame_idx: u32,
-    },
-    Klv {
-        seq: u32,
-    },
-    /// Audio is paced 1:1 with video — see `gen.rs`'s doc comment for
-    /// why.
-    Audio {
-        frame_idx: u32,
-    },
-}
 
 /// Build a transport from `url` for profile `p` and push `seconds` of
 /// its synthetic traffic through it, paced to real time. Returns the
@@ -87,30 +68,7 @@ pub fn send_over_transport(
     let klv_handles = sender.klv_handles();
     let audio_handle = sender.audio_handles().into_iter().next();
 
-    let video_step_ticks = (PTS_HZ / p.fps) as i64;
-    let klv_step_ticks = (PTS_HZ / p.klv_hz) as i64;
-    let video_count = (seconds * p.fps as f64).round() as u32;
-    let klv_count = (seconds * p.klv_hz as f64).round() as u32;
-    let start = p.start_pts_ticks as i64;
-
-    let mut events: Vec<(i64, Event)> =
-        Vec::with_capacity(video_count as usize * (1 + p.audio as usize) + klv_count as usize);
-    for i in 0..video_count {
-        events.push((
-            start + i as i64 * video_step_ticks,
-            Event::Video { frame_idx: i },
-        ));
-        if p.audio {
-            events.push((
-                start + i as i64 * video_step_ticks,
-                Event::Audio { frame_idx: i },
-            ));
-        }
-    }
-    for i in 0..klv_count {
-        events.push((start + i as i64 * klv_step_ticks, Event::Klv { seq: i }));
-    }
-    events.sort_by_key(|(pts_ticks, _)| *pts_ticks);
+    let (start, events) = schedule::build_schedule(p, seconds);
 
     let mut video_aus = 0u64;
     let mut keyframes = 0u64;

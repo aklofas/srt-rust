@@ -11,13 +11,13 @@
 //! from `sending/send_udp.rs` + `receiving/recv_udp.rs`, tcp/tcps from
 //! `sending/send_tcp.rs` + `receiving/recv_tcp.rs`, rist from
 //! `sending/send_rist.rs` + `receiving/recv_rist.rs`, and the SRT
-//! URL-overlay pattern [`srt_socket`] follows from
+//! URL-overlay pattern `srt_socket` follows from
 //! `sending/sender_from_url.rs`.
 //!
 //! # Byte-transparency tee
 //!
-//! [`Teeing`] wraps a constructed transport and hashes+counts every byte
-//! it forwards into a shared tap ([`tee_tally`] reads the tally back
+//! `Teeing` wraps a constructed transport and hashes+counts every byte
+//! it forwards into a shared tap (`tee_tally` reads the tally back
 //! once the pipeline shell that owns the `Teeing` has been dropped).
 //! `send.rs`/`recv.rs` use this for `CellMetrics::bytes`/`stream_sha256`
 //! — the exact bytes that crossed the wire, independent of whatever the
@@ -32,7 +32,7 @@
 //! function's doc comment). `tst-rist`'s receiver already does this
 //! natively (librist's own ~100ms poll, see `examples/receiving/
 //! recv_rist.rs`); SRT gets a modest default `SRTO_RCVTIMEO` here (the
-//! URL's `x-recvtimeout` still wins if set); UDP gets [`BoundedUdpRecv`],
+//! URL's `x-recvtimeout` still wins if set); UDP gets `BoundedUdpRecv`,
 //! which drives `UdpRecvTransport`'s own `recv_timeout` escape hatch
 //! (its trait-level `recv_bytes` blocks indefinitely by design — see
 //! that type's own rustdoc). **TCP has no equivalent knob anywhere in
@@ -54,12 +54,12 @@
 //! before the peer has actually delivered the tail of the stream to its
 //! own application. `srt_socket` sets `SRTO_LINGER` (protects the
 //! *local* send-side queue — a real, distinct concern from the above;
-//! see its own doc comment) and [`GracefulSrtClose`] additionally waits
+//! see its own doc comment) and `GracefulSrtClose` additionally waits
 //! past the negotiated `SRTO_LATENCY` before closing (the mechanism this
 //! crate's own srt loopback test needed — confirmed by instrumenting
 //! `Teeing::send_bytes`: every send returned `Ok`, so linger alone had
 //! nothing left to drain). `tst-rist` exposes no linger-equivalent
-//! option at all, so [`GracefulRistClose`] uses the same scoped grace
+//! option at all, so `GracefulRistClose` uses the same scoped grace
 //! sleep for both concerns at once (see its own doc comment for the
 //! caveat that this one is unverified — this crate's tests don't
 //! exercise a RIST cell yet).

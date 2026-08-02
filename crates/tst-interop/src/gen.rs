@@ -15,28 +15,7 @@ use tst_core::mpegts::mux::Muxer;
 use crate::fixtures;
 use crate::mux_setup;
 use crate::profiles::{KlvMode, Profile, VideoCodec};
-
-/// 90 kHz ticks per second — the MPEG-TS PTS clock (ITU-T H.222.0 V9
-/// §2.4.3.6).
-const PTS_HZ: u32 = 90_000;
-
-/// One offline-paced unit of work: push a frame/record at `pts_ticks`.
-/// Kept as (pts, Event) tuples and sorted by `pts_ticks` before pushing,
-/// so streams sharing a muxer see traffic in the same relative time order
-/// a live pipeline would (rather than "all video, then all KLV").
-enum Event {
-    Video {
-        frame_idx: u32,
-    },
-    Klv {
-        seq: u32,
-    },
-    /// Audio is paced 1:1 with video (see [`run`]'s doc comment) — reuses
-    /// the video frame index as its sequence number.
-    Audio {
-        frame_idx: u32,
-    },
-}
+use crate::schedule::{self, Event, PTS_HZ};
 
 /// Generate `seconds` of synthetic traffic for profile `p` and write the
 /// resulting MPEG-TS bytes to `out_path`.
@@ -65,30 +44,7 @@ pub fn run(p: &Profile, seconds: f64, out_path: &Path) -> io::Result<()> {
     let audio_handle = mux.audio_handles().into_iter().next();
     let mut out = File::create(out_path)?;
 
-    let video_step_ticks = (PTS_HZ / p.fps) as i64;
-    let klv_step_ticks = (PTS_HZ / p.klv_hz) as i64;
-    let video_count = (seconds * p.fps as f64).round() as u32;
-    let klv_count = (seconds * p.klv_hz as f64).round() as u32;
-    let start = p.start_pts_ticks as i64;
-
-    let mut events: Vec<(i64, Event)> =
-        Vec::with_capacity(video_count as usize * (1 + p.audio as usize) + klv_count as usize);
-    for i in 0..video_count {
-        events.push((
-            start + i as i64 * video_step_ticks,
-            Event::Video { frame_idx: i },
-        ));
-        if p.audio {
-            events.push((
-                start + i as i64 * video_step_ticks,
-                Event::Audio { frame_idx: i },
-            ));
-        }
-    }
-    for i in 0..klv_count {
-        events.push((start + i as i64 * klv_step_ticks, Event::Klv { seq: i }));
-    }
-    events.sort_by_key(|(pts_ticks, _)| *pts_ticks);
+    let (_, events) = schedule::build_schedule(p, seconds);
 
     let mut pull_buf = [0u8; 1316];
     for (pts_ticks, event) in events {

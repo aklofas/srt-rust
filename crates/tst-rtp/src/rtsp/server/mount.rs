@@ -130,10 +130,11 @@ pub struct MountStats {
 /// `add_multicast_mount`. Cloning is cheap (clones the `Arc`); multiple
 /// holders can push from different threads.
 ///
-/// The actual push API (`push_video` / `push_klv` / `push_audio` /
-/// `push_subtitle`) lands in Task 15 — this skeleton ships only the
-/// surface type + accessors (`mount_path`, `peer_count`, `stats`,
-/// `mount_kind`).
+/// The push API (`push_video` / `push_klv` / `push_audio` /
+/// `push_subtitle` / `push_data`, plus the `*_to` targeted variants and
+/// `push_video_to_with_dts`) mirrors `tst_pipeline::MuxSender`'s `send_*`
+/// signatures; accessors are `mount_path`, `peer_count`, `stats`,
+/// `mount_kind`, and the `*_handles()` family.
 #[derive(Clone)]
 pub struct MountHandle {
     pub(crate) state: Arc<MountState>,
@@ -323,6 +324,33 @@ impl MountHandle {
         key_frame: bool,
     ) -> Result<(), crate::error::MountError> {
         self.with_muxer(|m| m.push_video_to(handle, nal, pts, key_frame))
+    }
+
+    /// Push one video access unit with an explicit decode timestamp.
+    /// Mirror of `MuxSender::send_video_to_with_dts` — targeted-only,
+    /// like every DTS push in the workspace (there is no single-stream
+    /// `push_video_with_dts`; obtain the handle from
+    /// [`Self::video_handles`]).
+    ///
+    /// Without this variant a mount always serves DTS == PTS; a capture
+    /// replayer or restreamer needs it to reproduce real encoder timing
+    /// (e.g. a constant PTS−DTS offset) for downstream DTS-handling
+    /// paths.
+    ///
+    /// **Caller invariant:** `dts <= pts` per H.222.0 §2.4.3.6. The muxer
+    /// does not enforce this; receivers will reject inverted timestamps.
+    ///
+    /// See [`Self::push_video`] for the drain + broadcast contract and
+    /// error mapping.
+    pub fn push_video_to_with_dts(
+        &self,
+        handle: tst_core::mpegts::mux::VideoStreamHandle,
+        nal: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+        dts: tst_core::mpegts::common::Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), crate::error::MountError> {
+        self.with_muxer(|m| m.push_video_to_with_dts(handle, nal, pts, dts, key_frame))
     }
 
     /// Push to a specific KLV stream handle. Mirror of
@@ -622,6 +650,48 @@ mod tests {
         // Each chunk is a multiple of 188 bytes and <= 1316.
         assert_eq!(payload.len() % 188, 0);
         assert!(payload.len() <= RTP_PAYLOAD_SIZE);
+    }
+
+    #[test]
+    fn push_video_to_with_dts_serves_distinct_dts() {
+        // A capture replayer serving a real encoder's timing must be able
+        // to reproduce PTS != DTS through a mount (integrator field
+        // report: gimbal encoders hold PTS-DTS at a constant offset).
+        // Push with a 0.2 s offset (18000 ticks @ 90 kHz), then demux the
+        // broadcast TS bytes and assert the offset survived.
+        use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+
+        let state = mock_unicast_mount_state();
+        let mut rx = state.fanout.subscribe();
+        let handle = MountHandle { state };
+        let vh = handle.video_handles()[0];
+        let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        handle
+            .push_video_to_with_dts(vh, &nal, Pts90khz::new(18000), Pts90khz::new(0), true)
+            .expect("dts push succeeds");
+
+        let mut ts = Vec::new();
+        while let Ok(chunk) = rx.try_recv() {
+            ts.extend_from_slice(&chunk);
+        }
+        assert!(!ts.is_empty(), "push must broadcast TS bytes");
+
+        let mut demux = Demuxer::new();
+        demux.feed(&ts).expect("demux feed");
+        demux.flush();
+        let mut saw_video = false;
+        while let Some(event) = demux.next_event() {
+            if let DemuxEvent::Sample { pts, dts, .. } = event {
+                assert_eq!(pts, Pts90khz::new(18000));
+                assert_eq!(
+                    dts,
+                    Some(Pts90khz::new(0)),
+                    "served AU must carry the distinct DTS, not DTS==PTS"
+                );
+                saw_video = true;
+            }
+        }
+        assert!(saw_video, "expected a video sample from the served TS");
     }
 
     #[test]

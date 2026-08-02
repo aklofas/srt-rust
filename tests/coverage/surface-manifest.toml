@@ -8550,6 +8550,10 @@ item = "tst_rtp::rtsp::server::mount::MountHandle::push_video_to"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_rtp::rtsp::server::mount::MountHandle::push_video_to_with_dts"
+reason = "unit-covered (mount.rs push_video_to_with_dts_serves_distinct_dts); Rust-only by design (bindings parity deferred — see deferred-features); graduate with the mount push family"
+
+[[exempt]]
 item = "tst_rtp::rtsp::server::mount::MountHandle::reset_stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

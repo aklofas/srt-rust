@@ -275,3 +275,87 @@ fn srt_baseline_loopback_round_trips_and_matches() {
         "SRT is a reliable in-order transport, so a loopback capture should be byte-transparent too"
     );
 }
+
+/// `recv --managed`'s watcher/cancel path must actually bound the
+/// reconnect loop's runtime — the bug this fix wave found and fixed was
+/// exactly a caller relying on that bound and getting an unbounded hang
+/// instead (see `recv.rs`'s `run_managed` doc comment). Manual dry-runs
+/// proved that during development; this pins it as a real regression
+/// test.
+///
+/// Deliberately does NOT use a factory that never connects even once:
+/// `run_managed`'s FIRST-ever connection is bounded by the hardcoded
+/// 15s `NO_DATA_TIMEOUT`, not by anything this test controls, and
+/// landing a bounded assertion safely under this test-group's 20s
+/// per-test kill against that fixed value plus the exponential backoff
+/// schedule's up-to-10s-capped sleeps (`ReconnectPolicy::default`) — a
+/// sleep that can't be interrupted mid-attempt, only checked between
+/// attempts — would be within a few seconds of the kill itself on a
+/// loaded runner (verified by hand-computing the backoff schedule
+/// before writing this). Instead: one real, short-lived sender
+/// connects ONCE (so `streaming` flips true and the deadline becomes
+/// the fully test-controlled `seconds + POST_START_GRACE`, a couple of
+/// seconds, not 15) and then closes for good; nobody ever connects
+/// again, so every subsequent factory rebuild attempt times out against
+/// `conntimeo` (shortened for the same reason
+/// `srt_listener_accept_times_out_when_nobody_connects` shortens it).
+/// This still exercises the identical watcher-thread/cancel mechanism
+/// the fix added, with a much wider safety margin under the per-test
+/// kill, and is arguably closer to the real soak scenario (an
+/// established connection that breaks and never recovers) than a peer
+/// that never shows up at all.
+#[test]
+fn srt_managed_recv_returns_after_peer_never_reconnects() {
+    let profile = profiles::by_name("baseline").expect("baseline profile must exist");
+    let port = free_port();
+    // conntimeo=2000: every factory rebuild's own accept() call — the
+    // first (for the real sender) and every retry after — is bounded to
+    // 2s instead of the 15s production default. 2s (not shorter) leaves
+    // enough headroom for the real sender's thread-scheduling +
+    // handshake latency on a loaded runner to land inside the FIRST
+    // accept call reliably (a too-short value here raced the real
+    // sender against the listener's own accept timeout during
+    // development and failed with a spurious connect timeout on the
+    // sender side, not the reconnect-loop behavior this test exists to
+    // check).
+    let recv_url = format!("srt://127.0.0.1:{port}?mode=listener&conntimeo=2000");
+    let send_url = format!("srt://127.0.0.1:{port}");
+
+    // seconds=0.1: once the real sender's data starts streaming, the
+    // deadline becomes seconds + POST_START_GRACE (a fixed 2s) from that
+    // moment — a couple of seconds total, not the 15s NO_DATA_TIMEOUT
+    // that only governs before the first successful event.
+    let recv_handle = {
+        let recv_url = recv_url.clone();
+        thread::spawn(move || recv::run_managed(&recv_url, profile, 0.1, None, false))
+    };
+
+    // One short, real send: connects once, pushes a handful of AUs,
+    // closes cleanly. Enough for `streaming` to flip true inside
+    // `run_managed` — an empty capture would `break` on `Ok(None)`
+    // before ever driving the reconnect loop at all, testing nothing.
+    let send_metrics = send_with_retry(profile, &send_url, 0.3, Duration::from_secs(5));
+    assert!(
+        send_metrics.video_aus > 0,
+        "the one-shot sender must have pushed at least one AU"
+    );
+
+    let report = join_with_timeout(recv_handle, Duration::from_secs(15))
+        .expect("run_managed must return Ok (the watcher's cancel is a graceful break, not a hard error) rather than hang");
+
+    // Not an exact-equality check against `send_metrics.video_aus`: the
+    // sender's own close can race SRT's TSBPD delivery of its very last
+    // AU (observed directly during development — 8 of 9 sent AUs
+    // tallied on one run), which is real transport timing, not a
+    // reconnect-loop bug. What this DOES pin: the tally from the one
+    // real connection survived into the final report (not silently
+    // dropped/reset by the reconnect attempts that follow it), and the
+    // reconnect loop never fabricates or double-counts data it was
+    // never actually given.
+    assert!(
+        report.metrics.video_aus > 0 && report.metrics.video_aus <= send_metrics.video_aus,
+        "expected 1..={} AUs tallied from the one real connection, got {}",
+        send_metrics.video_aus,
+        report.metrics.video_aus
+    );
+}

@@ -140,6 +140,16 @@ const BUF_SIZE: usize = 65536;
 /// empirically: the break-to-first-reconnect-attempt gap was on the
 /// order of several seconds, never sub-second) safely tells the two
 /// cases apart. 2 seconds is comfortably inside that gap.
+///
+/// **Residual risk, stated rather than left implied.** The grace period
+/// narrows the spoofing window, it doesn't close it: any datagram from a
+/// new source arriving after a >=2s quiet gap in the real client's
+/// traffic is accepted as a re-learn, so a co-located sender able to
+/// inject UDP into this same loopback socket during such a gap could
+/// still capture the return path. Acceptable for what this proxy is —
+/// a local test harness impairing traffic between two processes on the
+/// same box, not a deployed relay facing untrusted network peers — but
+/// not a property to rely on outside that context.
 const CLIENT_RELEARN_GRACE: Duration = Duration::from_secs(2);
 
 /// Per-field mirror of [`ImpairConfig`], echoed into [`ProxyStats`].

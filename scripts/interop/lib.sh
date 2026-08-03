@@ -127,6 +127,152 @@ serve_timeout() {
 REPORT_TIMEOUT=120
 
 # ---------------------------------------------------------------------
+# Format axis: profile registry + per-tool analyzer/decode helpers
+# ---------------------------------------------------------------------
+#
+# The 12 canonical profile names, in crates/tst-interop/src/profiles.rs's
+# registry order — hardcoded here since this script has no Rust-
+# introspection path (registry-shape drift is caught by that file's own
+# `registry_has_twelve_unique_named_profiles` test, not by this list).
+ALL_PROFILE_NAMES="baseline,klv-sync,misp,h265-klv,av1-klv-a,av1-klv-b,h266-klv,audio,two-program,pcr-tight,pcr-sparse,pts-rollover"
+
+# Expected total `ffprobe -show_streams` stream count for `$1` (a profile
+# name): one video + one KLV PID per program, +1 more if the profile
+# carries an audio stream — mirrors profiles.rs's `programs`/`audio`
+# fields (only `two-program` sets programs=2; only `audio` sets
+# audio=true; every other profile is 1 program, no audio, hence the `*`
+# fallback). Deliberately NOT a `codec_type` assertion: ffmpeg's mpegts
+# demuxer classifies our AV1 carriage's PMT stream_type 0x06 as generic
+# `"data"`, not `"video"` (verified: `av1-klv-a`/`av1-klv-b` both show
+# `["data","data"]` via `ffprobe -show_streams -of json` even though PID
+# *count* is correct) — a known, already-documented AV1-in-TS carriage
+# gap (see README), not something this structural probe should paper
+# over by asserting a codec_type it can't get right.
+expected_stream_count() {
+  case "$1" in
+    two-program) echo 4 ;;
+    audio) echo 3 ;;
+    *) echo 2 ;;
+  esac
+}
+
+# tsanalyze_ts_line_counters_zero <tsanalyze --normalized output>
+#
+# Extracts the `invalidsyncs`/`transporterrors`/`suspectignored` fields
+# from the single `ts:`-prefixed summary line `tsanalyze --normalized`
+# emits (verified stable across all 12 profiles' synthetic fixtures —
+# see README) and echoes a human-readable verdict line: "0" (clean) or
+# a nonzero-counters/unparseable message. Caller checks the echoed text
+# for the literal string "0" alone vs anything else.
+tsanalyze_ts_line_counters_zero() {
+  local out="$1"
+  local tsline invalidsyncs transporterrors suspectignored
+  tsline=$(grep -m1 '^ts:' <<<"$out") || tsline=""
+  invalidsyncs=$(grep -oE 'invalidsyncs=[0-9]+' <<<"$tsline" | cut -d= -f2) || invalidsyncs=""
+  transporterrors=$(grep -oE 'transporterrors=[0-9]+' <<<"$tsline" | cut -d= -f2) || transporterrors=""
+  suspectignored=$(grep -oE 'suspectignored=[0-9]+' <<<"$tsline" | cut -d= -f2) || suspectignored=""
+  if [[ -z "$invalidsyncs" || -z "$transporterrors" || -z "$suspectignored" ]]; then
+    echo "could not parse ts: line counters from --normalized output (got: ${tsline:-<no ts: line found>})"
+    return
+  fi
+  if [[ "$invalidsyncs" -ne 0 || "$transporterrors" -ne 0 || "$suspectignored" -ne 0 ]]; then
+    echo "nonzero counters: invalidsyncs=$invalidsyncs transporterrors=$transporterrors suspectignored=$suspectignored"
+    return
+  fi
+  echo "0"
+}
+
+# tsp_analyze_counters_zero <tsp -P analyze combined output>
+#
+# Same idea for `tsp -P analyze`'s "TRANSPORT STREAM ANALYSIS REPORT"
+# header block, which carries the same three global counters under
+# different, human-formatted labels ("With invalid sync: .... N"):
+# verified stable (same 3 fields, same block position) across all 12
+# profiles. NOTE: `tsp -P analyze`'s report freely uses the bare word
+# "error" as a static field LABEL ("With transport error: .... 0")
+# regardless of the counter's value — the generic marker-grep this
+# script uses elsewhere would false-positive on every clean run, which
+# is why this cell extracts the actual numeric counters instead of
+# grepping for error-shaped words (see run_analyze_tsp's caller).
+tsp_analyze_counters_zero() {
+  local out="$1"
+  local invalid_sync transport_error suspect_ignored
+  invalid_sync=$(grep -oE 'With invalid sync: *\.+ *[0-9]+' <<<"$out" | grep -oE '[0-9]+$') || invalid_sync=""
+  transport_error=$(grep -oE 'With transport error: *\.+ *[0-9]+' <<<"$out" | grep -oE '[0-9]+$') || transport_error=""
+  suspect_ignored=$(grep -oE 'Suspect and ignored: *\.+ *[0-9]+' <<<"$out" | grep -oE '[0-9]+$') || suspect_ignored=""
+  if [[ -z "$invalid_sync" || -z "$transport_error" || -z "$suspect_ignored" ]]; then
+    echo "could not parse tsp analyze counters (invalid_sync=${invalid_sync:-?} transport_error=${transport_error:-?} suspect_ignored=${suspect_ignored:-?})"
+    return
+  fi
+  if [[ "$invalid_sync" -ne 0 || "$transport_error" -ne 0 || "$suspect_ignored" -ne 0 ]]; then
+    echo "nonzero counters: invalid_sync=$invalid_sync transport_error=$transport_error suspect_ignored=$suspect_ignored"
+    return
+  fi
+  echo "0"
+}
+
+# ---------------------------------------------------------------------
+# decode/* cells: exclusion filters (verified, not guessed)
+# ---------------------------------------------------------------------
+#
+# `decode/{ffplay,vlc,mpv,gst-play}/<profile>` cells are
+# CONTAINER-ACCEPTANCE probes (controller ruling, task 12 dispatch): pass
+# iff the player opens the file and no container/TS/PSI-level error
+# appears — NOT a full-decode assertion. `crates/tst-interop/src/fixtures.rs`'s
+# H.264/H.265/H.266/AV1/AAC generators only build real, decodable data on
+# keyframes; every inter-frame AU is filler bytes wrapped in a bare
+# NAL/OBU/frame header by design (see README's rtsp-serve/vlc-probe
+# finding for the original instance of this). Every player this script
+# drives therefore logs a stream of codec-payload decode complaints on
+# EVERY profile it can open at all — verified line-for-line against real
+# captured logs (all 12 profiles x ffplay/vlc/mpv on this box) before
+# being added here, not guessed:
+#   - h264: "crop values invalid", "sps_id ... out of range",
+#     "non-existing PPS/SPS", "decode_slice_header error", "no frame!",
+#     "Error decoding the extradata"
+#   - h265/h266 (vvc): "PPS id ... out of range"/"not available",
+#     "vps_video_parameter_set_id out of range", "Failed to read unit",
+#     "Failed to parse picture unit", "Error parsing NAL unit"
+#   - aac: "Reserved bit set", "Number of bands ... exceeds limit",
+#     "Scalefactor ... out of range", "channel element ... is not
+#     allocated", "Error decoding audio."
+# None of these indicate a container/PSI-level problem; all are excluded
+# from the marker-grep every decode cell applies.
+DECODE_PAYLOAD_NOISE='crop values invalid|sps_id.*out of range|non-existing (PPS|SPS)|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit|Failed to parse picture unit|PPS id|Error parsing NAL unit|Error decoding the extradata|Reserved bit set|Number of bands|Scalefactor|is not allocated|Error decoding audio\.'
+
+# ffplay-specific: `-nodisp` in this headless sandbox (no $DISPLAY, no
+# real video output device) makes ffplay print "Failed to open file '...'
+# or configure filtergraph" at exit REGARDLESS of whether the input was
+# ever a valid, fully-decodable stream — verified with a control file
+# (plain `ffmpeg -f lavfi testsrc ... -c:v libx264` H.264 file, zero
+# relation to this crate's code): ffplay prints the exact same line on
+# it. SDL/headless-display noise, not a signal about the input file.
+FFPLAY_ENV_NOISE="Failed to open file .* or configure filtergraph"
+
+# vlc-specific: reuses run_serve_peer_probe's already-established,
+# already-verified sandbox-startup exclusion list (PulseAudio/D-Bus/
+# $DISPLAY-less headless noise — see that function's doc comment).
+VLC_ENV_NOISE='vlcpulse audio output error|dbus interface error|globalhotkeys|no suitable interface module|main libvlc error: interface'
+
+# mpv-specific, NOT a text exclusion: mpv's own release-validation.sh-
+# verbatim invocation (`mpv --no-video --frames=10 --ao=null <file>`)
+# sets `--no-video`, which disables video TRACK SELECTION outright (not
+# just display) — on every profile except `audio`, this crate's
+# synthetic fixtures carry no audio track either, so mpv ends up with
+# literally nothing to select and exits having validated NOTHING about
+# the file, printing the deterministic, distinguishable self-report line
+# "No video or audio streams selected." (confirmed on a plain
+# ffmpeg-authored control file too — an inherent property of the
+# `--no-video`-on-video-only-content combination, not this crate's
+# stream content). That phrase does NOT itself match the generic
+# error-marker grep (case-insensitively, `\berror\b` doesn't match the
+# plural "Errors" in mpv's own trailing "Exiting... (Errors when loading
+# file)" line) — so unlike ffplay/vlc, mpv needs an EXPLICIT substring
+# check in addition to the marker-grep, or this systemic non-validation
+# would silently read as a clean PASS. See run_decode_probe's caller.
+MPV_NO_STREAMS_SELECTED="No video or audio streams selected"
+
+# ---------------------------------------------------------------------
 # Cell JSON emission (RawCell — see crates/tst-interop/src/report.rs)
 # ---------------------------------------------------------------------
 #

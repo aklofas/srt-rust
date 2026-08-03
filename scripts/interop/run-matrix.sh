@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Transport-axis interop matrix: exchange the `tst-interop` driver's
-# synthetic MPEG-TS/KLV traffic with real third-party tools (ffmpeg,
-# TSDuck's `tsp`, GStreamer, VLC) over live SRT/RIST/UDP/TCP/HLS/RTSP
-# sessions on this box, and write one evidence JSON file per cell.
+# Interop matrix: exchange the `tst-interop` driver's synthetic
+# MPEG-TS/KLV traffic with real third-party tools (ffmpeg, TSDuck's
+# `tsp`, GStreamer, VLC, mpv) over live SRT/RIST/UDP/TCP/HLS/RTSP
+# sessions AND local per-profile analyzer/decode probes on this box,
+# and write one evidence JSON file per cell, across two axes:
+#   - transport axis: 25 cells, pinned to the "baseline" profile
+#     (srt/udp/rist/tcp/hls/rtsp — task 11's inventory).
+#   - format axis: analyze/{ffprobe,tsanalyze,tsp-analyze}/<profile>,
+#     decode/{ffplay,vlc,mpv,gst-play}/<profile>, and
+#     srt-live/{us-to-ffmpeg,ffmpeg-to-us,us-to-tsp,tsp-to-us}/<profile>,
+#     once per --profiles entry (task 12's inventory).
 #
 # linux-x86_64 only (see lib.sh's header for the shell-portability
 # stance this whole directory takes). Requires `jq` and `python3`
@@ -21,25 +28,28 @@
 #                      scales off this (see lib.sh's cell_timeout).
 #   --cells GLOB       bash-glob filter over cell ids (default "*", i.e.
 #                      every cell). Cell ids look like
-#                      "<transport>/<direction>-<peer>[-encrypted]",
-#                      e.g. "srt/us-to-ffmpeg" — pass 'srt/*' to run
-#                      just the SRT block. Quote it so the shell doesn't
-#                      expand the glob itself.
-#   --profiles LIST    comma-separated profile names (default
-#                      "baseline"). Every cell in the matrix runs once
-#                      per listed profile. The transport-axis cell table
-#                      this script implements was designed against
-#                      "baseline" only — the format axis (multiple
-#                      profiles) is a later task's job; this flag exists
-#                      because it's part of the documented interface,
-#                      not because more than one profile is exercised
-#                      today.
+#                      "<transport>/<direction>-<peer>[-encrypted]" (25
+#                      transport-axis cells, e.g. "srt/us-to-ffmpeg") or
+#                      "<axis>/<peer>/<profile>" (format-axis cells, e.g.
+#                      "decode/mpv/h266-klv") — pass 'srt/*' to run just
+#                      the SRT block, 'decode/*' for every decode cell
+#                      across every profile, etc. Quote it so the shell
+#                      doesn't expand the glob itself.
+#   --profiles LIST    comma-separated profile names (default: all 12
+#                      canonical profiles, lib.sh's $ALL_PROFILE_NAMES).
+#                      Only the format axis scales with this list — the
+#                      transport axis always runs against "baseline"
+#                      regardless of what's listed (see the per-profile
+#                      loop below for why: task 11's 25-cell inventory
+#                      was designed and evidenced against "baseline"
+#                      only; scaling it by profile too would multiply
+#                      that count for no new signal the format axis
+#                      doesn't already cover more precisely). Pass a
+#                      short list (e.g. "baseline,h266-klv") for a
+#                      faster local iteration loop.
 #
 # Exit code: `tst-interop report merge`'s (0 iff every FAIL matched an
 # expectations.toml entry — see that file's header for the grammar).
-# scripts/interop/expectations.toml ships empty; run-matrix.sh alone
-# will therefore exit 1 on ANY genuine FAIL — that's Task 12's job to
-# triage into real expectations rows, not this script's.
 #
 # Cell naming / tier semantics: see README.md in this directory.
 
@@ -53,7 +63,7 @@ source "$SCRIPT_DIR/lib.sh"
 OUTDIR=""
 SECONDS_ARG=10
 CELLS_GLOB="*"
-PROFILES_ARG="baseline"
+PROFILES_ARG="$ALL_PROFILE_NAMES"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,7 +84,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,54p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -447,14 +457,220 @@ run_serve_peer_probe() {
   # A real stream/decode problem (e.g. VLC's own "buffer deadlock
   # prevented") is untouched by this filter.
   local filtered
-  filtered=$(grep -Ev 'vlcpulse audio output error|dbus interface error|globalhotkeys|no suitable interface module|main libvlc error: interface' \
-    "$probe_log")
+  filtered=$(grep -Ev "$VLC_ENV_NOISE" "$probe_log")
   if grep -Eqi '\b(error|fatal|cannot|failed)\b' <<<"$filtered"; then
     local sample
     sample=$(grep -Ei '\b(error|fatal|cannot|failed)\b' <<<"$filtered" | head -3 | tr '\n' ';')
     emit_fail "$id" "$peer" send n/a "$log" - "decoder reported error/fatal markers: $sample"
   else
     emit_pass "$id" "$peer" send n/a "$log" -
+  fi
+}
+
+# ---------------------------------------------------------------------
+# Format-axis cell shapes (local analyzer/decode probes, no transport)
+# ---------------------------------------------------------------------
+# All three run against $GEN_FILE (the already-generated per-profile
+# source, set by the per-profile loop at the bottom of this script) —
+# there is no us-side send/recv/serve role at all, so `direction` and
+# `tier` are both "n/a" on every cell these shapes emit (mirrors
+# rtsp-serve/vlc-probe's existing decode-only convention).
+
+# run_analyze_ffprobe <profile>
+#
+# Structural probe: `ffprobe -show_streams -of json` on $GEN_FILE,
+# asserting the expected total stream count (see lib.sh's
+# expected_stream_count doc comment for the formula and its one known,
+# deliberate gap: AV1 profiles pass this count-only check even though
+# ffmpeg misclassifies the AV1 PID as `codec_type: data`).
+run_analyze_ffprobe() {
+  local profile=$1
+  local id="analyze/ffprobe/$profile"
+  cell_selected "$id" || return 0
+  if ! have ffprobe; then
+    emit_skipped "$id" ffprobe n/a n/a "ffprobe not installed on this box"
+    return 0
+  fi
+
+  local log="$LOGS_DIR/$(slug "$id").log"
+  : >"$log"
+  local budget
+  budget=$(cell_timeout "$SECONDS_ARG")
+  local json="$WORK/$(slug "$id").json"
+  local rc=0
+  timeout --kill-after=5 "${budget}s" ffprobe -v quiet -show_streams -of json "$GEN_FILE" \
+    >"$json" 2>"$log" || rc=$?
+
+  local want got
+  want=$(expected_stream_count "$profile")
+  got=$(jq '.streams | length' "$json" 2>/dev/null) || got=""
+  {
+    echo "=== cell: $id (analyze-probe, no transport, profile=$profile) ==="
+    echo "ffprobe exit=$rc want_streams=$want got_streams=${got:-<unparseable>}"
+  } >>"$log"
+
+  if [[ $rc -ne 0 ]]; then
+    emit_fail "$id" ffprobe n/a n/a "$log" - "ffprobe exited $rc — see log"
+  elif [[ -z "$got" ]]; then
+    emit_fail "$id" ffprobe n/a n/a "$log" - "ffprobe produced unparseable JSON — see $json"
+  elif [[ "$got" != "$want" ]]; then
+    emit_fail "$id" ffprobe n/a n/a "$log" - "stream count mismatch: got $got, want $want"
+  else
+    emit_pass "$id" ffprobe n/a n/a "$log" -
+  fi
+}
+
+# run_analyze_tsanalyze <profile>
+#
+# `tsanalyze --normalized` on $GEN_FILE, asserting the `ts:` summary
+# line's invalidsyncs/transporterrors/suspectignored counters are all
+# zero (see lib.sh's tsanalyze_ts_line_counters_zero).
+run_analyze_tsanalyze() {
+  local profile=$1
+  local id="analyze/tsanalyze/$profile"
+  cell_selected "$id" || return 0
+  if ! have tsanalyze; then
+    emit_skipped "$id" tsanalyze n/a n/a "tsanalyze not installed on this box"
+    return 0
+  fi
+
+  local log="$LOGS_DIR/$(slug "$id").log"
+  : >"$log"
+  local budget
+  budget=$(cell_timeout "$SECONDS_ARG")
+  local rc=0 out
+  out=$(timeout --kill-after=5 "${budget}s" tsanalyze --normalized "$GEN_FILE" 2>>"$log") || rc=$?
+  {
+    echo "=== cell: $id (analyze-probe, no transport, profile=$profile) ==="
+    echo "$out"
+  } >>"$log"
+
+  local verdict
+  verdict=$(tsanalyze_ts_line_counters_zero "$out") || verdict="tsanalyze_ts_line_counters_zero itself failed — see log"
+  if [[ $rc -ne 0 ]]; then
+    emit_fail "$id" tsanalyze n/a n/a "$log" - "tsanalyze exited $rc — see log"
+  elif [[ "$verdict" == "0" ]]; then
+    emit_pass "$id" tsanalyze n/a n/a "$log" -
+  else
+    emit_fail "$id" tsanalyze n/a n/a "$log" - "$verdict"
+  fi
+}
+
+# run_analyze_tsp <profile>
+#
+# `tsp -P analyze` on $GEN_FILE, asserting the header block's three
+# global counters are zero (see lib.sh's tsp_analyze_counters_zero doc
+# comment for why this can't reuse the generic error-marker grep — the
+# report's own field LABELS contain the bare word "error").
+run_analyze_tsp() {
+  local profile=$1
+  local id="analyze/tsp-analyze/$profile"
+  cell_selected "$id" || return 0
+  if ! have tsp; then
+    emit_skipped "$id" tsp n/a n/a "tsp not installed on this box"
+    return 0
+  fi
+
+  local log="$LOGS_DIR/$(slug "$id").log"
+  : >"$log"
+  local budget
+  budget=$(cell_timeout "$SECONDS_ARG")
+  local rc=0 out
+  out=$(timeout --kill-after=5 "${budget}s" tsp -I file "$GEN_FILE" -P analyze -O drop 2>&1) || rc=$?
+  {
+    echo "=== cell: $id (analyze-probe, no transport, profile=$profile) ==="
+    echo "$out"
+  } >>"$log"
+
+  local verdict
+  verdict=$(tsp_analyze_counters_zero "$out") || verdict="tsp_analyze_counters_zero itself failed — see log"
+  if [[ $rc -ne 0 ]]; then
+    emit_fail "$id" tsp n/a n/a "$log" - "tsp -P analyze exited $rc — see log"
+  elif [[ "$verdict" == "0" ]]; then
+    emit_pass "$id" tsp n/a n/a "$log" -
+  else
+    emit_fail "$id" tsp n/a n/a "$log" - "$verdict"
+  fi
+}
+
+# run_decode_probe <player> <profile> -- <player_cmd...>
+#
+# Local, no-transport container-acceptance probe (see lib.sh's
+# DECODE_PAYLOAD_NOISE doc comment for the pass criterion and the
+# verified, per-player exclusion filters). Exit code of <player_cmd> is
+# IGNORED on purpose — mirrors release-validation.sh step 7's own
+# `|| true` convention verbatim; decode acceptance here is signaled
+# purely through log content, exactly as that script already
+# established (cited in this cell's log header).
+run_decode_probe() {
+  local player=$1 profile=$2
+  shift 2
+  [[ "${1:-}" == "--" ]] && shift
+  local -a player_cmd=("$@")
+  local id="decode/$player/$profile"
+
+  cell_selected "$id" || return 0
+  # gst-play's real binary is gst-play-1.0 (matches
+  # release-validation.sh's own step 7 invocation); the cell id keeps the
+  # short "gst-play" form per the task's Interfaces line, mirroring how
+  # "srt/us-to-gst" already abbreviates its gst-launch-1.0 peer.
+  local bin_name=$player
+  [[ "$player" == "gst-play" ]] && bin_name="gst-play-1.0"
+  if ! have "$bin_name"; then
+    emit_skipped "$id" "$bin_name" n/a n/a "$bin_name not installed on this box"
+    return 0
+  fi
+
+  local log="$LOGS_DIR/$(slug "$id").log"
+  : >"$log"
+  local budget
+  budget=$(cell_timeout "$SECONDS_ARG")
+  {
+    echo "=== cell: $id (decode-probe, no transport, profile=$profile) ==="
+    echo "--- release-validation.sh step 7's invocation, lifted verbatim (exit code ignored, see this function's doc comment) ---"
+    printf '+ '
+    printf '%q ' "${player_cmd[@]}"
+    echo
+  } >>"$log"
+  # Player output goes to its OWN file, separate from $log's header/
+  # command-echo lines above — some invocations' own ARGUMENTS contain
+  # marker words (e.g. ffplay's "-loglevel error"), so grepping the
+  # combined $log (command line included) would false-positive on our
+  # own echoed command rather than the player's actual output. $probe_log
+  # is appended into $log afterward purely for human-readable context
+  # (mirrors run_serve_peer_probe's identical split).
+  local probe_log="$WORK/$(slug "$id")-probe.log"
+  timeout --kill-after=5 "${budget}s" "${player_cmd[@]}" >"$probe_log" 2>&1 || true
+  cat "$probe_log" >>"$log"
+
+  # Every grep -v below is guarded with `|| true` — a fully-clean probe
+  # log legitimately filters down to ZERO remaining lines, which is
+  # `grep -v`'s normal "no lines passed the filter" exit status 1, not
+  # an error; a bare (unguarded) assignment here would abort the whole
+  # matrix under `set -e` on the very first fully-clean cell (see
+  # run_send_peer_recv's comment for the general `set -e` +
+  # `local x; x=$(...)` gotcha this mirrors).
+  local filtered
+  filtered=$(grep -Ev "$DECODE_PAYLOAD_NOISE" "$probe_log" || true)
+  case "$player" in
+    ffplay) filtered=$(grep -Ev "$FFPLAY_ENV_NOISE" <<<"$filtered" || true) ;;
+    vlc) filtered=$(grep -Ev "$VLC_ENV_NOISE" <<<"$filtered" || true) ;;
+  esac
+
+  local -a reasons=()
+  if grep -Eqi '\b(error|fatal|cannot|failed)\b' <<<"$filtered"; then
+    local sample
+    sample=$(grep -Ei '\b(error|fatal|cannot|failed)\b' <<<"$filtered" | head -3 | tr '\n' ';')
+    reasons+=("decoder reported error/fatal markers: $sample")
+  fi
+  if [[ "$player" == "mpv" ]] && grep -q "$MPV_NO_STREAMS_SELECTED" "$probe_log"; then
+    reasons+=("mpv selected no stream at all (see lib.sh's MPV_NO_STREAMS_SELECTED doc comment for the verified --no-video/no-audio-track mechanism)")
+  fi
+
+  if [[ ${#reasons[@]} -eq 0 ]]; then
+    emit_pass "$id" "$bin_name" n/a n/a "$log" -
+  else
+    emit_fail "$id" "$bin_name" n/a n/a "$log" - "${reasons[@]}"
   fi
 }
 
@@ -707,6 +923,82 @@ rtsp_cells() {
 }
 
 # ---------------------------------------------------------------------
+# Format-axis per-profile groups
+# ---------------------------------------------------------------------
+# Unlike the six *_cells functions above (transport axis, intentionally
+# pinned to the "baseline" profile only — see the per-profile loop
+# below), these three run once per entry in --profiles.
+
+# analyze_cells_for_profile <profile>
+analyze_cells_for_profile() {
+  local profile=$1
+  run_analyze_ffprobe "$profile"
+  run_analyze_tsanalyze "$profile"
+  run_analyze_tsp "$profile"
+}
+
+# decode_cells_for_profile <profile>
+#
+# release-validation.sh step 7's four invocations, lifted verbatim
+# (command line + `|| true` exit-code-ignored convention) onto this
+# profile's $GEN_FILE — cited inline in each invocation's comment.
+decode_cells_for_profile() {
+  local profile=$1
+
+  # ffplay: -autoexit -nodisp -loglevel error -t 1 $BASELINE
+  run_decode_probe ffplay "$profile" -- \
+    ffplay -autoexit -nodisp -loglevel error -t 1 "$GEN_FILE"
+
+  # vlc: -I dummy --play-and-exit --no-audio --run-time=1 $BASELINE
+  run_decode_probe vlc "$profile" -- \
+    vlc -I dummy --play-and-exit --no-audio --run-time=1 "$GEN_FILE"
+
+  # mpv: --no-video --frames=10 --ao=null $BASELINE
+  run_decode_probe mpv "$profile" -- \
+    mpv --no-video --frames=10 --ao=null "$GEN_FILE"
+
+  # gst-play-1.0: --no-interactive --quiet $BASELINE
+  run_decode_probe gst-play "$profile" -- \
+    gst-play-1.0 --no-interactive --quiet "$GEN_FILE"
+}
+
+# srt_live_cells_for_profile <profile>
+#
+# The subset of srt_cells() the task asked for repeated across every
+# profile: plain (non-encrypted, non-gst) us<->ffmpeg and us<->tsp,
+# reusing the exact same shapes + peer command patterns srt_cells()
+# already established — only the cell id (now 3-segment,
+# "srt-live/<direction>/<profile>") and the per-cell work-file paths
+# (profile-qualified, since every profile's iteration shares this one
+# $WORK dir) are new.
+srt_live_cells_for_profile() {
+  local profile=$1
+  local port
+
+  port=$(free_port)
+  run_send_peer_recv "srt-live/us-to-ffmpeg/$profile" ffmpeg remux \
+    "srt://127.0.0.1:$port?mode=caller" "$WORK/srtlive_us-to-ffmpeg_$profile.ts" -- \
+    ffmpeg -y -loglevel warning -i "srt://127.0.0.1:$port?mode=listener" \
+    -map 0 -c copy -copy_unknown -f mpegts "$WORK/srtlive_us-to-ffmpeg_$profile.ts"
+
+  port=$(free_port)
+  run_peer_send_recv "srt-live/ffmpeg-to-us/$profile" ffmpeg remux \
+    "srt://:$port?mode=listener" -- \
+    ffmpeg -y -re -loglevel warning -i "$GEN_FILE" -c copy -copy_unknown -f mpegts \
+    "srt://127.0.0.1:$port?mode=caller"
+
+  port=$(free_port)
+  run_send_peer_recv "srt-live/us-to-tsp/$profile" tsp transparent \
+    "srt://127.0.0.1:$port?mode=caller" "$WORK/srtlive_us-to-tsp_$profile.ts" -- \
+    tsp -I srt --listener ":$port" -O file "$WORK/srtlive_us-to-tsp_$profile.ts"
+
+  port=$(free_port)
+  run_peer_send_recv "srt-live/tsp-to-us/$profile" tsp transparent \
+    "srt://:$port?mode=listener" -- \
+    tsp -I file "$GEN_FILE" -P regulate -O srt --caller "127.0.0.1:$port" --linger 5
+}
+
+# ---------------------------------------------------------------------
 # Run every axis, once per --profiles entry
 # ---------------------------------------------------------------------
 
@@ -742,12 +1034,25 @@ for PROFILE in "${PROFILE_LIST[@]}"; do
   fi
   export GEN_FILE GEN_STREAM_SHA
 
-  srt_cells
-  udp_cells
-  rist_cells
-  tcp_cells
-  hls_cells
-  rtsp_cells
+  # Transport axis stays pinned to "baseline" regardless of how many
+  # profiles --profiles lists — matches the ~25-cell transport-axis
+  # inventory task 11 built and verified (8 PASS/17 FAIL/0 SKIPPED);
+  # scaling it by profile too would multiply that count by up to 12x
+  # for no new signal the format axis below doesn't already cover more
+  # precisely (analyze/decode/srt-live are the per-profile probes).
+  if [[ "$PROFILE" == "baseline" ]]; then
+    srt_cells
+    udp_cells
+    rist_cells
+    tcp_cells
+    hls_cells
+    rtsp_cells
+  fi
+
+  # Format axis: every listed profile.
+  analyze_cells_for_profile "$PROFILE"
+  decode_cells_for_profile "$PROFILE"
+  srt_live_cells_for_profile "$PROFILE"
 done
 
 # ---------------------------------------------------------------------

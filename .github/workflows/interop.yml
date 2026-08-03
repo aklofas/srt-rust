@@ -110,6 +110,14 @@ jobs:
         # 24.04 — see actions/runner-images' README; ubuntu-latest is a
         # migrating label, so a future bump to 26.04 should revisit this
         # asset name + version together, not just re-pin the version).
+        #
+        # TSDuck's GitHub releases publish no vendor checksum for this
+        # asset, so TSDUCK_DEB_SHA256 below is self-computed: downloaded
+        # the .deb and ran sha256sum on it directly (independently
+        # re-verified in review). It still catches tampering/corruption in
+        # transit — there's just no upstream-signed value to pin against
+        # instead. A version bump means downloading the new asset and
+        # recomputing this hash deliberately, not just editing the URL.
         env:
           TSDUCK_DEB_URL: "https://github.com/tsduck/tsduck/releases/download/v3.44-4676/tsduck_3.44-4676.ubuntu24_amd64.deb"
           TSDUCK_DEB_SHA256: "03a983a5147c5f733ef89aafd23f2d83e19a9e987ae4a575a7ee62ab4b16986e"
@@ -169,6 +177,19 @@ jobs:
         # here on purpose: a failure here is what SHOULD fail the job. The
         # two steps below use `if: always()` so the evidence still gets
         # published even when this step fails.
+        #
+        # Per-version drift caveat: expectations.toml's rows encode tool
+        # behavior verified on specific peer-tool versions (several
+        # `reason` fields cite an exact ffmpeg build, e.g. 6.1.1) captured
+        # on a dev box, not on this runner. ubuntu-latest ships whatever
+        # ffmpeg/vlc/mpv/gstreamer patch level is current on Ubuntu 24.04
+        # at the time this job runs, which will drift over the weeks/months
+        # this schedule keeps firing. A future tool bump surfacing a new
+        # FAIL, or a stale-expectation warning (a documented gap starts
+        # passing), is this system working as designed — not a bug in this
+        # workflow. Add or adjust an expectations.toml row only when a
+        # cell demonstrably diverges on this runner, and name the observed
+        # version in that row's `reason`, per the arc's own convention.
         run: |
           bash scripts/interop/run-matrix.sh \
             --outdir "$RUNNER_TEMP/interop" \

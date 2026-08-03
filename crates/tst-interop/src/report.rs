@@ -682,6 +682,946 @@ pub fn append_github_summary(path: &Path, markdown: &str) -> Result<(), String> 
     Ok(())
 }
 
+// ---------------------------------------------------------------------
+// `report soak`
+// ---------------------------------------------------------------------
+
+/// `report soak`: turn one multi-day soak run's raw artifacts (an RSS
+/// time series plus each leg's proxy/recv/send evidence) into
+/// `soak-results.json` — the endurance half of this arc's published
+/// evidence (`merge`/`render`, above, is the interop-matrix half).
+///
+/// `scripts/interop/soak.sh` runs two concurrent legs over the same
+/// wall-clock window: `srt` (through an impaired proxy with scheduled
+/// outage windows, sender wrapped via `send::run_managed` so it
+/// reconnects) and `rist` (through a second impaired proxy with NO
+/// outage — sustained impairment only; see this module's "Known
+/// telemetry limitations" section for why only one leg carries the
+/// outage/reconnect assertion). [`soak::build_soak_results`] is the
+/// pure verdict engine; [`soak::run`] is the file-driven CLI wrapper
+/// `main.rs`'s `report soak` calls.
+///
+/// # Known telemetry limitations
+///
+/// Two of the verdicts this module would ideally check exactly are
+/// instead approximated — every [`soak::SoakResults`] documents both in
+/// its `limitations` field:
+///
+/// - **Reconnect count.** `ManagedTransport` exposes no reconnect-cycle
+///   counters today (`docs/project/deferred-features.md`'s "Reconnect
+///   counters on ManagedTransport stats" entry), and `recv`'s
+///   `VerifyReport` carries no per-event delivery-gap timestamps either
+///   — there is no artifact this module can read that says "N
+///   reconnects happened." `soak`'s internal `expected_outage_windows`
+///   helper computes how many outage windows *should* have started
+///   within the observed run (from the configured schedule alone, never
+///   from anything observed), and the
+///   `reconnect_count_matches_outage_count_<leg>` verdict records that
+///   expectation as `provisional` — informational, never gating
+///   [`soak::SoakResults::overall_pass`].
+/// - **Delivery-gap timing.** For the same reason, "gaps only inside
+///   outage windows, ±30s" can't be checked at per-event resolution.
+///   `soak`'s internal `expected_drop_fraction` helper instead models
+///   the drop rate the proxy's CONTINUOUS impairment (`loss_pct`)
+///   predicts, deliberately
+///   EXCLUDING the outage windows from that expectation — verified
+///   empirically while dry-running this module against the real
+///   binaries (a `period=3s,dur=1s` outage over a 10s managed-send
+///   window measured a 21% proxy-observed drop rate, not the ~41% a
+///   naive "outage-covered-time is 100%-dropped" model predicts): a
+///   `ManagedTransport` sender that detects `Broken` mid-outage stops
+///   sending while it backs off and retries, so most of an outage
+///   window's duration shows up as the sender NOT TRANSMITTING, not as
+///   the proxy dropping packets that were sent — the proxy's
+///   `dropped`/`forwarded` counters simply can't see time the sender
+///   spent silent. The `drop_rate_consistent_with_impairment_<leg>`
+///   verdict therefore checks only the continuous-impairment
+///   expectation; a real gap outside that (a bug, not configured
+///   impairment or an outage-driven reconnect) still shows up as
+///   unexplained excess drop and fails it. Outage/reconnect correctness
+///   itself is evidenced by `recv_invariants_<leg>` (the final tallies
+///   already reflect however well the managed sender recovered) and the
+///   provisional reconnect-count verdict above. Unlike the reconnect
+///   check, this one is NOT provisional: given the inputs available,
+///   it's fully computable and always enforced.
+pub mod soak {
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    use serde::{Deserialize, Serialize};
+
+    use crate::proxy::ProxyStats;
+    use crate::report_types::{CellMetrics, VerifyReport};
+
+    /// Warmup excluded from the RSS regression, in seconds: 30 minutes
+    /// for a full-length run, or `run_duration_s / 6` for a shorter one
+    /// (a `--hours 1` smoke's own post-warmup window would otherwise be
+    /// near-empty against a flat 30-minute floor) — whichever is
+    /// smaller.
+    const MAX_WARMUP_S: f64 = 30.0 * 60.0;
+    const WARMUP_DURATION_FRACTION: f64 = 1.0 / 6.0;
+
+    const KNOWN_LEGS: [&str; 2] = ["srt", "rist"];
+    const KNOWN_PROCESSES: [&str; 3] = ["send", "proxy", "recv"];
+
+    /// One `elapsed_s,leg,process,pid,rss_kb` row from `soak.sh`'s RSS
+    /// sampler. `rss_kb: None` means `/proc/<pid>/status` couldn't be
+    /// read at this tick — the sampler's own crash signal (see
+    /// [`SoakResults::process_exits`]); a healthy run never produces one
+    /// until the runner's own intentional shutdown, which stops the
+    /// sampler first.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct RssSample {
+        pub elapsed_s: f64,
+        pub leg: String,
+        pub process: String,
+        pub pid: u32,
+        pub rss_kb: Option<u64>,
+    }
+
+    /// Parse `soak.sh`'s `rss.csv`: an `elapsed_s,leg,process,pid,rss_kb`
+    /// header line followed by one row per sample tick per process.
+    /// `rss_kb` may be empty (process gone at this tick). Loudly errors
+    /// (naming the offending line) on anything else — a malformed or
+    /// truncated soak artifact must never silently read as "no data,
+    /// every check vacuously passes."
+    pub fn parse_rss_csv(text: &str) -> Result<Vec<RssSample>, String> {
+        let mut lines = text.lines().enumerate();
+        let Some((_, header)) = lines.next() else {
+            return Err("rss.csv: empty file (expected a header line)".to_string());
+        };
+        if header.trim() != "elapsed_s,leg,process,pid,rss_kb" {
+            return Err(format!(
+                "rss.csv line 1: expected header `elapsed_s,leg,process,pid,rss_kb`, got: {header:?}"
+            ));
+        }
+
+        let mut samples = Vec::new();
+        for (idx, raw_line) in lines {
+            let line_no = idx + 1;
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let fields: Vec<&str> = line.split(',').collect();
+            if fields.len() != 5 {
+                return Err(format!(
+                    "rss.csv line {line_no}: expected 5 comma-separated fields, got {}: {line:?}",
+                    fields.len()
+                ));
+            }
+            let elapsed_s: f64 = fields[0].parse().map_err(|_| {
+                format!("rss.csv line {line_no}: invalid elapsed_s {:?}", fields[0])
+            })?;
+            if !elapsed_s.is_finite() || elapsed_s < 0.0 {
+                return Err(format!(
+                    "rss.csv line {line_no}: elapsed_s must be finite and non-negative, got {elapsed_s}"
+                ));
+            }
+            let leg = fields[1].to_string();
+            if !KNOWN_LEGS.contains(&leg.as_str()) {
+                return Err(format!(
+                    "rss.csv line {line_no}: unknown leg {leg:?} (want one of {KNOWN_LEGS:?})"
+                ));
+            }
+            let process = fields[2].to_string();
+            if !KNOWN_PROCESSES.contains(&process.as_str()) {
+                return Err(format!(
+                    "rss.csv line {line_no}: unknown process {process:?} (want one of {KNOWN_PROCESSES:?})"
+                ));
+            }
+            let pid: u32 = fields[3]
+                .parse()
+                .map_err(|_| format!("rss.csv line {line_no}: invalid pid {:?}", fields[3]))?;
+            let rss_kb = if fields[4].is_empty() {
+                None
+            } else {
+                Some(fields[4].parse::<u64>().map_err(|_| {
+                    format!("rss.csv line {line_no}: invalid rss_kb {:?}", fields[4])
+                })?)
+            };
+            samples.push(RssSample {
+                elapsed_s,
+                leg,
+                process,
+                pid,
+                rss_kb,
+            });
+        }
+        Ok(samples)
+    }
+
+    /// Ordinary-least-squares slope of `points` (x, y) pairs — used here
+    /// as KB of RSS per second of elapsed wall-clock time. Returns `0.0`
+    /// for fewer than 2 points or a degenerate (all-same-x) input rather
+    /// than dividing by zero.
+    fn linear_regression_slope(points: &[(f64, f64)]) -> f64 {
+        let n = points.len() as f64;
+        if n < 2.0 {
+            return 0.0;
+        }
+        let sum_x: f64 = points.iter().map(|(x, _)| x).sum();
+        let sum_y: f64 = points.iter().map(|(_, y)| y).sum();
+        let sum_xy: f64 = points.iter().map(|(x, y)| x * y).sum();
+        let sum_xx: f64 = points.iter().map(|(x, _)| x * x).sum();
+        let denom = n * sum_xx - sum_x * sum_x;
+        if denom.abs() < f64::EPSILON {
+            return 0.0;
+        }
+        (n * sum_xy - sum_x * sum_y) / denom
+    }
+
+    /// Number of outage windows (`impair::Engine::in_outage`'s zero-based
+    /// `[k*period, k*period+dur)` numbering) that have STARTED within
+    /// `[0, duration_s)`. Window `k=0` starts at `t=0` (proxy launch), so
+    /// a nonzero `duration_s` with any outage configured always counts
+    /// at least window 0 — a pre-existing shape of the impairment
+    /// engine, not something this reporting logic corrects.
+    fn expected_outage_windows(duration_s: f64, outage_period_s: Option<u64>) -> u64 {
+        let Some(period_s) = outage_period_s else {
+            return 0;
+        };
+        if period_s == 0 || duration_s <= 0.0 {
+            return 0;
+        }
+        (duration_s / period_s as f64).ceil() as u64
+    }
+
+    /// Fraction of packets the proxy's CONTINUOUS configured impairment
+    /// (`loss_pct`) predicts it will drop. Deliberately does NOT add an
+    /// outage-coverage term — see the module doc's "Known telemetry
+    /// limitations" section for the empirical finding on why an
+    /// outage's true impact shows up as reduced sender throughput, not
+    /// proxy-visible drops, once a `ManagedTransport` sender is in the
+    /// picture.
+    fn expected_drop_fraction(loss_pct: f64) -> f64 {
+        loss_pct / 100.0
+    }
+
+    /// One (leg, process) RSS linear-regression result.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct RssSlope {
+        pub leg: String,
+        pub process: String,
+        pub slope_kb_per_hour: f64,
+        pub samples_used: usize,
+    }
+
+    /// One (leg, process) that disappeared from `/proc` mid-run — see
+    /// [`RssSample::rss_kb`].
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ProcessExit {
+        pub leg: String,
+        pub process: String,
+        pub elapsed_s: f64,
+        pub pid: u32,
+    }
+
+    /// One named check in [`SoakResults::verdicts`].
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct SoakVerdict {
+        pub name: String,
+        pub pass: bool,
+        /// A provisional verdict is recorded for evidence but never
+        /// makes [`SoakResults::overall_pass`] false — see the module
+        /// doc's "Known telemetry limitations" section.
+        pub provisional: bool,
+        pub detail: String,
+    }
+
+    /// Computed numbers for one leg (`"srt"` or `"rist"`).
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct LegResult {
+        pub leg: String,
+        pub outage_period_s: Option<u64>,
+        pub outage_dur_s: u64,
+        pub expected_outage_windows: u64,
+        pub proxy_forwarded: u64,
+        pub proxy_dropped: u64,
+        pub loss_pct: f64,
+        pub observed_drop_fraction: f64,
+        pub expected_drop_fraction: f64,
+        pub drop_fraction_tolerance: f64,
+        pub recv_pass: bool,
+        pub recv_failures: Vec<String>,
+        pub send_video_aus: u64,
+        pub recv_video_aus: u64,
+    }
+
+    /// The full `soak-results.json` document: [`build_soak_results`]'s
+    /// output and [`run`]'s return value.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct SoakResults {
+        pub run_duration_s: f64,
+        pub warmup_s: f64,
+        pub rss_slope_threshold_kb_per_hour: Option<f64>,
+        pub rss_slopes: Vec<RssSlope>,
+        pub process_exits: Vec<ProcessExit>,
+        pub legs: Vec<LegResult>,
+        pub verdicts: Vec<SoakVerdict>,
+        /// `true` iff every non-[`SoakVerdict::provisional`] verdict
+        /// passed.
+        pub overall_pass: bool,
+        pub limitations: Vec<String>,
+    }
+
+    /// One leg's raw evidence artifacts — `soak.sh` writes these as
+    /// `proxy --stats-json`'s output, `recv --json`'s output, and
+    /// `send --json`'s output respectively.
+    #[derive(Debug, Clone)]
+    pub struct LegArtifacts {
+        pub proxy_stats: ProxyStats,
+        pub recv_report: VerifyReport,
+        pub send_metrics: CellMetrics,
+        /// `None` for the `rist` leg (sustained impairment only, no
+        /// scheduled outage — see the module doc).
+        pub outage_period_s: Option<u64>,
+    }
+
+    /// Pure input to [`build_soak_results`].
+    pub struct SoakInputs {
+        pub rss_samples: Vec<RssSample>,
+        /// `(leg name, artifacts)` pairs — `"srt"` is always present;
+        /// `"rist"` is included whenever that leg's three report files
+        /// were supplied.
+        pub legs: Vec<(String, LegArtifacts)>,
+        pub rss_slope_threshold_kb_per_hour: Option<f64>,
+    }
+
+    /// Compute every verdict from already-parsed inputs — no I/O. [`run`]
+    /// is the file-driven wrapper around this.
+    pub fn build_soak_results(inputs: SoakInputs) -> SoakResults {
+        let SoakInputs {
+            rss_samples,
+            legs,
+            rss_slope_threshold_kb_per_hour,
+        } = inputs;
+
+        let run_duration_s = {
+            let mut min_t = f64::INFINITY;
+            let mut max_t = f64::NEG_INFINITY;
+            for s in &rss_samples {
+                min_t = min_t.min(s.elapsed_s);
+                max_t = max_t.max(s.elapsed_s);
+            }
+            if rss_samples.is_empty() {
+                0.0
+            } else {
+                (max_t - min_t).max(0.0)
+            }
+        };
+        let warmup_s = MAX_WARMUP_S.min(run_duration_s * WARMUP_DURATION_FRACTION);
+
+        let process_exits: Vec<ProcessExit> = rss_samples
+            .iter()
+            .filter(|s| s.rss_kb.is_none())
+            .map(|s| ProcessExit {
+                leg: s.leg.clone(),
+                process: s.process.clone(),
+                elapsed_s: s.elapsed_s,
+                pid: s.pid,
+            })
+            .collect();
+
+        // Post-warmup (leg, process) -> (elapsed_s, rss_kb) points.
+        // BTreeMap keeps iteration (and so `rss_slopes`' output order)
+        // sorted by (leg, process) without a separate sort step.
+        let mut groups: BTreeMap<(String, String), Vec<(f64, f64)>> = BTreeMap::new();
+        for s in &rss_samples {
+            if s.elapsed_s < warmup_s {
+                continue;
+            }
+            if let Some(kb) = s.rss_kb {
+                groups
+                    .entry((s.leg.clone(), s.process.clone()))
+                    .or_default()
+                    .push((s.elapsed_s, kb as f64));
+            }
+        }
+        let rss_slopes: Vec<RssSlope> = groups
+            .into_iter()
+            .map(|((leg, process), points)| {
+                let samples_used = points.len();
+                let slope_kb_per_hour = linear_regression_slope(&points) * 3600.0;
+                RssSlope {
+                    leg,
+                    process,
+                    slope_kb_per_hour,
+                    samples_used,
+                }
+            })
+            .collect();
+
+        let mut verdicts = Vec::new();
+        for slope in &rss_slopes {
+            let provisional = rss_slope_threshold_kb_per_hour.is_none();
+            let pass = match rss_slope_threshold_kb_per_hour {
+                Some(threshold) => slope.slope_kb_per_hour <= threshold,
+                None => true,
+            };
+            verdicts.push(SoakVerdict {
+                name: format!("rss_slope_{}_{}", slope.leg, slope.process),
+                pass,
+                provisional,
+                detail: format!(
+                    "{:.1} KiB/h over {} post-warmup sample(s)",
+                    slope.slope_kb_per_hour, slope.samples_used
+                ),
+            });
+        }
+
+        verdicts.push(SoakVerdict {
+            name: "zero_process_exits".to_string(),
+            pass: process_exits.is_empty(),
+            provisional: false,
+            detail: if process_exits.is_empty() {
+                "no process disappeared from /proc before the runner's own shutdown".to_string()
+            } else {
+                format!(
+                    "{} unexpected exit(s): {:?}",
+                    process_exits.len(),
+                    process_exits
+                )
+            },
+        });
+
+        let mut leg_results = Vec::new();
+        for (leg_name, artifacts) in &legs {
+            let outage_dur_s = artifacts.proxy_stats.config.outage_dur_s;
+            let loss_pct = artifacts.proxy_stats.config.loss_pct;
+            let outage_windows = expected_outage_windows(run_duration_s, artifacts.outage_period_s);
+            let total = artifacts.proxy_stats.forwarded + artifacts.proxy_stats.dropped;
+            let expected = expected_drop_fraction(loss_pct);
+            // Absolute floor (3pp) covers a run with so little traffic
+            // that statistical noise alone could swing the observed
+            // fraction a few points off the expected one; the relative
+            // 30% term scales that floor up for a run whose configured
+            // impairment predicts a large drop fraction to begin with.
+            let tolerance = (0.03_f64).max(expected * 0.30);
+            let observed = if total == 0 {
+                0.0
+            } else {
+                artifacts.proxy_stats.dropped as f64 / total as f64
+            };
+            let drop_pass = total != 0 && (observed - expected).abs() <= tolerance;
+
+            verdicts.push(SoakVerdict {
+                name: format!("drop_rate_consistent_with_impairment_{leg_name}"),
+                pass: drop_pass,
+                provisional: false,
+                detail: if total == 0 {
+                    format!("{leg_name}: proxy observed zero packets — no traffic crossed it")
+                } else {
+                    format!(
+                        "{leg_name}: observed {:.2}%, expected {:.2}% ± {:.2}pp ({} forwarded, {} dropped)",
+                        observed * 100.0,
+                        expected * 100.0,
+                        tolerance * 100.0,
+                        artifacts.proxy_stats.forwarded,
+                        artifacts.proxy_stats.dropped
+                    )
+                },
+            });
+
+            verdicts.push(SoakVerdict {
+                name: format!("reconnect_count_matches_outage_count_{leg_name}"),
+                pass: true,
+                provisional: true,
+                detail: format!(
+                    "{leg_name}: expected {outage_windows} outage window(s) over {:.1}h; \
+                     ManagedTransport exposes no reconnect-cycle counter to compare against \
+                     (deferred-features: 'Reconnect counters on ManagedTransport stats') — \
+                     recorded, not verified",
+                    run_duration_s / 3600.0
+                ),
+            });
+
+            verdicts.push(SoakVerdict {
+                name: format!("recv_invariants_{leg_name}"),
+                pass: artifacts.recv_report.pass,
+                provisional: false,
+                detail: if artifacts.recv_report.pass {
+                    "final tallies within expected loss bounds".to_string()
+                } else {
+                    artifacts.recv_report.failures.join("; ")
+                },
+            });
+
+            leg_results.push(LegResult {
+                leg: leg_name.clone(),
+                outage_period_s: artifacts.outage_period_s,
+                outage_dur_s,
+                expected_outage_windows: outage_windows,
+                proxy_forwarded: artifacts.proxy_stats.forwarded,
+                proxy_dropped: artifacts.proxy_stats.dropped,
+                loss_pct,
+                observed_drop_fraction: observed,
+                expected_drop_fraction: expected,
+                drop_fraction_tolerance: tolerance,
+                recv_pass: artifacts.recv_report.pass,
+                recv_failures: artifacts.recv_report.failures.clone(),
+                send_video_aus: artifacts.send_metrics.video_aus,
+                recv_video_aus: artifacts.recv_report.metrics.video_aus,
+            });
+        }
+
+        let overall_pass = verdicts.iter().all(|v| v.provisional || v.pass);
+
+        SoakResults {
+            run_duration_s,
+            warmup_s,
+            rss_slope_threshold_kb_per_hour,
+            rss_slopes,
+            process_exits,
+            legs: leg_results,
+            verdicts,
+            overall_pass,
+            limitations: vec![
+                "ManagedTransport exposes no reconnect-cycle counters (deferred-features: \
+                 'Reconnect counters on ManagedTransport stats'); \
+                 reconnect_count_matches_outage_count_* verdicts record the expected \
+                 outage-window count only and never gate the run."
+                    .to_string(),
+                "recv's VerifyReport carries no per-event delivery-gap timestamps; \
+                 drop_rate_consistent_with_impairment_* verdicts approximate 'gaps confined to \
+                 outage windows' via an aggregate drop-rate check against the proxy's cumulative \
+                 counters instead of a per-event ±30s timestamp localization."
+                    .to_string(),
+            ],
+        }
+    }
+
+    fn read_to_string(path: &Path) -> Result<String, String> {
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))
+    }
+
+    fn read_leg_artifacts(
+        proxy_stats_path: &Path,
+        recv_report_path: &Path,
+        send_report_path: &Path,
+        outage_period_s: Option<u64>,
+    ) -> Result<LegArtifacts, String> {
+        let proxy_stats: ProxyStats = serde_json::from_str(&read_to_string(proxy_stats_path)?)
+            .map_err(|e| format!("parse {}: {e}", proxy_stats_path.display()))?;
+        let recv_report: VerifyReport = serde_json::from_str(&read_to_string(recv_report_path)?)
+            .map_err(|e| format!("parse {}: {e}", recv_report_path.display()))?;
+        let send_metrics: CellMetrics = serde_json::from_str(&read_to_string(send_report_path)?)
+            .map_err(|e| format!("parse {}: {e}", send_report_path.display()))?;
+        Ok(LegArtifacts {
+            proxy_stats,
+            recv_report,
+            send_metrics,
+            outage_period_s,
+        })
+    }
+
+    /// `report soak`'s file-driven entry point: read every artifact
+    /// path, build [`SoakInputs`], and write [`build_soak_results`]'s
+    /// output to `out_path`. The `rist` leg is entirely optional — pass
+    /// `None` to omit it (the `srt` leg alone is enough for a local
+    /// smoke run; the full 72h run supplies both).
+    #[allow(clippy::too_many_arguments)]
+    pub fn run(
+        rss_path: &Path,
+        srt_proxy_stats_path: &Path,
+        srt_recv_report_path: &Path,
+        srt_send_report_path: &Path,
+        srt_outage_period_s: u64,
+        rist: Option<(&Path, &Path, &Path)>,
+        rss_slope_threshold_kb_per_hour: Option<f64>,
+        out_path: &Path,
+    ) -> Result<SoakResults, String> {
+        let rss_samples = parse_rss_csv(&read_to_string(rss_path)?)?;
+
+        let mut legs = vec![(
+            "srt".to_string(),
+            read_leg_artifacts(
+                srt_proxy_stats_path,
+                srt_recv_report_path,
+                srt_send_report_path,
+                Some(srt_outage_period_s),
+            )?,
+        )];
+
+        if let Some((proxy_stats_path, recv_report_path, send_report_path)) = rist {
+            legs.push((
+                "rist".to_string(),
+                read_leg_artifacts(proxy_stats_path, recv_report_path, send_report_path, None)?,
+            ));
+        }
+
+        let results = build_soak_results(SoakInputs {
+            rss_samples,
+            legs,
+            rss_slope_threshold_kb_per_hour,
+        });
+
+        let json = serde_json::to_string_pretty(&results).expect("SoakResults always serializes");
+        std::fs::write(out_path, json).map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        Ok(results)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn proxy_stats(
+            forwarded: u64,
+            dropped: u64,
+            loss_pct: f64,
+            outage_period_s: Option<u64>,
+            outage_dur_s: u64,
+        ) -> ProxyStats {
+            ProxyStats {
+                forwarded,
+                dropped,
+                duped: 0,
+                reordered: 0,
+                seed: 1,
+                config: crate::proxy::ConfigEcho {
+                    loss_pct,
+                    dup_pct: 0.0,
+                    reorder_pct: 0.0,
+                    reorder_hold: 0,
+                    jitter_ms_max: 0,
+                    outage_period_s,
+                    outage_dur_s,
+                },
+            }
+        }
+
+        fn cell_metrics(video_aus: u64) -> CellMetrics {
+            CellMetrics {
+                video_aus,
+                keyframes: video_aus / 30,
+                klv_records: 0,
+                klv_set_sha256: String::new(),
+                audio_frames: 0,
+                programs_seen: 1,
+                pts_monotonic: true,
+                misp_sei_seen: false,
+                bytes: 0,
+                stream_sha256: String::new(),
+            }
+        }
+
+        fn passing_recv_report(video_aus: u64) -> VerifyReport {
+            VerifyReport {
+                pass: true,
+                failures: Vec::new(),
+                metrics: cell_metrics(video_aus),
+            }
+        }
+
+        fn rss_row(leg: &str, process: &str, elapsed_s: f64, rss_kb: Option<u64>) -> RssSample {
+            RssSample {
+                elapsed_s,
+                leg: leg.to_string(),
+                process: process.to_string(),
+                pid: 1000,
+                rss_kb,
+            }
+        }
+
+        fn one_leg(artifacts: LegArtifacts) -> Vec<(String, LegArtifacts)> {
+            vec![("srt".to_string(), artifacts)]
+        }
+
+        // (a) flat RSS -> pass (and, with no threshold set, provisional).
+        #[test]
+        fn flat_rss_slope_passes() {
+            let samples: Vec<RssSample> = (0..20)
+                .map(|i| rss_row("srt", "send", i as f64 * 60.0, Some(50_000)))
+                .collect();
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(1000, 0, 0.0, None, 0),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            });
+
+            let slope = results
+                .rss_slopes
+                .iter()
+                .find(|s| s.leg == "srt" && s.process == "send")
+                .expect("send slope must be present");
+            assert!(
+                slope.slope_kb_per_hour.abs() < 1.0,
+                "flat RSS must regress to ~0 slope, got {}",
+                slope.slope_kb_per_hour
+            );
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "rss_slope_srt_send")
+                .expect("verdict must be present");
+            assert!(v.pass);
+            assert!(v.provisional, "no threshold given -> provisional");
+            assert!(results.overall_pass);
+        }
+
+        // (b) 1 MiB/h ramp -> slope recorded; passes with no threshold,
+        // fails once a threshold below it is set.
+        #[test]
+        fn ramping_rss_slope_recorded_and_gated_by_threshold() {
+            let samples: Vec<RssSample> = (0..600)
+                .map(|i| {
+                    let elapsed_s = i as f64 * 60.0;
+                    let rss_kb = 50_000 + (elapsed_s / 3600.0 * 1024.0) as u64;
+                    rss_row("srt", "recv", elapsed_s, Some(rss_kb))
+                })
+                .collect();
+            let base_inputs = || SoakInputs {
+                rss_samples: samples.clone(),
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(1000, 0, 0.0, None, 0),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            };
+
+            let no_threshold = build_soak_results(base_inputs());
+            let slope = no_threshold
+                .rss_slopes
+                .iter()
+                .find(|s| s.process == "recv")
+                .expect("recv slope must be present");
+            assert!(
+                (slope.slope_kb_per_hour - 1024.0).abs() < 20.0,
+                "expected ~1024 KiB/h, got {}",
+                slope.slope_kb_per_hour
+            );
+            let v = no_threshold
+                .verdicts
+                .iter()
+                .find(|v| v.name == "rss_slope_srt_recv")
+                .unwrap();
+            assert!(v.pass, "no threshold set -> never fails");
+            assert!(v.provisional);
+
+            let mut with_threshold = base_inputs();
+            with_threshold.rss_slope_threshold_kb_per_hour = Some(512.0);
+            let results = build_soak_results(with_threshold);
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "rss_slope_srt_recv")
+                .unwrap();
+            assert!(
+                !v.pass,
+                "a ~1024 KiB/h slope must fail a 512 KiB/h threshold"
+            );
+            assert!(!v.provisional);
+            assert!(!results.overall_pass);
+        }
+
+        // (c) an unexplained gap (drop rate the configured schedule
+        // can't account for) fails the drop-rate check — see the module
+        // doc's "Known telemetry limitations" section for why this
+        // stands in for a per-event gap-timing check.
+        #[test]
+        fn unexplained_excess_drop_fails_the_drop_rate_check() {
+            let samples = vec![rss_row("srt", "send", 0.0, Some(1000))];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    // No outage configured, loss_pct=0 -> expected drop
+                    // fraction ~0, but the proxy actually dropped half of
+                    // everything.
+                    proxy_stats: proxy_stats(500, 500, 0.0, None, 0),
+                    recv_report: passing_recv_report(500),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            });
+
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "drop_rate_consistent_with_impairment_srt")
+                .unwrap();
+            assert!(
+                !v.pass,
+                "an unexplained 50% drop rate against ~0% expected must fail"
+            );
+            assert!(!v.provisional);
+            assert!(!results.overall_pass);
+        }
+
+        // Positive control for (c): a run whose observed drop rate
+        // matches what the proxy's CONTINUOUS configured loss_pct
+        // predicts must pass — deliberately independent of the outage
+        // schedule (an outage window's true impact on a managed sender
+        // is reduced throughput, not proxy-visible drops; see the
+        // module doc's "Known telemetry limitations" section for the
+        // empirical finding behind that design choice).
+        #[test]
+        fn drop_rate_matching_configured_outage_passes() {
+            let total = 100_000u64;
+            let dropped = (total as f64 * 0.02).round() as u64;
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "send", 3600.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(total - dropped, dropped, 2.0, Some(3600), 360),
+                    recv_report: passing_recv_report(total),
+                    send_metrics: cell_metrics(total),
+                    outage_period_s: Some(3600),
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            });
+
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "drop_rate_consistent_with_impairment_srt")
+                .unwrap();
+            assert!(
+                v.pass,
+                "drop rate matching the configured outage+loss schedule must pass: {}",
+                v.detail
+            );
+            assert!(results.overall_pass);
+        }
+
+        // (d) malformed CSV -> loud, line-naming error.
+        #[test]
+        fn malformed_csv_is_a_loud_error() {
+            let err =
+                parse_rss_csv("elapsed_s,leg,process,pid,rss_kb\n0,srt,send,not-a-pid,1000\n")
+                    .expect_err("non-numeric pid must be rejected");
+            assert!(err.contains("line 2"), "{err}");
+
+            let err = parse_rss_csv("elapsed_s,leg,process,pid,rss_kb\n0,mars,send,1000,1000\n")
+                .expect_err("unknown leg must be rejected");
+            assert!(err.contains("unknown leg"), "{err}");
+
+            let err = parse_rss_csv("elapsed_s,leg,process,pid,rss_kb\n0,srt,send,1000\n")
+                .expect_err("wrong field count must be rejected");
+            assert!(err.contains("5 comma-separated fields"), "{err}");
+
+            let err =
+                parse_rss_csv("not,the,right,header\n").expect_err("wrong header must be rejected");
+            assert!(err.contains("header"), "{err}");
+        }
+
+        #[test]
+        fn zero_process_exits_when_every_row_has_rss() {
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "send", 30.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: Vec::new(),
+                rss_slope_threshold_kb_per_hour: None,
+            });
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "zero_process_exits")
+                .unwrap();
+            assert!(v.pass);
+            assert!(results.process_exits.is_empty());
+        }
+
+        #[test]
+        fn a_missing_rss_kb_row_is_recorded_as_a_process_exit_and_fails() {
+            let samples = vec![
+                rss_row("srt", "recv", 0.0, Some(1000)),
+                rss_row("srt", "recv", 30.0, None),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: Vec::new(),
+                rss_slope_threshold_kb_per_hour: None,
+            });
+            assert_eq!(results.process_exits.len(), 1);
+            assert_eq!(results.process_exits[0].elapsed_s, 30.0);
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "zero_process_exits")
+                .unwrap();
+            assert!(!v.pass);
+            assert!(!results.overall_pass);
+        }
+
+        // File-driven round trip, mirroring `merge_and_render_end_to_end_via_tempdir`'s
+        // convention above.
+        #[test]
+        fn run_reads_files_and_writes_soak_results_json() {
+            let dir = std::env::temp_dir().join(format!(
+                "tst-interop-soak-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("time moves forward")
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+
+            let rss_path = dir.join("rss.csv");
+            std::fs::write(
+                &rss_path,
+                "elapsed_s,leg,process,pid,rss_kb\n0,srt,send,1,1000\n30,srt,send,2,1000\n",
+            )
+            .expect("write rss.csv");
+
+            let proxy_path = dir.join("proxy-stats.json");
+            std::fs::write(
+                &proxy_path,
+                serde_json::to_string(&proxy_stats(1000, 0, 0.0, None, 0)).unwrap(),
+            )
+            .expect("write proxy stats");
+            let recv_path = dir.join("recv-report.json");
+            std::fs::write(
+                &recv_path,
+                serde_json::to_string(&passing_recv_report(1000)).unwrap(),
+            )
+            .expect("write recv report");
+            let send_path = dir.join("send-report.json");
+            std::fs::write(
+                &send_path,
+                serde_json::to_string(&cell_metrics(1000)).unwrap(),
+            )
+            .expect("write send report");
+
+            let out_path = dir.join("soak-results.json");
+            let results = run(
+                &rss_path,
+                &proxy_path,
+                &recv_path,
+                &send_path,
+                0,
+                None,
+                None,
+                &out_path,
+            )
+            .expect("run must succeed");
+
+            assert!(out_path.exists());
+            assert_eq!(results.legs.len(), 1);
+            assert_eq!(results.legs[0].leg, "srt");
+            let written =
+                std::fs::read_to_string(&out_path).expect("read written soak-results.json");
+            assert!(written.contains("\"overall_pass\""));
+
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

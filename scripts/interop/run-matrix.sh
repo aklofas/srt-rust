@@ -487,6 +487,7 @@ run_analyze_ffprobe() {
   local profile=$1
   local id="analyze/ffprobe/$profile"
   cell_selected "$id" || return 0
+  echo "run-matrix: cell $id" >&2
   if ! have ffprobe; then
     emit_skipped "$id" ffprobe n/a n/a "ffprobe not installed on this box"
     return 0
@@ -529,6 +530,7 @@ run_analyze_tsanalyze() {
   local profile=$1
   local id="analyze/tsanalyze/$profile"
   cell_selected "$id" || return 0
+  echo "run-matrix: cell $id" >&2
   if ! have tsanalyze; then
     emit_skipped "$id" tsanalyze n/a n/a "tsanalyze not installed on this box"
     return 0
@@ -566,6 +568,7 @@ run_analyze_tsp() {
   local profile=$1
   local id="analyze/tsp-analyze/$profile"
   cell_selected "$id" || return 0
+  echo "run-matrix: cell $id" >&2
   if ! have tsp; then
     emit_skipped "$id" tsp n/a n/a "tsp not installed on this box"
     return 0
@@ -610,6 +613,7 @@ run_decode_probe() {
   local id="decode/$player/$profile"
 
   cell_selected "$id" || return 0
+  echo "run-matrix: cell $id" >&2
   # gst-play's real binary is gst-play-1.0 (matches
   # release-validation.sh's own step 7 invocation); the cell id keeps the
   # short "gst-play" form per the task's Interfaces line, mirroring how
@@ -975,23 +979,27 @@ srt_live_cells_for_profile() {
   local profile=$1
   local port
 
+  echo "run-matrix: cell srt-live/us-to-ffmpeg/$profile" >&2
   port=$(free_port)
   run_send_peer_recv "srt-live/us-to-ffmpeg/$profile" ffmpeg remux \
     "srt://127.0.0.1:$port?mode=caller" "$WORK/srtlive_us-to-ffmpeg_$profile.ts" -- \
     ffmpeg -y -loglevel warning -i "srt://127.0.0.1:$port?mode=listener" \
     -map 0 -c copy -copy_unknown -f mpegts "$WORK/srtlive_us-to-ffmpeg_$profile.ts"
 
+  echo "run-matrix: cell srt-live/ffmpeg-to-us/$profile" >&2
   port=$(free_port)
   run_peer_send_recv "srt-live/ffmpeg-to-us/$profile" ffmpeg remux \
     "srt://:$port?mode=listener" -- \
     ffmpeg -y -re -loglevel warning -i "$GEN_FILE" -c copy -copy_unknown -f mpegts \
     "srt://127.0.0.1:$port?mode=caller"
 
+  echo "run-matrix: cell srt-live/us-to-tsp/$profile" >&2
   port=$(free_port)
   run_send_peer_recv "srt-live/us-to-tsp/$profile" tsp transparent \
     "srt://127.0.0.1:$port?mode=caller" "$WORK/srtlive_us-to-tsp_$profile.ts" -- \
     tsp -I srt --listener ":$port" -O file "$WORK/srtlive_us-to-tsp_$profile.ts"
 
+  echo "run-matrix: cell srt-live/tsp-to-us/$profile" >&2
   port=$(free_port)
   run_peer_send_recv "srt-live/tsp-to-us/$profile" tsp transparent \
     "srt://:$port?mode=listener" -- \

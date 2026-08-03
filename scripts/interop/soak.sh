@@ -38,18 +38,29 @@
 #
 # Prerequisites: Linux (x86_64 or aarch64), `git`, a Rust toolchain via
 # rustup (this repo pins 1.85 via rust-toolchain.toml — `rustup` picks
-# it up automatically once you're inside the repo), and `jq` +
-# `python3` on PATH (this script's own port allocation and small JSON
-# assembly — the SAME two tools run-matrix.sh already requires, see
-# this directory's README.md). Unlike run-matrix.sh, this script needs
-# NO third-party media tools at all (no ffmpeg/tsduck/vlc/mpv/
-# gstreamer) — every process it launches is `tst-interop` talking to
-# itself through its own impairment proxy.
+# it up automatically once you're inside the repo), `jq` + `python3` on
+# PATH (this script's own port allocation and small JSON assembly — the
+# SAME two tools run-matrix.sh already requires, see this directory's
+# README.md), AND the native build toolchain `SRT_FORCE_VENDORED=1
+# RIST_FORCE_VENDORED=1 cargo build` below actually needs even though
+# this script itself never calls a C/C++ compiler directly: `tst-interop`
+# depends on `tstrans-srt-sys` (vendored libsrt, built via `cmake`) and
+# `tstrans-mbedtls-src` (vendored mbedTLS, ALSO built via `cmake`, as a
+# build-dependency of the srt-sys build script) and `tstrans-rist-sys`
+# (vendored librist, built via `meson`+`ninja` — NOT cmake), so a
+# genuinely fresh host needs `build-essential` (a C/C++ compiler +
+# related tooling) and `cmake` for the first two, plus `meson` +
+# `ninja-build` for the third, or the very first `cargo build` below
+# fails with an unhelpful "cmake: command not found"/"meson: command
+# not found" instead of a clear prerequisite error. Unlike run-matrix.sh,
+# this script needs NO third-party MEDIA tools at all (no ffmpeg/
+# tsduck/vlc/mpv/gstreamer) — every process it launches is `tst-interop`
+# talking to itself through its own impairment proxy.
 #
 #   git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
 #   cd ts-transformer/ts-transformer
 #   curl https://sh.rustup.rs -sSf | sh -s -- -y   # if rustup isn't already installed
-#   sudo apt install -y jq python3                  # if not already present
+#   sudo apt install -y jq python3 build-essential cmake meson ninja-build
 #   SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo build --release -p tst-interop
 #
 # Then launch the real 72h run (the canonical seed below reproduces the
@@ -118,7 +129,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,88p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,99p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)

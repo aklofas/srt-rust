@@ -898,6 +898,48 @@ pub mod soak {
         loss_pct / 100.0
     }
 
+    /// Standard-error multiplier for [`drop_rate_tolerance`]'s binomial
+    /// term. ~6 standard errors of a binomial proportion is generous
+    /// enough that ordinary sampling noise at any packet volume this
+    /// soak actually pushes (thousands to tens of millions over a 72h
+    /// run) won't false-positive, while still catching a genuine
+    /// multiple-of-the-configured-rate regression (e.g. observed 4%
+    /// against a configured 2%) instead of silently absorbing it — the
+    /// flat `max(3pp, expected*30%)` band this replaced did NOT scale
+    /// down with volume, so a real 2x regression at high packet counts
+    /// could sit comfortably inside a fixed few-percentage-point band
+    /// forever, no matter how many packets confirmed it.
+    const DROP_RATE_TOLERANCE_SIGMA: f64 = 6.0;
+
+    /// Absolute floor on the tolerance band, applied regardless of the
+    /// binomial term above. Exists only to keep
+    /// [`drop_rate_tolerance`]'s output finite and sane in the
+    /// degenerate `n == 0` case (a genuine 0-packet division would
+    /// otherwise propagate `inf`/`NaN` into `LegResult::
+    /// drop_fraction_tolerance`'s JSON, which `serde_json` can't
+    /// serialize) — deliberately much smaller than the old flat 3
+    /// percentage-point floor so it doesn't itself become the binding
+    /// constraint at realistic-to-large packet counts, where the
+    /// binomial term alone is already far tighter.
+    const DROP_RATE_TOLERANCE_FLOOR: f64 = 0.001; // 0.1 percentage points
+
+    /// Tolerance band for the observed-vs-expected drop-fraction
+    /// comparison: `DROP_RATE_TOLERANCE_SIGMA` standard errors of a
+    /// binomial proportion with success probability `expected` over `n`
+    /// trials (`n` = total packets the proxy decided on), floored at
+    /// [`DROP_RATE_TOLERANCE_FLOOR`]. Scales down as `n` grows — unlike
+    /// the flat percentage band this replaced, a 72h run's much larger
+    /// packet count tightens the check rather than leaving it exactly
+    /// as loose as a five-second interop-matrix cell would need.
+    fn drop_rate_tolerance(expected: f64, n: u64) -> f64 {
+        if n == 0 {
+            return DROP_RATE_TOLERANCE_FLOOR;
+        }
+        let variance = (expected * (1.0 - expected) / n as f64).max(0.0);
+        let sigma = variance.sqrt();
+        (DROP_RATE_TOLERANCE_SIGMA * sigma).max(DROP_RATE_TOLERANCE_FLOOR)
+    }
+
     /// One (leg, process) RSS linear-regression result.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct RssSlope {
@@ -990,12 +1032,38 @@ pub mod soak {
 
     /// Compute every verdict from already-parsed inputs — no I/O. [`run`]
     /// is the file-driven wrapper around this.
-    pub fn build_soak_results(inputs: SoakInputs) -> SoakResults {
+    ///
+    /// # Errors
+    ///
+    /// Errors (rather than returning a clean, vacuously-passing
+    /// [`SoakResults`]) if `rss_samples` is completely empty — a
+    /// header-only `rss.csv` most likely means the sampler crashed
+    /// before writing a single tick, or a `--rss` path typo pointed at
+    /// the wrong file; either way, this must never silently read as a
+    /// data-free "the soak was fine" report (mirrors [`super::merge`]'s own
+    /// "no cells" hard error for the same reason). A `rss.csv` that HAS
+    /// some rows but is missing an entire expected `(leg, process)`
+    /// combination (or has rows for it that are all pre-warmup) is a
+    /// softer problem — handled instead by an explicit, non-
+    /// [`SoakVerdict::provisional`], FAILING `rss_data_present_<leg>_
+    /// <process>` verdict per combination, so `overall_pass` still goes
+    /// false but the rest of the report (the combinations that DO have
+    /// data) stays readable.
+    pub fn build_soak_results(inputs: SoakInputs) -> Result<SoakResults, String> {
         let SoakInputs {
             rss_samples,
             legs,
             rss_slope_threshold_kb_per_hour,
         } = inputs;
+
+        if rss_samples.is_empty() {
+            return Err(
+                "rss.csv has zero data rows — refusing to write a clean pass for a data-free \
+                 soak run (the RSS sampler most likely crashed before its first tick, or --rss \
+                 points at the wrong file)"
+                    .to_string(),
+            );
+        }
 
         let run_duration_s = {
             let mut min_t = f64::INFINITY;
@@ -1038,6 +1106,26 @@ pub mod soak {
                     .push((s.elapsed_s, kb as f64));
             }
         }
+        // Every `(leg, process)` combination this run is SUPPOSED to
+        // have RSS evidence for — one entry per `KNOWN_PROCESSES` value
+        // for each leg actually present in `legs`. Compared against
+        // `groups`'s keys (which ones actually have >=1 post-warmup,
+        // rss_kb-present sample) BEFORE `groups` is consumed below, so a
+        // whole missing process (or one whose only samples are all
+        // pre-warmup, or all crashed/`rss_kb: None`) gets its own
+        // FAILING verdict instead of just silently absent from
+        // `rss_slopes` — see [`build_soak_results`]'s `# Errors` section
+        // for why a total data absence needs a harder signal than "this
+        // vec happens to be shorter than expected."
+        let mut missing_data: Vec<(String, String)> = Vec::new();
+        for (leg_name, _) in &legs {
+            for process in KNOWN_PROCESSES {
+                if !groups.contains_key(&(leg_name.clone(), process.to_string())) {
+                    missing_data.push((leg_name.clone(), process.to_string()));
+                }
+            }
+        }
+
         let rss_slopes: Vec<RssSlope> = groups
             .into_iter()
             .map(|((leg, process), points)| {
@@ -1053,6 +1141,19 @@ pub mod soak {
             .collect();
 
         let mut verdicts = Vec::new();
+        for (leg, process) in &missing_data {
+            verdicts.push(SoakVerdict {
+                name: format!("rss_data_present_{leg}_{process}"),
+                pass: false,
+                provisional: false,
+                detail: format!(
+                    "no post-warmup RSS samples for {leg}/{process} — either this process never \
+                     appears in rss.csv at all, or every sample for it fell before the \
+                     {warmup_s:.0}s warmup cutoff (crashed/never-sampled processes show up here, \
+                     not just in zero_process_exits)"
+                ),
+            });
+        }
         for slope in &rss_slopes {
             let provisional = rss_slope_threshold_kb_per_hour.is_none();
             let pass = match rss_slope_threshold_kb_per_hour {
@@ -1092,12 +1193,7 @@ pub mod soak {
             let outage_windows = expected_outage_windows(run_duration_s, artifacts.outage_period_s);
             let total = artifacts.proxy_stats.forwarded + artifacts.proxy_stats.dropped;
             let expected = expected_drop_fraction(loss_pct);
-            // Absolute floor (3pp) covers a run with so little traffic
-            // that statistical noise alone could swing the observed
-            // fraction a few points off the expected one; the relative
-            // 30% term scales that floor up for a run whose configured
-            // impairment predicts a large drop fraction to begin with.
-            let tolerance = (0.03_f64).max(expected * 0.30);
+            let tolerance = drop_rate_tolerance(expected, total);
             let observed = if total == 0 {
                 0.0
             } else {
@@ -1167,7 +1263,7 @@ pub mod soak {
 
         let overall_pass = verdicts.iter().all(|v| v.provisional || v.pass);
 
-        SoakResults {
+        Ok(SoakResults {
             run_duration_s,
             warmup_s,
             rss_slope_threshold_kb_per_hour,
@@ -1188,7 +1284,7 @@ pub mod soak {
                  counters instead of a per-event ±30s timestamp localization."
                     .to_string(),
             ],
-        }
+        })
     }
 
     fn read_to_string(path: &Path) -> Result<String, String> {
@@ -1254,7 +1350,7 @@ pub mod soak {
             rss_samples,
             legs,
             rss_slope_threshold_kb_per_hour,
-        });
+        })?;
 
         let json = serde_json::to_string_pretty(&results).expect("SoakResults always serializes");
         std::fs::write(out_path, json).map_err(|e| format!("write {}: {e}", out_path.display()))?;
@@ -1328,11 +1424,19 @@ pub mod soak {
         }
 
         // (a) flat RSS -> pass (and, with no threshold set, provisional).
+        // Samples cover all 3 processes (not just "send") so the
+        // per-combination data-presence check (see `missing_data`) has
+        // nothing to flag here — this test is about the regression
+        // math, not that check.
         #[test]
         fn flat_rss_slope_passes() {
-            let samples: Vec<RssSample> = (0..20)
-                .map(|i| rss_row("srt", "send", i as f64 * 60.0, Some(50_000)))
-                .collect();
+            let mut samples: Vec<RssSample> = Vec::new();
+            for i in 0..20 {
+                let t = i as f64 * 60.0;
+                samples.push(rss_row("srt", "send", t, Some(50_000)));
+                samples.push(rss_row("srt", "proxy", t, Some(20_000)));
+                samples.push(rss_row("srt", "recv", t, Some(50_000)));
+            }
             let results = build_soak_results(SoakInputs {
                 rss_samples: samples,
                 legs: one_leg(LegArtifacts {
@@ -1342,7 +1446,8 @@ pub mod soak {
                     outage_period_s: None,
                 }),
                 rss_slope_threshold_kb_per_hour: None,
-            });
+            })
+            .expect("non-empty rss_samples must not error");
 
             let slope = results
                 .rss_slopes
@@ -1368,13 +1473,18 @@ pub mod soak {
         // fails once a threshold below it is set.
         #[test]
         fn ramping_rss_slope_recorded_and_gated_by_threshold() {
-            let samples: Vec<RssSample> = (0..600)
-                .map(|i| {
-                    let elapsed_s = i as f64 * 60.0;
-                    let rss_kb = 50_000 + (elapsed_s / 3600.0 * 1024.0) as u64;
-                    rss_row("srt", "recv", elapsed_s, Some(rss_kb))
-                })
-                .collect();
+            let mut samples: Vec<RssSample> = Vec::new();
+            for i in 0..600 {
+                let elapsed_s = i as f64 * 60.0;
+                let recv_kb = 50_000 + (elapsed_s / 3600.0 * 1024.0) as u64;
+                // send/proxy stay flat — this test is about recv's slope
+                // and threshold-gating, but every process still needs
+                // >=1 post-warmup sample or the new data-presence check
+                // (see `missing_data`) would flag them as missing.
+                samples.push(rss_row("srt", "recv", elapsed_s, Some(recv_kb)));
+                samples.push(rss_row("srt", "send", elapsed_s, Some(50_000)));
+                samples.push(rss_row("srt", "proxy", elapsed_s, Some(20_000)));
+            }
             let base_inputs = || SoakInputs {
                 rss_samples: samples.clone(),
                 legs: one_leg(LegArtifacts {
@@ -1386,7 +1496,8 @@ pub mod soak {
                 rss_slope_threshold_kb_per_hour: None,
             };
 
-            let no_threshold = build_soak_results(base_inputs());
+            let no_threshold =
+                build_soak_results(base_inputs()).expect("non-empty rss_samples must not error");
             let slope = no_threshold
                 .rss_slopes
                 .iter()
@@ -1407,7 +1518,8 @@ pub mod soak {
 
             let mut with_threshold = base_inputs();
             with_threshold.rss_slope_threshold_kb_per_hour = Some(512.0);
-            let results = build_soak_results(with_threshold);
+            let results =
+                build_soak_results(with_threshold).expect("non-empty rss_samples must not error");
             let v = results
                 .verdicts
                 .iter()
@@ -1440,7 +1552,8 @@ pub mod soak {
                     outage_period_s: None,
                 }),
                 rss_slope_threshold_kb_per_hour: None,
-            });
+            })
+            .expect("non-empty rss_samples must not error");
 
             let v = results
                 .verdicts
@@ -1466,10 +1579,15 @@ pub mod soak {
         fn drop_rate_matching_configured_outage_passes() {
             let total = 100_000u64;
             let dropped = (total as f64 * 0.02).round() as u64;
-            let samples = vec![
-                rss_row("srt", "send", 0.0, Some(1000)),
-                rss_row("srt", "send", 3600.0, Some(1000)),
-            ];
+            // All 3 processes present (not just "send") — this test
+            // asserts `overall_pass`, so it must clear the
+            // per-combination data-presence check too.
+            let mut samples = Vec::new();
+            for t in [0.0, 3600.0] {
+                samples.push(rss_row("srt", "send", t, Some(1000)));
+                samples.push(rss_row("srt", "proxy", t, Some(1000)));
+                samples.push(rss_row("srt", "recv", t, Some(1000)));
+            }
             let results = build_soak_results(SoakInputs {
                 rss_samples: samples,
                 legs: one_leg(LegArtifacts {
@@ -1479,7 +1597,8 @@ pub mod soak {
                     outage_period_s: Some(3600),
                 }),
                 rss_slope_threshold_kb_per_hour: None,
-            });
+            })
+            .expect("non-empty rss_samples must not error");
 
             let v = results
                 .verdicts
@@ -1492,6 +1611,124 @@ pub mod soak {
                 v.detail
             );
             assert!(results.overall_pass);
+        }
+
+        /// (Important fix regression) The tolerance must SCALE DOWN with
+        /// packet volume: a genuine ~2x drop-rate regression (4%
+        /// observed against a 2% configured `loss_pct`) must FAIL at a
+        /// large `n` (the scale a 72h run actually reaches — hundreds
+        /// of thousands to tens of millions of packets), where 2
+        /// percentage points of absolute deviation is many standard
+        /// errors of noise, not something a flat volume-blind
+        /// percentage band could ever catch.
+        #[test]
+        fn large_n_two_x_drop_rate_regression_fails() {
+            let total = 10_000_000u64;
+            let dropped = (total as f64 * 0.04).round() as u64; // observed 4%, configured 2%
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "proxy", 0.0, Some(1000)),
+                rss_row("srt", "recv", 0.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(total - dropped, dropped, 2.0, None, 0),
+                    recv_report: passing_recv_report(total),
+                    send_metrics: cell_metrics(total),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "drop_rate_consistent_with_impairment_srt")
+                .unwrap();
+            assert!(
+                !v.pass,
+                "a 4%-observed/2%-configured drop rate at n=10,000,000 must fail: {}",
+                v.detail
+            );
+            assert!(!v.provisional);
+            assert!(!results.overall_pass);
+        }
+
+        /// (Important fix regression) The SAME 2x relative deviation
+        /// (4% observed against 2% configured) at a SMALL `n` must
+        /// still pass — at low packet counts that deviation is
+        /// unremarkable sampling noise, not evidence of a real
+        /// regression, and the tolerance (whether via the binomial term
+        /// or the small absolute floor) must reflect that rather than
+        /// flagging every short/thin cell as broken.
+        #[test]
+        fn small_n_two_x_drop_rate_deviation_still_passes() {
+            let total = 50u64;
+            let dropped = 2u64; // 4% observed vs 2% configured, same ratio as the large-n test above
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "proxy", 0.0, Some(1000)),
+                rss_row("srt", "recv", 0.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(total - dropped, dropped, 2.0, None, 0),
+                    recv_report: passing_recv_report(total),
+                    send_metrics: cell_metrics(total),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "drop_rate_consistent_with_impairment_srt")
+                .unwrap();
+            assert!(
+                v.pass,
+                "the same 4%-vs-2% deviation at n=50 must pass (sampling noise, not a \
+                 regression): {}",
+                v.detail
+            );
+            assert!(results.overall_pass);
+        }
+
+        /// The `n == 0` degenerate case must still produce a FINITE
+        /// tolerance (never NaN/infinity, which `serde_json` can't
+        /// serialize) even though `drop_pass` is already forced false
+        /// by the `total != 0` guard regardless of the tolerance value.
+        #[test]
+        fn zero_packets_tolerance_is_finite_not_nan_or_infinite() {
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "proxy", 0.0, Some(1000)),
+                rss_row("srt", "recv", 0.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(0, 0, 2.0, None, 0),
+                    recv_report: passing_recv_report(0),
+                    send_metrics: cell_metrics(0),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            let leg = &results.legs[0];
+            assert!(leg.drop_fraction_tolerance.is_finite());
+            let v = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "drop_rate_consistent_with_impairment_srt")
+                .unwrap();
+            assert!(!v.pass, "zero packets crossing the proxy must still fail");
         }
 
         // (d) malformed CSV -> loud, line-naming error.
@@ -1525,7 +1762,8 @@ pub mod soak {
                 rss_samples: samples,
                 legs: Vec::new(),
                 rss_slope_threshold_kb_per_hour: None,
-            });
+            })
+            .expect("non-empty rss_samples must not error");
             let v = results
                 .verdicts
                 .iter()
@@ -1545,7 +1783,8 @@ pub mod soak {
                 rss_samples: samples,
                 legs: Vec::new(),
                 rss_slope_threshold_kb_per_hour: None,
-            });
+            })
+            .expect("non-empty rss_samples must not error");
             assert_eq!(results.process_exits.len(), 1);
             assert_eq!(results.process_exits[0].elapsed_s, 30.0);
             let v = results
@@ -1618,6 +1857,203 @@ pub mod soak {
             assert!(written.contains("\"overall_pass\""));
 
             let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        /// (Critical fix regression) A header-only `rss.csv` (zero data
+        /// rows — the exact shape a crashed-before-first-tick sampler
+        /// would produce) must be a hard error through the FULL
+        /// file-driven path, not just a quietly-empty `rss_samples` in
+        /// the pure function — `run` must neither write `--out` nor
+        /// return a clean, vacuously-passing report.
+        #[test]
+        fn header_only_rss_csv_is_a_hard_error_through_run() {
+            let dir = std::env::temp_dir().join(format!(
+                "tst-interop-soak-header-only-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("time moves forward")
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+
+            let rss_path = dir.join("rss.csv");
+            std::fs::write(&rss_path, "elapsed_s,leg,process,pid,rss_kb\n")
+                .expect("write header-only rss.csv");
+
+            let proxy_path = dir.join("proxy-stats.json");
+            std::fs::write(
+                &proxy_path,
+                serde_json::to_string(&proxy_stats(1000, 0, 0.0, None, 0)).unwrap(),
+            )
+            .expect("write proxy stats");
+            let recv_path = dir.join("recv-report.json");
+            std::fs::write(
+                &recv_path,
+                serde_json::to_string(&passing_recv_report(1000)).unwrap(),
+            )
+            .expect("write recv report");
+            let send_path = dir.join("send-report.json");
+            std::fs::write(
+                &send_path,
+                serde_json::to_string(&cell_metrics(1000)).unwrap(),
+            )
+            .expect("write send report");
+
+            let out_path = dir.join("soak-results.json");
+            let err = run(
+                &rss_path,
+                &proxy_path,
+                &recv_path,
+                &send_path,
+                0,
+                None,
+                None,
+                &out_path,
+            )
+            .expect_err("a header-only rss.csv must be a hard error, not a clean pass");
+            assert!(
+                err.contains("zero data rows"),
+                "error must name the problem: {err}"
+            );
+            assert!(
+                !out_path.exists(),
+                "run must not write --out on this error path"
+            );
+
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        /// (Critical fix regression) `build_soak_results` itself, given
+        /// a completely empty `rss_samples`, errors rather than
+        /// returning a vacuously-passing `SoakResults` — the pure-
+        /// function-level twin of the file-driven test above.
+        #[test]
+        fn empty_rss_samples_is_a_hard_error() {
+            let err = build_soak_results(SoakInputs {
+                rss_samples: Vec::new(),
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(1000, 0, 0.0, None, 0),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect_err("empty rss_samples must be a hard error, not a vacuous pass");
+            assert!(err.contains("zero data rows"), "{err}");
+        }
+
+        /// (Critical fix regression) `rss.csv` has real data, but one
+        /// entire expected process ("recv") never appears for the `srt`
+        /// leg — a partial-sampler-death shape distinct from the
+        /// completely-empty case above. Must produce a named, FAILING,
+        /// non-provisional `rss_data_present_srt_recv` verdict (not just
+        /// a silently-shorter `rss_slopes` list) and flip `overall_pass`
+        /// false, while the two processes that DO have data still get
+        /// their normal, passing verdicts.
+        #[test]
+        fn missing_one_process_entirely_fails_with_a_named_verdict() {
+            let mut samples = Vec::new();
+            for i in 0..20 {
+                let t = i as f64 * 60.0;
+                samples.push(rss_row("srt", "send", t, Some(50_000)));
+                samples.push(rss_row("srt", "proxy", t, Some(20_000)));
+                // "recv" never appears at all.
+            }
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(1000, 0, 0.0, None, 0),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            let missing = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "rss_data_present_srt_recv")
+                .expect("a named verdict must flag the entirely-missing process");
+            assert!(!missing.pass);
+            assert!(!missing.provisional);
+            assert!(!results.overall_pass);
+
+            // The two processes that DO have data are unaffected —
+            // this isn't a blanket "any gap anywhere fails everything"
+            // check, just the missing combination.
+            let send_slope = results
+                .verdicts
+                .iter()
+                .find(|v| v.name == "rss_slope_srt_send")
+                .expect("send verdict must still be present");
+            assert!(send_slope.pass);
+            assert!(
+                !results
+                    .verdicts
+                    .iter()
+                    .any(|v| v.name.starts_with("rss_data_present_srt_send")),
+                "a process that DOES have data must not also get a missing-data verdict"
+            );
+        }
+
+        /// (Folds Minor 6) Exactly one post-warmup sample per process —
+        /// distinct from the entirely-missing case above: this data IS
+        /// present, just too thin for a real regression.
+        /// `linear_regression_slope`'s `n < 2.0` guard must return
+        /// `0.0` without dividing by zero, and a single present sample
+        /// must NOT trip the new `rss_data_present_*` missing-data
+        /// check (that check is about zero samples, not "not enough for
+        /// a confident slope").
+        #[test]
+        fn single_post_warmup_sample_regresses_to_zero_without_dividing_by_zero() {
+            // Two ticks per process: one at t=0 (pre-warmup, established
+            // run_duration_s=6000 -> warmup_s=min(1800, 1000)=1000s,
+            // excluding it) and one at t=6000 (post-warmup, the lone
+            // surviving sample).
+            let mut samples = Vec::new();
+            for process in ["send", "proxy", "recv"] {
+                samples.push(rss_row("srt", process, 0.0, Some(10_000)));
+                samples.push(rss_row("srt", process, 6000.0, Some(10_500)));
+            }
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(1000, 0, 0.0, None, 0),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: None,
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            assert_eq!(
+                results.rss_slopes.len(),
+                3,
+                "all 3 processes must be present"
+            );
+            for slope in &results.rss_slopes {
+                assert_eq!(
+                    slope.samples_used, 1,
+                    "{}/{} should have exactly 1 post-warmup sample",
+                    slope.leg, slope.process
+                );
+                assert_eq!(
+                    slope.slope_kb_per_hour, 0.0,
+                    "n<2 must regress to 0.0, never divide by zero"
+                );
+            }
+            assert!(
+                !results
+                    .verdicts
+                    .iter()
+                    .any(|v| v.name.starts_with("rss_data_present_")),
+                "a single present sample is not 'missing data'"
+            );
         }
     }
 }

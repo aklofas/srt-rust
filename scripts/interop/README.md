@@ -202,12 +202,23 @@ exist to document with a reason + reference, not something to paper over.
    ffmpeg-remux cell that touches this codebase's KLV PID with `-c copy`,
    full stop — transport-axis: `hls/ffmpeg-pull`, `rist/ffmpeg-to-us`,
    `srt/{us,ffmpeg}-to-{ffmpeg,us}[-encrypted]` (4 cells),
-   `tcp/us-to-ffmpeg`, `tcp/ffmpeg-to-us`, `udp/ffmpeg-to-us`,
-   `rtsp-serve/ffmpeg-pull`; format-axis (`srt-live/*`, one profile
-   each): `srt-live/us-to-ffmpeg` and `srt-live/ffmpeg-to-us` for every
-   non-`klv-sync` profile (same UL-key-truncation symptom, "KLV records:
-   got 0") and for `klv-sync` specifically (the carriage-downgrade
-   symptom above).
+   `tcp/us-to-ffmpeg`, `tcp/ffmpeg-to-us`, `udp/ffmpeg-to-us` (all
+   `baseline`); format-axis (`srt-live/us-to-ffmpeg` and
+   `srt-live/ffmpeg-to-us`, one profile each): exactly the 6 profiles
+   whose KLV PID actually reaches this same UL-key-truncation code path
+   with no *other* gap intervening first — `baseline`, `h265-klv`,
+   `misp`, `pcr-sparse`, `pcr-tight`, `pts-rollover` — plus `klv-sync`
+   specifically (the carriage-downgrade symptom above, same root cause,
+   different observable text). The remaining 5 profiles' `srt-live`
+   cells on this same axis (`av1-klv-a`, `av1-klv-b`, `h266-klv`,
+   `audio`, `two-program`) fail *earlier*, for their own distinct,
+   separately-documented reasons (AV1 stream-selection/live-demux,
+   H.266 VPS rejection, AAC live-probe, dropped second program — see
+   "Format axis: findings beyond `baseline`" below, items 6-9) — this
+   UL-key-truncation mechanism never gets a chance to manifest on those.
+   `rtsp-serve/ffmpeg-pull`
+   (`baseline`, transport-axis) is the one cell where this finding
+   *compounds* with a second, unrelated gap — see item 5 below.
 
 2. **SRT (only) loses a small tail even with a paced/lingered `tsp`/`gst`
    sender (3 of 17 transport-axis FAILs; reproduces on every profile's
@@ -225,47 +236,72 @@ exist to document with a reason + reference, not something to paper over.
    RIST (`rist/tsp-to-us`) and UDP (`udp/tsp-to-us`) is **byte-perfect**
    (PASS) in the same run — only the SRT direction shows the mismatch.
 
-   ★Task 12 root-caused this (bounded investigation, live SRT session
-   with wall-clock instrumentation on both sides): the loss is **not** a
-   sender-side drain/linger problem. `tst-interop recv`'s `Teeing` tap
-   (`crates/tst-interop/src/transport.rs`) tallies bytes at the transport
-   boundary — *below* the demuxer, i.e. exactly what libsrt delivered to
-   this codebase's own code — and it already shows the shortfall
-   (87044/90240 bytes on an 8s baseline run), which rules out "we
-   received it but discarded it during our own processing" and confirms
-   libsrt itself never handed those bytes to the recv side. Tripling
-   `tsp`'s `--linger` (5s → 15s, comfortably longer than
-   `tst-interop recv`'s own deadline) reproduced the **exact same byte
-   count** — ruling out "the sender didn't wait long enough to drain" as
-   the cause. By elimination — and confirmed by direct wall-clock
-   timestamps: `recv`'s own process exit landed within 3ms of `tsp`'s,
-   regardless of `tsp`'s linger length — **the cause is
-   `tst-interop recv`'s own receive-side deadline**
-   (`crates/tst-interop/src/recv.rs`: anchored once, at the *first*
-   received event, to `seconds + POST_START_GRACE` where
-   `POST_START_GRACE` is a flat 2 seconds) **closing the connection
-   (`rx.close()`) while `tsp`'s PCR-paced `-P regulate` sender is still
-   transmitting the tail of the file** — `-P regulate`'s real-world
-   pacing (plus process/scheduling overhead) evidently runs slightly
-   longer, wall-clock, than the nominal `seconds` duration, and SRT's
-   connection handshake delays exactly when the "first event" anchor
-   fires relative to when `tsp`'s own pacing clock started at file-open —
-   eating directly into the fixed 2-second grace margin in a way UDP/RIST
-   (connectionless, first-byte arrives essentially at send-start) don't
-   experience. This is a plausible, mechanistically-consistent
-   explanation for the SRT-vs-RIST/UDP asymmetry (not independently
-   re-verified against a live RIST timing capture in this session — the
-   deadline-vs-linger elimination above is the directly-verified part).
-   **Library-side follow-up candidate** (out of scope for this
-   scripts-only task — noted here, not filed as a formal backlog entry):
-   either `POST_START_GRACE` needs headroom for connection-establishment
-   latency specifically, or `recv`'s deadline should tolerate an explicit
-   "sender still draining" signal rather than a flat post-first-byte
-   window. The `transparent`-tier byte-hash
-   comparison this script does for `tsp`/`gst` peer-to-us SRT cells is
-   specifically designed to surface this class of gap, not something to
-   loosen away. Affects: `srt/tsp-to-us[-encrypted]`, `srt/gst-to-us`,
-   and `srt-live/tsp-to-us` for every profile.
+   ★Task 12 investigated this twice (bounded investigation both rounds,
+   live SRT sessions with wall-clock instrumentation on both sides).
+   **Round 1** ruled out a sender-side drain/linger problem:
+   `tst-interop recv`'s `Teeing` tap (`crates/tst-interop/src/transport.rs`)
+   tallies bytes at the transport boundary — *below* the demuxer, i.e.
+   exactly what libsrt delivered to this codebase's own code — and it
+   already shows the shortfall (87044/90240 bytes on an 8s baseline
+   run), which rules out "we received it but discarded it during our own
+   processing" and confirms libsrt itself never handed those bytes to
+   the recv side. Tripling `tsp`'s `--linger` (5s → 15s) reproduced the
+   **exact same byte count**. Given `recv`'s own process exit landed
+   within 3ms of `tsp`'s in that same test, round 1 concluded the cause
+   was `tst-interop recv`'s own receive-side deadline
+   (`crates/tst-interop/src/recv.rs`'s `seconds + POST_START_GRACE`
+   window) closing the connection while `tsp` was still transmitting.
+
+   **Round 2 (fix-round re-review) tested that conclusion directly with
+   a script-only mitigation, and it disproves round 1's root cause.**
+   Giving `tst-interop recv` a *much* longer window than the peer's
+   actual content duration — `--seconds 10` (2s of extra margin) and
+   `--seconds 20` (12s of extra margin, 2.5x the source's real 8s) —
+   while the peer (`tsp` and, separately, `gst-launch-1.0`) still only
+   sends 8s worth of paced data, produced the **identical byte count in
+   every case** (87044/90240 for `tsp`, 74072/90240 for `gst`,
+   byte-for-byte the same as the original `--seconds 8` run). At
+   `--seconds 20`, `recv`'s own deadline would not fire until roughly
+   22s after the connection's first byte — vastly more slack than the
+   sender needs to finish its 8s of regulated pacing — yet `recv`'s
+   process still exited (via a natural end-of-stream signal, not a
+   deadline timeout) within ~1ms of `tsp`'s own process exit, with the
+   identical bytes missing. **This conclusively rules out
+   `tst-interop recv`'s deadline as the cause**, in either direction: no
+   amount of additional receive-side waiting recovers the missing bytes,
+   because the connection closes (from the *sender's* side) once
+   `tsp`/`gst` decide they're done, and whatever wasn't queued for
+   `srt_sendmsg()` by then is gone — there is no "still draining" window
+   for a longer receive-side deadline to exploit.
+
+   This narrows the true mechanism to something in `tsp`'s (and,
+   separately, `gst-launch-1.0`'s) own `-O srt`/`srtsink` output path —
+   specifically SRT, since the identical `-P regulate` pacing over RIST
+   and UDP is byte-perfect with the same source file and the same
+   `tst-interop recv` code on the receiving end. Plausible shape (not
+   independently confirmed against `tsp`/GStreamer's own source or
+   `--statistics-interval` instrumentation in this round either): the
+   regulate/pacing stage's own internal dispatch still has a handful of
+   trailing packets queued when it decides "duration reached, stop
+   feeding the output plugin," and the SRT output plugin's closing
+   sequence (unlike its RIST/UDP counterparts, which apparently flush or
+   don't need to) discards whatever was never explicitly handed to
+   `srt_sendmsg()` — a `--linger`-*insensitive* loss, consistent with
+   round 1's linger test, since `--linger` only governs bytes already
+   inside libsrt's own send buffer, not bytes tsp's own dispatcher never
+   got around to submitting.
+
+   **No script-only fix exists for this** (per the round-2 evaluation
+   above) — the residual work is either upstream (`tsp`/GStreamer's own
+   SRT output-plugin flush behavior) or would need this codebase's own
+   send-side instrumentation/reproduction outside this driver entirely,
+   not a `tst-interop recv` change. Noted here, not filed as a formal
+   backlog entry (out of scope for this scripts-only task). The
+   `transparent`-tier byte-hash comparison this script does for
+   `tsp`/`gst` peer-to-us SRT cells is specifically designed to surface
+   this class of gap, not something to loosen away. Affects:
+   `srt/tsp-to-us[-encrypted]`, `srt/gst-to-us`, and `srt-live/tsp-to-us`
+   for every profile.
 
 3. **`ffmpeg` hangs against a live RIST or UDP listener with nothing ever
    received (2 of 17 FAILs).** `rist/us-to-ffmpeg`: ffmpeg's librist
@@ -307,6 +343,79 @@ exist to document with a reason + reference, not something to paper over.
    that would diverge this one cell's timing from every other cell's
    shared `--seconds` budget for a margin call this close to the 70%
    floor, not a clear win.
+
+### Format axis: findings beyond `baseline` (task 12)
+
+Task 11 only ever exercised the `baseline` profile. Running the format
+axis's `srt-live/*` cells across all 12 profiles for the first time
+surfaced four more distinct, run-log-verified gaps — none of them the
+async-KLV truncation above, even though the symptom text sometimes looks
+similar at a glance:
+
+6. **`av1-klv-a`/`av1-klv-b`, two different symptoms depending on cell
+   direction.** `srt-live/ffmpeg-to-us` (ffmpeg is the sender; this
+   direction's peer command has no `-map 0`, inherited verbatim from the
+   transport-axis `srt/ffmpeg-to-us` cell): this codebase's AV1 carriage
+   uses PMT stream_type `0x06`, the same generic classification as this
+   codebase's own KLV `PrivateData` convention — ffmpeg's stderr
+   confirms ("Stream 0, codec bin_data, is muxed as a private data
+   stream and may not be recognized upon reading"), and with *neither*
+   PID auto-selected by ffmpeg's default mapping, it refuses to even
+   open its output ("Output file does not contain any stream", exit
+   234) — its SRT connection never establishes, so `tst-interop recv`
+   times out on accept. `srt-live/us-to-ffmpeg` (ffmpeg listens; **does**
+   have `-map 0`): a different failure — "Error during demuxing:
+   Input/output error" partway through, after this codebase's own send
+   side confirms it pushed the full 240 video AUs / 80 KLV records
+   correctly — plausibly ffmpeg's live (non-seekable) mpegts demux being
+   less robust with two ambiguously-classified private-data PIDs than a
+   seekable file (not reproduced on any single-PID-per-type profile's
+   live-listen direction).
+7. **`h266-klv`, total failure on both directions.** ffmpeg's stderr
+   explicitly rejects this codebase's H.266/VVC VPS on every parsed
+   unit, including keyframes: "vps_video_parameter_set_id out of range:
+   0, but must be in [1,15]". The VPS RBSP bytes are `tst-core`'s own
+   tested `vps_main10` fixture (`crates/tst-interop/src/fixtures.rs`'s
+   `h266_au`, byte 0's top 4 bits = `vps_video_parameter_set_id` = 0).
+   H.266/VVC (unlike HEVC) reserves `vps_id=0` to mean a single-layer
+   bitstream with no VPS referenced — plausibly ffmpeg's VVC parser
+   (recently added, still maturing) doesn't implement that special case,
+   though **this was not independently verified against the H.266 V4
+   spec text** in this session. Either way ffmpeg never establishes
+   valid codec parameters for the PID and writes/receives nothing at all
+   ("Output file is empty, nothing was encoded" / zero video AUs on the
+   recv side). Potential library follow-up, not filed as a formal
+   backlog entry and not changed in this scripts-only task: confirm
+   `vps_id=0`'s H.266 spec meaning and consider whether the fixture
+   should use a nonzero id for broader third-party-decoder
+   compatibility.
+8. **`audio`, total failure on both directions.** ffmpeg cannot
+   determine this codebase's AAC-ADTS stream's sample rate quickly
+   enough over a live (non-seekable, default `analyzeduration=0`/
+   `probesize`) SRT source to open its mpegts output at all: "Could not
+   find codec parameters for stream 2 (Audio: aac ... unspecified
+   sample rate" / "sample rate not set" / "Could not write header
+   (incorrect codec parameters?)". ffmpeg's SRT connection never fully
+   opens on either direction, so the failure surfaces as a total
+   capture/receive failure (video+audio+KLV all zero, or `send`
+   reporting `TransportBroken` once ffmpeg's listener never accepts)
+   rather than the KLV-specific finding above — an ffmpeg live-source
+   auto-probe limitation with this codebase's particular AAC-ADTS
+   framing, not specific to KLV at all.
+9. **`two-program`, one dropped program each direction, two different
+   mechanisms.** `srt-live/ffmpeg-to-us` (no `-map 0`, the same root
+   cause as one of the AV1 symptoms above): ffmpeg's default
+   single-best-stream auto-selection picks only its highest-ranked video
+   stream, silently dropping the second program entirely (never
+   surfaced on task 11's `baseline`-only, single-program testing) — on
+   top of the usual KLV-payload-truncation finding on whichever
+   program's data does get through. `srt-live/us-to-ffmpeg` (**does**
+   have `-map 0`): the same "Error during demuxing: Input/output error"
+   live-demux robustness gap as the AV1 finding above, this time with a
+   2-full-program PSI topology (4 PIDs) instead of two ambiguous
+   private-data PIDs — this codebase's own send side confirms both
+   programs' full 480 video AUs / 160 KLV records were pushed correctly
+   first.
 
 ## Peer command-line notes (deviations from the plan's starting sketches)
 

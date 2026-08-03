@@ -136,7 +136,15 @@ SETTLE=2
 ENCRYPTION_PASSPHRASE="tst-interop-matrix-fixture-secret"
 
 echo "run-matrix: building tst-interop (release)..." >&2
-(cd "$REPO_ROOT" && SRT_FORCE_VENDORED=1 cargo build --release -p tst-interop)
+# Both *_FORCE_VENDORED vars matter, not just SRT's: rist-sys's build.rs
+# registers `rerun-if-env-changed=RIST_FORCE_VENDORED`, so leaving it
+# unset here (a) makes cargo re-run rist-sys's build script on every
+# invocation of this file (its cached-build fingerprint never matches
+# across runs that do vs. don't set it) and (b) on some future host
+# where librist happens to be pkg-config-discoverable, would silently
+# link the system copy instead of the vendored one this matrix's
+# evidence is meant to be gathered against.
+(cd "$REPO_ROOT" && SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo build --release -p tst-interop)
 BIN="$REPO_ROOT/target/release/tst-interop"
 
 jq -n \

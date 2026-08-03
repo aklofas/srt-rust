@@ -92,8 +92,8 @@ absorbed.
   - `n/a` — decode-only probes (`rtsp-serve/vlc-probe`, every format-axis
     `decode/*` cell) with no capture file to compare against anything;
     PASS means "no error/fatal marker in the peer's own log" (plus mpv's
-    own explicit no-stream-selected check — see lib.sh), mirroring the
-    outer project's `release-validation.sh` decoder-compatibility step.
+    own explicit no-stream-selected check — see lib.sh), mirroring this
+    project's own pre-release decoder-compatibility check.
     Also used for every format-axis `analyze/*` cell (a structural/
     counter assertion, not a byte- or profile-invariant comparison).
 
@@ -112,8 +112,13 @@ five root causes below. This is exactly what `expectations.toml`'s rows
 exist to document with a reason + reference, not something to paper over.
 
 1. **ffmpeg `-c copy` corrupts our KLV PID's elementary-stream payload
-   (10 of 17 transport-axis FAILs, +2 more on the `srt-live/*` and
-   `decode`-adjacent format-axis cells Task 12 added — see below).**
+   (10 of 17 transport-axis FAILs: 9 cells whose only cited mechanism is
+   this one, plus `rtsp-serve/ffmpeg-pull` where it compounds with a
+   second gap — item 5 below; plus 14 `srt-live/*` format-axis rows: 12
+   from 6 profiles × 2 directions using this mechanism directly, plus
+   `klv-sync`'s own 2-row variant below — see the "Affects" list at the
+   end of this item for the exact profile names and the 5 profiles that
+   fail *earlier*, for unrelated reasons, instead).**
    ★Task 12 refined this finding: it is **not** primarily a PTS-loss bug
    as originally described — it is a **5-byte payload truncation** ffmpeg
    applies to every KLV PES packet it demuxes, independent of whether a

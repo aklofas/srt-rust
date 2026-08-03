@@ -891,6 +891,46 @@ mod tests {
         assert_eq!(results.cells[0].verdict, Verdict::Pass);
     }
 
+    // Two candidates for the SAME (cell, profile): the first has a
+    // `failure_contains` that does NOT match this FAIL's text, the
+    // second is unconstrained. `find_expectation`'s single-predicate
+    // `Iterator::find` must skip the non-matching first candidate and
+    // resolve via the second, rather than stopping at (and shadowing
+    // behind) the first just because cell+profile matched — pins this
+    // against a future two-phase (match cell+profile first, filter by
+    // failure_contains second) refactor that could silently break it.
+    #[test]
+    fn non_matching_failure_contains_falls_through_to_next_candidate() {
+        let raw = vec![raw_cell_with_failures(
+            "srt-live/ffmpeg-to-us",
+            "baseline",
+            RawVerdict::Fail,
+            &["recv FAILed: KLV records: got 0, want >= 56 (10 Hz x 8s x 70% slack)"],
+        )];
+        let decoy = expectation_with_failure_contains(
+            "srt-live/ffmpeg-to-us",
+            "baseline",
+            ExpectVerdict::ExpectedUnsupported,
+            "wrong mechanism — should never be selected",
+            "stream_sha256 mismatch",
+        );
+        let real = expectation(
+            "srt-live/ffmpeg-to-us",
+            "baseline",
+            ExpectVerdict::ExpectedUnsupported,
+            "KLV payload truncation",
+        );
+        let results = build_results(raw, &[decoy, real], serde_json::json!({}));
+
+        assert_eq!(results.summary.fail, 0);
+        assert_eq!(results.cells[0].verdict, Verdict::ExpectedUnsupported);
+        assert_eq!(
+            results.cells[0].expectation_reason.as_deref(),
+            Some("KLV payload truncation"),
+            "must resolve via the second (matching) candidate, not the first (non-matching, cell+profile-only) one"
+        );
+    }
+
     // (d) expectation whose cell PASSes -> stale_expectations entry.
     #[test]
     fn passing_cell_with_expected_unsupported_expectation_is_stale() {

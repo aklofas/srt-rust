@@ -88,12 +88,13 @@ workflow. See the workflow file's own comments for the exact reasoning.
 
 ## Findings highlights
 
-Every `FAIL` this matrix produces is investigated and recorded in
+Every `FAIL` this matrix produces is investigated and recorded — in
 [`scripts/interop/README.md`](/scripts/interop/README.md)'s "Known,
-already-evidenced gaps" section with a reproduction recipe, byte-level
-evidence, and a root-cause writeup — not papered over with a looser
-assertion. Five clusters account for all 65 `EXPECTED-UNSUPPORTED` +
-`KNOWN-FLAKY` cells:
+already-evidenced gaps" section and/or the corresponding
+[`expectations.toml`](/scripts/interop/expectations.toml) reason field,
+each with the mechanism and a peer-tool version stamp — not papered over
+with a looser assertion. Five clusters account for all 65
+`EXPECTED-UNSUPPORTED` + `KNOWN-FLAKY` cells:
 
 - **FFmpeg strips the leading 5 bytes of every KLV record on `-c copy`
   remux (the largest cluster).** Verified byte-for-byte with `tsp -P pes
@@ -148,9 +149,12 @@ assertion. Five clusters account for all 65 `EXPECTED-UNSUPPORTED` +
 
 None of these are library bugs on this codebase's own PMT signaling, PES
 framing, or wire conformance — each is independently confirmed by
-byte-level or log-level evidence in the linked README.md sections. Read
-there for the exact reproduction command, tool version, and root-cause
-argument behind each one.
+byte-level or log-level evidence, recorded in README.md's gaps list for
+the transport-axis and multi-mechanism findings, or in the relevant
+`expectations.toml` row's `reason` field for the single-mechanism
+format-axis decode findings (the 12 `decode/mpv/*` and `decode/vlc/*`
+rows). Read either source for the exact reproduction command, tool
+version, and root-cause argument behind each one.
 
 ## Soak evidence
 
@@ -175,11 +179,11 @@ verdict plus RSS-growth slopes per process.
 Both legs' observed drop rate sits well inside a 6σ binomial tolerance band
 around the proxy's configured 2% loss rate (±0.159 percentage points for
 the SRT leg's packet volume, ±0.177pp for RIST's — the actual deviation is
-roughly a fifth of one sigma in both cases, a 5.8-5.9x margin from the
-tolerance boundary), and `recv` reported no verification failures on either
+roughly one sigma in both cases, comfortably inside the 6σ tolerance band —
+a 5.8-5.9x margin), and `recv` reported no verification failures on either
 leg.
 
-RSS sampling showed apparent growth of roughly 3.6-5.8 MiB/hour in the
+RSS sampling showed apparent growth of roughly 3.6-5.7 MiB/hour in the
 `send`/`recv` processes (the proxy processes themselves stayed flat). This
 is a harness bookkeeping artifact, not a leak in the library under test:
 `send`/`recv` were accumulating an unbounded KLV digest for post-run

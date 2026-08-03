@@ -19,12 +19,34 @@
 //!
 //! # Stream-end flush
 //!
-//! When the transport closes (`TransportError::Closed`), `DemuxReceiver` calls
-//! `Demuxer::flush` before returning `Ok(None)`. This surfaces any partial
-//! PES sitting in reassembly state (typically the final video AU, whose PES
-//! packet length is 0 — length-unknown — and is only flushed when the next
-//! PES starts or the stream ends). In normal live streams the flush emits
-//! nothing; for finite test data it recovers the last sample.
+//! `DemuxReceiver` calls `Demuxer::flush` before surfacing *any* terminal
+//! condition that ends the receive loop — not just a clean
+//! `TransportError::Closed` (peer-EOS, → `Ok(None)`), but also
+//! `ShellErrorKind::TransportBroken` (socket died) and
+//! `ShellErrorKind::Closed` (caller-initiated `close()`/`cancel()` from
+//! another thread while `recv_event` was blocked). This surfaces any
+//! partial PES sitting in reassembly state (typically the final video AU,
+//! whose PES packet length is 0 — length-unknown — and is only flushed when
+//! the next PES starts or the stream ends). All three paths funnel through
+//! the same flush call because `Demuxer::flush` is PID-agnostic: it drains
+//! whatever partial PES state exists across every stream (video, audio,
+//! KLV), not just video.
+//!
+//! `Backpressure` is deliberately excluded — it means "try the same recv
+//! again", not "the loop is over", so flushing there would prematurely
+//! finalize an access unit that's still being received.
+//!
+//! In normal live streams the flush emits nothing (no partial PES pending);
+//! for finite test data, or a session that ends mid-transmission, it
+//! recovers whatever was buffered. On a genuinely mid-stream break this can
+//! mean the flushed sample is a **truncated** access unit rather than a
+//! complete one — the same trade-off the clean-EOF path already accepted
+//! (a sender that stops mid-PES still looks like ordinary EOF to some
+//! transports). This is not a new risk: `DemuxEvent::Sample`/`Metadata`
+//! payloads from any receive path are never guaranteed complete against the
+//! original encoder-side AU boundaries when the wire data itself is
+//! truncated — callers already need to tolerate arbitrary payload content
+//! from hostile or interrupted wire data.
 
 use crate::receiver::{Receiver, ReceiverConfig, ReceiverErrorSource};
 use crate::shell_error::ShellErrorKind;
@@ -100,6 +122,12 @@ pub struct DemuxReceiver<R: RecvTransport> {
     ts: Receiver<R>,
     demux: Demuxer,
     byte_sinks: Vec<ByteSink>,
+    /// Set when a terminal transport error (`TransportBroken` / `Closed`)
+    /// is observed but `Demuxer::flush` produced queued events first — the
+    /// events drain through `recv_event`'s normal fast path on subsequent
+    /// calls, and this error is returned once that queue is empty. See
+    /// the "Stream-end flush" module docs.
+    terminal_error: Option<DemuxReceiverError>,
     /// Lifetime span — see [`crate::shell_error::ShellSpan`] for the
     /// unwind-safe rationale. Private; never exposed publicly.
     _span: crate::shell_error::ShellSpan,
@@ -130,6 +158,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             ts: Receiver::new(transport, ReceiverConfig::default()),
             demux: Demuxer::new(),
             byte_sinks: Vec::new(),
+            terminal_error: None,
             _span: std::panic::AssertUnwindSafe(span),
         }
     }
@@ -148,6 +177,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             ts: Receiver::new(transport, ReceiverConfig::default()),
             demux: Demuxer::with_config(options),
             byte_sinks: Vec::new(),
+            terminal_error: None,
             _span: std::panic::AssertUnwindSafe(span),
         }
     }
@@ -167,9 +197,12 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// - An event is available in the demuxer's internal queue → `Ok(Some(e))`.
     /// - The transport closes cleanly → flushes the demuxer and returns
     ///   `Ok(None)` once the queue is drained.
-    /// - The transport fails → `Err(e)` with `e.kind` of `TransportBroken` or
-    ///   `Closed` (caller-initiated) — inspect `e.source` for the inner
-    ///   [`DemuxReceiverErrorSource::Transport`] variant.
+    /// - The transport fails terminally (broken socket, or a cross-thread
+    ///   `close()`/`cancel()`) → flushes the demuxer (same as the clean-close
+    ///   path — see the "Stream-end flush" module docs) and drains any
+    ///   resulting events as `Ok(Some(e))` before returning `Err(e)` with
+    ///   `e.kind` of `TransportBroken` or `Closed` — inspect `e.source` for
+    ///   the inner [`DemuxReceiverErrorSource::Transport`] variant.
     /// - The demuxer rejects a packet in strict mode → `Err(e)` with `e.kind`
     ///   of `InputMalformed` — inspect `e.source` for the inner
     ///   [`DemuxReceiverErrorSource::Demux`] variant.
@@ -201,10 +234,15 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// - [`ShellErrorKind::InputMalformed`] — demuxer rejected a packet
     ///   (strict-mode violation, unrecoverable malformation, or malformed PES).
     /// - [`ShellErrorKind::TransportBroken`] — transport socket is broken.
+    ///   The demuxer is flushed first (see "Stream-end flush" module docs);
+    ///   any events that produced drain via `Ok(Some(e))` on this and
+    ///   subsequent calls before this error is finally returned.
     /// - [`ShellErrorKind::Closed`] — `close()` was invoked from another
     ///   thread while this call was blocked, or the cancel signal fired
-    ///   (`ExplicitClose` path). Same-thread `close()` then `recv_event()`
-    ///   drains buffered events and returns `Ok(None)` instead.
+    ///   (`ExplicitClose` path). Flushed the same way as `TransportBroken`
+    ///   above. Same-thread `close()` then `recv_event()` instead routes
+    ///   through `TransportError::Closed` → `EndOfStream` and drains
+    ///   buffered events and returns `Ok(None)`.
     /// - [`ShellErrorKind::EndOfStream`] — peer closed the connection cleanly
     ///   (`TransportError::Closed`), but only surfaced here if a partial PES
     ///   flush fails; the normal EOF path returns `Ok(None)`.
@@ -249,6 +287,12 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             if let Some(e) = self.demux.next_event() {
                 return Ok(Some(e));
             }
+            // A previous call hit a terminal transport error and flushed the
+            // demuxer; the events that produced have now drained through the
+            // fast path above. Surface the error that ended the loop.
+            if let Some(err) = self.terminal_error.take() {
+                return Err(err);
+            }
             // Pull the next aligned 188-byte TS packet.
             let pkt = match self.ts.next_packet() {
                 Ok(p) => p,
@@ -261,6 +305,32 @@ impl<R: RecvTransport> DemuxReceiver<R> {
                         return Ok(Some(ev));
                     }
                     return Ok(None);
+                }
+                Err(e)
+                    if matches!(
+                        e.kind,
+                        crate::shell_error::ShellErrorKind::TransportBroken
+                            | crate::shell_error::ShellErrorKind::Closed
+                    ) =>
+                {
+                    // Terminal, but not a clean peer EOS: the socket died, or
+                    // a caller closed/cancelled from another thread while
+                    // this call was blocked. Either way no further
+                    // `next_packet` call will make progress, so flush the
+                    // same partial-PES state the EndOfStream path recovers —
+                    // see the "Stream-end flush" module docs — before
+                    // surfacing the error. `Backpressure` deliberately does
+                    // NOT hit this arm: it means "retry", not "the loop is
+                    // over", and flushing there would prematurely finalize
+                    // an access unit that's still being received.
+                    self.demux.flush();
+                    let ReceiverErrorSource::Transport(te) = e.source;
+                    let err = DemuxReceiverError::from(te);
+                    if let Some(ev) = self.demux.next_event() {
+                        self.terminal_error = Some(err);
+                        return Ok(Some(ev));
+                    }
+                    return Err(err);
                 }
                 Err(e) => {
                     // Re-classify via DemuxReceiverError's From<TransportError>

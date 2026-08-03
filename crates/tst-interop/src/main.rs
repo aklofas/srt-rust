@@ -58,7 +58,25 @@ fn require_value(args: &[String], i: usize, context: &str) -> String {
     }
 }
 
+/// Wires `tracing` events (e.g. `tst_pipeline::managed_receive`'s /
+/// `tst_pipeline::managed_demux_receiver`'s reconnect-attempt logs) to
+/// stderr, gated by `RUST_LOG` (silent — no subscriber overhead beyond
+/// the check itself — when unset). Load-bearing for diagnosing a stuck
+/// `--managed` reconnect loop on a live soak run: without this, every
+/// `info!`/`warn!`/`debug!` call in `tst-pipeline`'s reconnect
+/// decorators is silently discarded (no subscriber installed = no
+/// output), leaving zero visibility into attempt counts/backoff timing
+/// from this binary's own logs.
+fn init_tracing() {
+    use tracing_subscriber::EnvFilter;
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
 fn main() {
+    init_tracing();
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
@@ -279,13 +297,26 @@ fn run_send(args: &[String]) -> ! {
 }
 
 /// `recv --url URL --expect PROFILE --seconds N [--json OUT]
-/// [--no-klv-digest]`
+/// [--managed] [--no-klv-digest]`
 ///
 /// Builds a live transport from `URL` and receives `N` seconds of
 /// traffic from it, checking the result against `PROFILE`'s invariants.
 /// Exits 0 on pass, 1 on fail, 2 on usage/transport error. `--json OUT`
 /// additionally writes the full `VerifyReport` as JSON to `OUT` (or
 /// stdout, if `OUT` is `-`).
+///
+/// `--managed` drives the capture through
+/// `tst_pipeline::ManagedDemuxReceiver`/`ManagedRecvTransport` (see
+/// `recv::run_managed`'s doc comment) instead of a plain
+/// `DemuxReceiver`, so a transport break rebuilds (or, for a listener-
+/// mode SRT URL, re-binds + re-accepts) instead of ending the capture
+/// — `soak.sh`'s SRT leg uses this to survive scheduled proxy outage
+/// windows on the RECEIVE side (the send side already had this via
+/// `send --managed`; a plain recv against a listener-mode SRT URL only
+/// ever accepts ONE connection for the whole process lifetime, so it
+/// alone would end the capture at the first outage even with a managed
+/// sender retrying forever on the other end). `VerifyReport.reconnects`
+/// comes back `Some(n)` instead of `null`.
 ///
 /// `--no-klv-digest` — see `send`'s own doc comment for the shared
 /// rationale (`soak.sh` passes it on both sides of both legs);
@@ -296,6 +327,7 @@ fn run_recv(args: &[String]) -> ! {
     let mut expect: Option<String> = None;
     let mut seconds: Option<f64> = None;
     let mut json_out: Option<String> = None;
+    let mut managed = false;
     let mut no_klv_digest = false;
 
     let mut i = 0;
@@ -316,6 +348,10 @@ fn run_recv(args: &[String]) -> ! {
             "--json" => {
                 json_out = Some(require_value(args, i, "recv: --json"));
                 i += 2;
+            }
+            "--managed" => {
+                managed = true;
+                i += 1;
             }
             "--no-klv-digest" => {
                 no_klv_digest = true;
@@ -345,11 +381,15 @@ fn run_recv(args: &[String]) -> ! {
         std::process::exit(2);
     });
 
-    let report = recv::run(&url, profile, seconds, json_out.as_deref(), no_klv_digest)
-        .unwrap_or_else(|e| {
-            eprintln!("recv: {e}");
-            std::process::exit(2);
-        });
+    let report = if managed {
+        recv::run_managed(&url, profile, seconds, json_out.as_deref(), no_klv_digest)
+    } else {
+        recv::run(&url, profile, seconds, json_out.as_deref(), no_klv_digest)
+    }
+    .unwrap_or_else(|e| {
+        eprintln!("recv: {e}");
+        std::process::exit(2);
+    });
 
     if report.pass {
         eprintln!("recv: PASS ({expect})");

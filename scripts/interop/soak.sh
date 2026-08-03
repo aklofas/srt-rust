@@ -14,8 +14,12 @@
 #     `tst_pipeline::ManagedTransport` so a transport break reconnects)
 #     -> impairment proxy (2% loss, 20ms jitter, 1% reorder, a seeded
 #     RNG, and a 90s full-drop outage window every 6h) -> `tst-interop
-#     recv`. The managed sender is what's expected to survive each
-#     outage window and reconnect once it closes.
+#     recv --managed` (`ManagedRecvTransport`/`ManagedDemuxReceiver` —
+#     a listener-mode SRT recv otherwise accepts exactly ONE connection
+#     for its whole process lifetime, so without this flag the FIRST
+#     outage would end the capture for good even though the sender
+#     keeps retrying forever on the other end). BOTH sides must survive
+#     each outage window and reconnect once it closes.
 #   - `rist` leg: the same shape over RIST, through a SECOND impaired
 #     proxy with the SAME continuous impairment but NO outage window.
 #     One outage-driven reconnect assertion (the srt leg) is enough —
@@ -68,7 +72,19 @@
 # on why the engine is deterministic given seed+config). This script's
 # own send/recv invocations already pass `--no-klv-digest` on every
 # process it launches — nothing extra to pass here for that; see the
-# "Expected outputs" note below on what it changes in the per-leg JSON:
+# "Expected outputs" note below on what it changes in the per-leg JSON.
+#
+# **Launch this genuinely detached — `nohup ... & disown`, exactly as
+# shown below — and NEVER through a supervising tool/session mechanism
+# that can enforce its own lifetime cap on the invocation** (found the
+# hard way during this arc's own fix-wave validation: a session-tool
+# background-command wrapper silently killed a 1-hour smoke around the
+# ~60-minute mark, well short of even that short run's own deadline —
+# `nohup`+`disown` detaches the process from that supervision entirely,
+# so it keeps running past the launching tool call's own return and
+# past the launching session ending). Don't wait on the launching
+# command itself for 72 hours; instead poll for `soak-results.json`
+# (or `pids/*.pid` + `ps`) to detect completion:
 #
 #   nohup bash scripts/interop/soak.sh --outdir ~/interop-soak-$(date +%F) --seed 1 &
 #
@@ -93,10 +109,15 @@
 # locally: short enough to finish in about an hour, long enough for the
 # RSS sampler to collect a real post-warmup regression window (this
 # module's warmup formula scales down for a short run — see report.rs).
-# A 1h run never reaches even one 6h outage window, so the smoke's
-# reconnect/outage-window checks are exercised in `report.rs`'s own
-# unit tests, not by this particular run — see this task's own report
-# for why that's an accepted, well-understood trade-off.
+# A 1h run never reaches even one 6h outage window, so the smoke proves
+# `recv --managed`'s HAPPY path only (steady-state receiving is
+# unaffected by wrapping it in `ManagedRecvTransport`/
+# `ManagedDemuxReceiver` — no spurious reconnects, no throughput or
+# correctness regression); the reconnect/outage-window path itself is
+# exercised by `report.rs`'s own unit tests plus targeted short-outage
+# dry-runs (not this script) — see this task's own report for why
+# that's an accepted, well-understood trade-off ahead of the real 72h
+# run, which DOES reach the schedule's outage windows for real.
 #
 # linux-x86_64/aarch64 only, like the rest of this arc's interop
 # tooling (see lib.sh's header for the shell-portability stance this
@@ -202,6 +223,24 @@ SETTLE=2
 # synchronously right after bind, so this is a generous ceiling, not
 # an expected wait.
 PROXY_ADDR_POLL_TIMEOUT_S=10
+# Both proxies launch (and start their OWN --run-seconds countdown)
+# strictly BEFORE the sampler's own $START_EPOCH is captured — by the
+# time all six processes plus two `wait_for_bound_addr` polls have
+# fired, real process-spawn + scheduling overhead (confirmed
+# empirically: measured up to ~6.5s for the srt leg, ~2.5s for rist)
+# means a proxy's own `--run-seconds` deadline, though sized to line up
+# with the sampler's nominal end-of-run instant, can elapse a few
+# seconds BEFORE the sampler's next 30s tick — which would otherwise
+# sample a PID that's already exited and record an empty `rss_kb`,
+# indistinguishable from a genuine crash (`report.rs`'s
+# `zero_process_exits` verdict). Comfortably larger than one 30s
+# sampler tick so the fix holds even under scheduling jitter well
+# beyond what was actually measured. Applied on BOTH sides of the gap:
+# the sampler stops this much EARLIER than its nominal deadline (losing
+# well under 0.02% of a 72h run's own RSS coverage — negligible), and
+# both proxies' `--run-seconds` gain this much extra margin, so neither
+# fix alone has to carry the full burden.
+SAMPLER_END_SLACK_S=35
 
 echo "soak: building tst-interop (release)..." >&2
 (cd "$REPO_ROOT" && SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo build --release -p tst-interop)
@@ -262,7 +301,10 @@ wait_for_bound_addr() {
 # OUTAGE_PERIOD_S`, ...) is exactly the outage this run means to
 # exercise a real mid-stream reconnect against.
 SRT_PROXY_WARMUP_S=$((OUTAGE_DUR_S + 30))
-SRT_PROXY_RUN_SECONDS=$((TOTAL_SECONDS + SRT_PROXY_WARMUP_S))
+# + SAMPLER_END_SLACK_S: see that constant's own doc comment — keeps
+# this proxy alive past the sampler's last tick instead of exiting a
+# few seconds ahead of it.
+SRT_PROXY_RUN_SECONDS=$((TOTAL_SECONDS + SRT_PROXY_WARMUP_S + SAMPLER_END_SLACK_S))
 
 SRT_RECV_PORT=$(free_port)
 
@@ -290,6 +332,7 @@ sleep "$SRT_PROXY_WARMUP_S"
 # are seconds long, so the accumulation never mattered there.
 "$BIN" recv --url "srt://:$SRT_RECV_PORT?mode=listener" --expect baseline \
   --seconds "$TOTAL_SECONDS" --json "$OUTDIR/srt/recv-report.json" --no-klv-digest \
+  --managed \
   >"$OUTDIR/logs/srt-recv.log" 2>&1 &
 record_pid srt-recv $!
 sleep "$SETTLE"
@@ -311,9 +354,12 @@ record_pid rist-recv $!
 sleep "$SETTLE"
 
 RIST_PROXY_STDOUT="$OUTDIR/logs/rist-proxy.stdout"
+# + SAMPLER_END_SLACK_S: same reasoning as the srt proxy's own
+# --run-seconds above.
+RIST_PROXY_RUN_SECONDS=$((TOTAL_SECONDS + SAMPLER_END_SLACK_S))
 "$BIN" proxy --listen 127.0.0.1:0 --forward "127.0.0.1:$RIST_RECV_PORT" \
   --loss "$LOSS_PCT" --jitter "$JITTER_MS" --reorder "$REORDER" --seed "$SEED" \
-  --stats-json "$OUTDIR/rist/proxy-stats.json" --run-seconds "$TOTAL_SECONDS" \
+  --stats-json "$OUTDIR/rist/proxy-stats.json" --run-seconds "$RIST_PROXY_RUN_SECONDS" \
   >"$RIST_PROXY_STDOUT" 2>"$OUTDIR/logs/rist-proxy.log" &
 record_pid rist-proxy $!
 RIST_PROXY_ADDR=$(wait_for_bound_addr "$RIST_PROXY_STDOUT")
@@ -329,6 +375,12 @@ record_pid rist-send $!
 
 START_EPOCH=$(date +%s)
 DEADLINE=$((START_EPOCH + TOTAL_SECONDS))
+# The sampler itself stops SAMPLER_END_SLACK_S before this nominal
+# deadline — see that constant's own doc comment. $DEADLINE stays the
+# "official" end-of-run instant used for the log line below (and
+# matches what an operator would expect from --hours), not what the
+# sampler loop actually polls against.
+SAMPLER_DEADLINE=$((DEADLINE - SAMPLER_END_SLACK_S))
 echo "soak: running until $(date -u -d "@$DEADLINE" +%Y-%m-%dT%H:%M:%SZ) (${HOURS}h, seed=$SEED)..." >&2
 
 # sample_rss_loop <deadline_epoch> <start_epoch> <out_csv> <leg:process:pid>...
@@ -362,7 +414,7 @@ sample_rss_loop() {
   done
 }
 
-sample_rss_loop "$DEADLINE" "$START_EPOCH" "$RSS_CSV" \
+sample_rss_loop "$SAMPLER_DEADLINE" "$START_EPOCH" "$RSS_CSV" \
   "srt:send:${PIDS[srt-send]}" "srt:proxy:${PIDS[srt-proxy]}" "srt:recv:${PIDS[srt-recv]}" \
   "rist:send:${PIDS[rist-send]}" "rist:proxy:${PIDS[rist-proxy]}" "rist:recv:${PIDS[rist-recv]}" &
 record_pid sampler $!

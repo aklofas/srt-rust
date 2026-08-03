@@ -9,11 +9,18 @@
 //! - The **client** (whoever a test/CLI user points at this proxy in
 //!   place of the real destination — e.g. an SRT caller). Its address is
 //!   unknown up front and is *learned* from the first datagram this
-//!   socket receives whose source isn't `forward` (see below). Every
-//!   datagram from the learned client peer is the one [`crate::impair::
-//!   Engine`] governs: `Engine::decide` runs, and the result (drop / forward /
-//!   dup-forward, each with its own delay) determines what — if
-//!   anything — gets relayed on to `forward`, and when.
+//!   socket receives whose source isn't `forward` (see below), and can
+//!   be RE-learned from a different source later — but only once the
+//!   PREVIOUS client peer has gone quiet for at least
+//!   `CLIENT_RELEARN_GRACE` (that constant's own doc comment has the
+//!   full "why": a bare "first datagram wins forever" rule is
+//!   incompatible with a client that legitimately reconnects from a
+//!   fresh source port, e.g. `send --managed`'s reconnect factory).
+//!   Every datagram from the current client peer is the one
+//!   [`crate::impair::Engine`] governs: `Engine::decide` runs, and the
+//!   result (drop / forward / dup-forward, each with its own delay)
+//!   determines what — if anything — gets relayed on to `forward`, and
+//!   when.
 //! - The **real destination** at `forward` (e.g. the actual SRT
 //!   listener). Datagrams whose source address equals `forward` are
 //!   replies flowing back toward the client (SRT ACKs, RTCP, etc.) —
@@ -97,6 +104,43 @@ const STATS_INTERVAL: Duration = Duration::from_secs(10);
 /// UDP datagram (65,507 bytes), so a single `recv_from` call can never
 /// silently truncate a relayed packet.
 const BUF_SIZE: usize = 65536;
+
+/// How long the CURRENT `client_peer` must have gone quiet (no forward-
+/// direction datagram from it) before a datagram from a DIFFERENT
+/// source is accepted as a legitimate re-learn rather than ignored as a
+/// stray/spoofed packet.
+///
+/// **Why this exists — found empirically, not designed up front.**
+/// This proxy's original rule ("learn the client from the first
+/// forward-direction datagram, for the process's entire lifetime, full
+/// stop") is fine for a single unbroken connection but is fundamentally
+/// incompatible with a client that legitimately reconnects: `tst-srt`'s
+/// `Socket::connect_with` creates a brand-new libsrt socket handle per
+/// call with no explicit local bind, so each reconnect attempt (`send
+/// --managed`'s factory, or `recv --managed`'s) uses a FRESH ephemeral
+/// UDP source port. Confirmed directly while developing this fix: an
+/// 8-second outage window caused the sender's managed reconnect to
+/// retry from six DIFFERENT source ports across six attempts, all
+/// correctly forwarded to the real destination (forwarding was never
+/// gated on `client_peer`) but every REPLY kept routing back to the
+/// now-dead original port — the handshake could never complete, no
+/// matter how many times either side retried, because the OLD bare
+/// `client_peer.get_or_insert(peer)` never updates once set.
+///
+/// **Why a grace period, not "always re-learn on a new source."**
+/// Unconditionally re-aiming the return path on ANY new source would
+/// defeat `spoofed_third_party_datagram_does_not_hijack_the_return_
+/// path`'s whole point: a stray/malicious datagram from an unrelated
+/// third socket must not hijack replies meant for the real client. That
+/// test's spoofed datagram arrives with essentially ZERO gap since the
+/// real client's own last datagram (same single-threaded test, no sleep
+/// in between) — so any grace period meaningfully longer than "in-
+/// process instantaneous" and meaningfully shorter than the seconds-
+/// scale gap a genuine SRT peer-idle-timeout break produces (confirmed
+/// empirically: the break-to-first-reconnect-attempt gap was on the
+/// order of several seconds, never sub-second) safely tells the two
+/// cases apart. 2 seconds is comfortably inside that gap.
+const CLIENT_RELEARN_GRACE: Duration = Duration::from_secs(2);
 
 /// Per-field mirror of [`ImpairConfig`], echoed into [`ProxyStats`].
 /// `ImpairConfig` itself doesn't derive `Serialize`/`Deserialize` (this
@@ -282,6 +326,10 @@ pub fn run(
     let deadline = run_seconds.map(|s| run_start + Duration::from_secs(s));
 
     let mut client_peer: Option<SocketAddr> = None;
+    // Wall-clock time of the last forward-direction datagram FROM
+    // `client_peer` specifically (not from anyone) — see
+    // `CLIENT_RELEARN_GRACE`'s own doc comment for what this gates.
+    let mut client_last_seen: Option<Instant> = None;
     let mut heap: BinaryHeap<Reverse<Delayed>> = BinaryHeap::new();
     let mut next_seq: u64 = 0;
     let mut next_order: u64 = 0;
@@ -321,13 +369,44 @@ pub fn run(
                     }
                 } else {
                     // Forward direction: this is the traffic
-                    // `impair::Engine` governs. Learn the client peer
-                    // from the FIRST such datagram only (per the module
-                    // doc's "Topology and direction semantics" section)
-                    // -- a stray datagram from some other source later
-                    // in the session must not re-aim the return path
-                    // mid-stream.
-                    client_peer.get_or_insert(peer);
+                    // `impair::Engine` governs. Learn (or RE-learn, past
+                    // a quiet grace period — see `CLIENT_RELEARN_GRACE`)
+                    // the client peer from datagrams on this path; see
+                    // that constant's own doc comment for why a bare
+                    // "first datagram only" rule (this proxy's original
+                    // shape) is incompatible with a legitimate client
+                    // reconnect.
+                    match client_peer {
+                        None => {
+                            client_peer = Some(peer);
+                            client_last_seen = Some(now);
+                        }
+                        Some(existing) if existing == peer => {
+                            client_last_seen = Some(now);
+                        }
+                        Some(existing) => {
+                            let quiet_long_enough = client_last_seen.is_none_or(|seen| {
+                                now.duration_since(seen) >= CLIENT_RELEARN_GRACE
+                            });
+                            if quiet_long_enough {
+                                eprintln!(
+                                    "proxy: re-learned client peer {peer} (was {existing}, quiet {:?}) \
+                                     — treating as a legitimate reconnect, not a spoof",
+                                    client_last_seen.map(|seen| now.duration_since(seen))
+                                );
+                                client_peer = Some(peer);
+                                client_last_seen = Some(now);
+                            }
+                            // else: still within the grace window since
+                            // `existing` was last seen — a stray/spoofed
+                            // datagram from a third source must not
+                            // re-aim the return path (see
+                            // `spoofed_third_party_datagram_does_not_
+                            // hijack_the_return_path`); the packet is
+                            // still relayed below either way, just not
+                            // treated as a peer change.
+                        }
+                    }
                     let elapsed_ms = run_start.elapsed().as_millis() as u64;
                     let order_key = next_order;
                     next_order += 1;

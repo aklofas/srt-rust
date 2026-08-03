@@ -95,12 +95,29 @@ paper over.
    PTS/DTS field at all (`tsp -P pes` on the remuxed file shows a 9-byte
    PES header — no timestamp fields present; ffmpeg itself warns
    "Timestamps are unset in a packet for stream 1"). This reproduces
-   identically on a pure file-to-file `ffmpeg -i in.ts -c copy
-   -copy_unknown -f mpegts out.ts` remux with no network transport involved
-   at all — it is an ffmpeg mpegts-demux/mux limitation with unknown/data
-   elementary streams, not a transport-specific bug. `-copy_unknown` and
-   `-fflags +genpts` were both tried and neither restores a KLV record
-   count in the remuxed capture. Affects: `hls/ffmpeg-pull`,
+   identically on a pure file-to-file remux with no network transport
+   involved at all — `-map 0` is required (ffmpeg's default automatic
+   stream selection excludes data/unknown-codec streams, so without it the
+   KLV PID is silently absent from the output rather than present-but-
+   timestamp-less — the exact opposite failure mode, so don't drop it when
+   reproducing this):
+
+   ```
+   tst-interop gen --profile baseline --seconds 5 --out in.ts
+   ffmpeg -y -i in.ts -map 0 -c copy -copy_unknown -f mpegts out.ts
+   tst-interop verify --file out.ts --expect baseline --seconds 5
+   ```
+
+   Re-run to confirm this citation before relying on it: ffmpeg's own
+   stderr includes `Timestamps are unset in a packet for stream 1. This is
+   deprecated and will stop working in the future.`, and `tst-interop
+   verify` reports `verify: FAIL (baseline): KLV records: got 0, want >= 35
+   (10 Hz x 5s x 70% slack)` — the identical symptom every live-transport
+   ffmpeg-remux cell in this matrix shows. It is an ffmpeg mpegts-demux/mux
+   limitation with unknown/data elementary streams, not a transport-
+   specific bug. `-copy_unknown` and `-fflags +genpts` were both tried and
+   neither restores a KLV record count in the remuxed capture. Affects:
+   `hls/ffmpeg-pull`,
    `rist/ffmpeg-to-us`, `srt/{us,ffmpeg}-to-{ffmpeg,us}[-encrypted]` (4
    cells), `tcp/us-to-ffmpeg`, `tcp/ffmpeg-to-us`, `udp/ffmpeg-to-us`,
    `rtsp-serve/ffmpeg-pull` — every cell where ffmpeg touches our KLV PID

@@ -191,19 +191,25 @@ run_send_peer_recv() {
 
   local vjson="$WORK/$(slug "$id")-verify.json"
   local vrc=0
-  "$BIN" verify --file "$out_file" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$vjson" \
+  timeout --kill-after=5 "${budget}s" \
+    "$BIN" verify --file "$out_file" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$vjson" \
     >>"$log" 2>&1 || vrc=$?
 
+  # Every jq read below is guarded against a truncated/malformed
+  # tool-produced JSON file — see run_peer_send_recv's matching comment
+  # for why a bare `x=$(jq ...)` would otherwise abort the whole matrix.
   local -a reasons=()
   if [[ $vrc -ne 0 ]]; then
-    reasons+=("verify FAILed against the peer's captured file: $(jq -r '.failures | join("; ")' "$vjson" 2>/dev/null)")
+    local verify_failures
+    verify_failures=$(jq -r '.failures | join("; ")' "$vjson" 2>/dev/null) || verify_failures="(unparseable failures list)"
+    reasons+=("verify FAILed against the peer's captured file: $verify_failures")
   fi
   if [[ "$tier" == "transparent" ]]; then
     local sent_hash got_hash
-    sent_hash=$(jq -r '.stream_sha256' "$send_json")
-    got_hash=$(jq -r '.metrics.stream_sha256' "$vjson")
-    if [[ "$sent_hash" != "$got_hash" ]]; then
-      reasons+=("byte-transparent tier: stream_sha256 mismatch (sent $sent_hash, peer capture $got_hash)")
+    sent_hash=$(jq -r '.stream_sha256' "$send_json" 2>/dev/null) || sent_hash=""
+    got_hash=$(jq -r '.metrics.stream_sha256' "$vjson" 2>/dev/null) || got_hash=""
+    if [[ -z "$sent_hash" || -z "$got_hash" || "$sent_hash" != "$got_hash" ]]; then
+      reasons+=("byte-transparent tier: stream_sha256 mismatch (sent ${sent_hash:-<unparseable>}, peer capture ${got_hash:-<unparseable>})")
     fi
   fi
 
@@ -269,17 +275,29 @@ run_peer_send_recv() {
     return 0
   fi
 
+  # jq reads a file the peer/our own process can leave truncated (e.g. a
+  # `timeout --kill-after` mid-write) — a bare `x=$(jq ...)` propagates
+  # jq's failure as the assignment's own exit status and aborts the WHOLE
+  # matrix under `set -e`. Every jq call below is guarded the same way:
+  # `|| var=""`, then `-z` is treated as its own explicit failure reason
+  # rather than silently falling through (an empty `pass` must never be
+  # mistaken for `pass != "true"`'s ordinary FAIL path, and two empty
+  # hashes must never compare as a false "match").
   local pass
-  pass=$(jq -r '.pass' "$recv_json")
+  pass=$(jq -r '.pass' "$recv_json" 2>/dev/null) || pass=""
   local -a reasons=()
-  if [[ "$pass" != "true" ]]; then
-    reasons+=("recv FAILed: $(jq -r '.failures | join("; ")' "$recv_json")")
+  if [[ -z "$pass" ]]; then
+    reasons+=("our recv wrote unparseable JSON (possibly truncated by a kill-after) — see $recv_json")
+  elif [[ "$pass" != "true" ]]; then
+    local recv_failures
+    recv_failures=$(jq -r '.failures | join("; ")' "$recv_json" 2>/dev/null) || recv_failures="(unparseable failures list)"
+    reasons+=("recv FAILed: $recv_failures")
   fi
   if [[ "$tier" == "transparent" ]]; then
     local got_hash
-    got_hash=$(jq -r '.metrics.stream_sha256' "$recv_json")
-    if [[ "$got_hash" != "$GEN_STREAM_SHA" ]]; then
-      reasons+=("byte-transparent tier: stream_sha256 mismatch (source $GEN_STREAM_SHA, received $got_hash)")
+    got_hash=$(jq -r '.metrics.stream_sha256' "$recv_json" 2>/dev/null) || got_hash=""
+    if [[ -z "$got_hash" || "$got_hash" != "$GEN_STREAM_SHA" ]]; then
+      reasons+=("byte-transparent tier: stream_sha256 mismatch (source $GEN_STREAM_SHA, received ${got_hash:-<unparseable>})")
     fi
   fi
 
@@ -349,7 +367,8 @@ run_serve_peer_pull() {
 
   local vjson="$WORK/$(slug "$id")-verify.json"
   local vrc=0
-  "$BIN" verify --file "$out_file" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$vjson" \
+  timeout --kill-after=5 "${pbudget}s" \
+    "$BIN" verify --file "$out_file" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$vjson" \
     >>"$log" 2>&1 || vrc=$?
 
   local mjson="$WORK/$(slug "$id")-metrics.json"
@@ -357,8 +376,13 @@ run_serve_peer_pull() {
   if [[ $vrc -eq 0 ]]; then
     emit_pass "$id" "$peer" send "$tier" "$log" "$mjson"
   else
+    # Guarded (see run_send_peer_recv's comment) — $vjson can be
+    # truncated/malformed if `verify` itself was the process killed by
+    # `timeout --kill-after` above.
+    local verify_failures
+    verify_failures=$(jq -r '.failures | join("; ")' "$vjson" 2>/dev/null) || verify_failures="(unparseable failures list)"
     emit_fail "$id" "$peer" send "$tier" "$log" "$mjson" \
-      "verify FAILed against the peer's captured file: $(jq -r '.failures | join("; ")' "$vjson" 2>/dev/null)"
+      "verify FAILed against the peer's captured file: $verify_failures"
   fi
 }
 
@@ -664,15 +688,21 @@ rtsp_cells() {
   fi
   local vjson="$WORK/rtsp-consume_vlc-serve-ffmpeg-pull-verify.json"
   local vrc=0
-  "$BIN" verify --file "$out" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$vjson" \
+  timeout --kill-after=5 "${budget}s" \
+    "$BIN" verify --file "$out" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$vjson" \
     >>"$log" 2>&1 || vrc=$?
   local mjson="$WORK/rtsp-consume_vlc-serve-ffmpeg-pull-metrics.json"
   metrics_only "$vjson" "$mjson"
   if [[ $vrc -eq 0 ]]; then
     emit_pass "rtsp-consume/vlc-serve-ffmpeg-pull" "vlc+ffmpeg" n/a remux "$log" "$mjson"
   else
+    # Guarded (see run_send_peer_recv's comment) — $vjson can be
+    # truncated/malformed if `verify` itself was the process killed by
+    # `timeout --kill-after` above.
+    local verify_failures
+    verify_failures=$(jq -r '.failures | join("; ")' "$vjson" 2>/dev/null) || verify_failures="(unparseable failures list)"
     emit_fail "rtsp-consume/vlc-serve-ffmpeg-pull" "vlc+ffmpeg" n/a remux "$log" "$mjson" \
-      "verify FAILed against ffmpeg's captured file: $(jq -r '.failures | join("; ")' "$vjson" 2>/dev/null)"
+      "verify FAILed against ffmpeg's captured file: $verify_failures"
   fi
 }
 
@@ -680,16 +710,36 @@ rtsp_cells() {
 # Run every axis, once per --profiles entry
 # ---------------------------------------------------------------------
 
+# Same per-seconds budget the per-cell shapes use — gen/verify here do
+# real work proportional to --seconds (this scales correctly even for a
+# very long --seconds, e.g. Task 14's eventual soak runs), unlike
+# REPORT_TIMEOUT's flat floor below (report merge/render's work scales
+# with cell *count*, not stream duration).
+bootstrap_budget=$(cell_timeout "$SECONDS_ARG")
+
 IFS=',' read -r -a PROFILE_LIST <<<"$PROFILES_ARG"
 for PROFILE in "${PROFILE_LIST[@]}"; do
   export PROFILE
   echo "run-matrix: profile=$PROFILE seconds=$SECONDS_ARG cells=$CELLS_GLOB" >&2
 
   GEN_FILE="$WORK/gensrc-$PROFILE.ts"
-  "$BIN" gen --profile "$PROFILE" --seconds "$SECONDS_ARG" --out "$GEN_FILE"
+  timeout --kill-after=5 "${bootstrap_budget}s" \
+    "$BIN" gen --profile "$PROFILE" --seconds "$SECONDS_ARG" --out "$GEN_FILE"
   GEN_VERIFY_JSON="$WORK/gensrc-$PROFILE-verify.json"
-  "$BIN" verify --file "$GEN_FILE" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$GEN_VERIFY_JSON"
-  GEN_STREAM_SHA=$(jq -r '.metrics.stream_sha256' "$GEN_VERIFY_JSON")
+  timeout --kill-after=5 "${bootstrap_budget}s" \
+    "$BIN" verify --file "$GEN_FILE" --expect "$PROFILE" --seconds "$SECONDS_ARG" --json "$GEN_VERIFY_JSON"
+  # Guarded the same way as every per-cell jq read (see
+  # run_send_peer_recv's comment) — but unlike a per-cell read, an
+  # unparseable $GEN_VERIFY_JSON here is fatal to the WHOLE run (every
+  # transparent-tier cell this profile touches needs a real
+  # $GEN_STREAM_SHA to compare against), so this fails loudly and exits
+  # immediately rather than limping on with every transparent cell
+  # reporting a confusing blanket mismatch.
+  GEN_STREAM_SHA=$(jq -r '.metrics.stream_sha256' "$GEN_VERIFY_JSON" 2>/dev/null) || GEN_STREAM_SHA=""
+  if [[ -z "$GEN_STREAM_SHA" ]]; then
+    echo "run-matrix: FATAL: could not read stream_sha256 from $GEN_VERIFY_JSON (unparseable or missing) — cannot proceed" >&2
+    exit 2
+  fi
   export GEN_FILE GEN_STREAM_SHA
 
   srt_cells
@@ -706,13 +756,15 @@ done
 
 echo "run-matrix: merging cell results..." >&2
 merge_rc=0
-"$BIN" report merge \
+timeout --kill-after=5 "${REPORT_TIMEOUT}s" \
+  "$BIN" report merge \
   --cells-dir "$CELLS_DIR" \
   --expectations "$SCRIPT_DIR/expectations.toml" \
   --meta "$OUTDIR/meta.json" \
   --out "$OUTDIR/results.json" || merge_rc=$?
 
-"$BIN" report render --in "$OUTDIR/results.json" --out "$OUTDIR/results.md"
+timeout --kill-after=5 "${REPORT_TIMEOUT}s" \
+  "$BIN" report render --in "$OUTDIR/results.json" --out "$OUTDIR/results.md"
 
 echo "run-matrix: wrote $OUTDIR/results.json + $OUTDIR/results.md (exit $merge_rc)" >&2
 exit "$merge_rc"

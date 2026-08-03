@@ -115,6 +115,17 @@ serve_timeout() {
   echo $(( $(cell_timeout "$1") + SERVE_LINGER_MARGIN ))
 }
 
+# Budget for operations that aren't tied to a cell's --seconds duration at
+# all (the bootstrap `gen`/`verify` of the per-profile source file, and the
+# final `report merge`/`report render`) but still must never hang the whole
+# matrix unattended (CI/soak runs — Tasks 13/14 — depend on that). Every
+# one of these operates on data this task's own findings show can arrive
+# malformed from a third-party remuxer (`verify`) or, for `report
+# merge`/`render`, on N small already-written JSON files — none of them
+# have a legitimate reason to run long, so one generous flat floor covers
+# all of them rather than scaling a multiplier that doesn't apply.
+REPORT_TIMEOUT=120
+
 # ---------------------------------------------------------------------
 # Cell JSON emission (RawCell — see crates/tst-interop/src/report.rs)
 # ---------------------------------------------------------------------
@@ -184,8 +195,19 @@ emit_fail() {
 # emit_cell embeds the wrong shape and `report merge` fails to parse
 # the cell (missing `video_aus` etc., since it lands one level too
 # high).
+# Never fails (always returns 0), even if `$1` is missing/truncated/
+# malformed JSON — every one of its 4 call sites in run-matrix.sh is a
+# bare statement (`metrics_only "$vjson" "$mjson"`), and this function's
+# own exit status IS that bare statement's exit status under `set -e`;
+# a real-world truncated VerifyReport (e.g. a peer or `verify` process
+# killed mid-write by a `timeout --kill-after`) would otherwise abort the
+# whole matrix run right here. On failure `$2` ends up empty (the `>`
+# redirection still creates/truncates it before jq runs and fails) —
+# `emit_cell`'s own `-s "$metrics_file"` check already treats an empty
+# file the same as "no metrics" (`metrics: null`), so no caller-side
+# fallback is needed beyond never dying.
 metrics_only() {
-  jq '.metrics' "$1" >"$2"
+  jq '.metrics' "$1" >"$2" 2>/dev/null || true
 }
 
 emit_skipped() {

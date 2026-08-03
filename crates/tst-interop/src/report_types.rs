@@ -17,7 +17,15 @@ pub struct CellMetrics {
     /// the sorted digests. Two captures with the same KLV records in a
     /// different arrival order hash identically; a single differing
     /// record (or a differing count) changes the hash.
-    pub klv_set_sha256: String,
+    ///
+    /// `None` iff computed with `send`/`recv --no-klv-digest`: that flag
+    /// skips accumulating a growing per-record digest list entirely
+    /// (unbounded over a multi-day soak — ~4 MiB/h at 10 Hz KLV,
+    /// confirmed empirically during Task 14's smoke run) rather than
+    /// just omitting the hash after the fact. `verify` never sets it
+    /// (offline-file checks aren't multi-day, so the memory concern
+    /// doesn't apply) and always produces `Some`.
+    pub klv_set_sha256: Option<String>,
     pub audio_frames: u64,
     pub programs_seen: u8,
     /// Rollover-aware: see `verify::pts_is_monotonic_step` for the

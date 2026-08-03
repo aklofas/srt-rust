@@ -146,7 +146,21 @@ pub struct Tally {
     keyframes: u64,
     klv_records: u64,
     /// Hex sha256 digest of each KLV record payload, in arrival order.
+    /// Never pushed to when `track_klv_digests` is `false` — see that
+    /// field's own doc comment.
     klv_digests: Vec<String>,
+    /// When `false`, `feed` skips accumulating `klv_digests` entirely
+    /// and `finish` reports `CellMetrics::klv_set_sha256: None` instead
+    /// of computing the hash. `Tally::new()` defaults this to `true`
+    /// (unchanged behavior); `recv --no-klv-digest` is the only caller
+    /// that flips it off, via `disable_klv_digest_tracking` — a
+    /// multi-day soak run would otherwise accumulate one digest string
+    /// per KLV record for the ENTIRE run (never cleared until `finish`
+    /// consumes it), an unbounded, harness-only allocation confirmed
+    /// during Task 14's smoke run to be the dominant contributor to
+    /// several MiB/hour of RSS growth that has nothing to do with the
+    /// library code the soak means to measure.
+    track_klv_digests: bool,
     audio_frames: u64,
     programs_seen: BTreeSet<u16>,
     /// Distinct video codecs observed across all `Sample` events. Normally
@@ -178,6 +192,7 @@ impl Tally {
             keyframes: 0,
             klv_records: 0,
             klv_digests: Vec::new(),
+            track_klv_digests: true,
             audio_frames: 0,
             programs_seen: BTreeSet::new(),
             video_codecs_seen: HashSet::new(),
@@ -188,6 +203,18 @@ impl Tally {
             bytes: 0,
             stream_hasher: Sha256::new(),
         }
+    }
+
+    /// Stop accumulating per-record KLV digests — see
+    /// `track_klv_digests`'s own doc comment for why. Only meaningful
+    /// called before any `Metadata` events have been `feed`-ed (this
+    /// crate's callers all call it immediately after `Tally::new()`);
+    /// calling it later just stops FURTHER accumulation; it doesn't
+    /// retroactively clear what's already there and would leave
+    /// `finish` reporting `None` for a partially-built list, which is
+    /// misleading — not a scenario this crate's real call sites hit.
+    pub fn disable_klv_digest_tracking(&mut self) {
+        self.track_klv_digests = false;
     }
 
     /// Fold one demuxed event into the tally.
@@ -238,7 +265,9 @@ impl Tally {
             } => {
                 self.record_pts(stream.pid, *pts);
                 self.klv_records += 1;
-                self.klv_digests.push(to_hex(&Sha256::digest(payload)));
+                if self.track_klv_digests {
+                    self.klv_digests.push(to_hex(&Sha256::digest(payload)));
+                }
                 self.klv_carriage_seen.insert(klv_carriage_of(kind));
             }
             DemuxEvent::Discontinuity { .. }
@@ -343,7 +372,9 @@ impl Tally {
             video_aus: self.video_aus,
             keyframes: self.keyframes,
             klv_records: self.klv_records,
-            klv_set_sha256: klv_set_hash(&self.klv_digests),
+            klv_set_sha256: self
+                .track_klv_digests
+                .then(|| klv_set_hash(&self.klv_digests)),
             audio_frames: self.audio_frames,
             programs_seen,
             pts_monotonic: self.pts_monotonic,

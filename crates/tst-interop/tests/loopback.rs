@@ -77,10 +77,11 @@ fn udp_baseline_loopback_round_trips_and_matches() {
     let recv_transport = transport::make_recv(&url).expect("bind udp recv");
     let recv_handle = {
         let seconds = SECONDS;
-        thread::spawn(move || recv::recv_over_transport(recv_transport, profile, seconds))
+        thread::spawn(move || recv::recv_over_transport(recv_transport, profile, seconds, false))
     };
 
-    let send_metrics = send::run(profile, &url, SECONDS, None).expect("udp send must succeed");
+    let send_metrics =
+        send::run(profile, &url, SECONDS, None, false).expect("udp send must succeed");
 
     let recv_report = join_with_timeout(recv_handle, Duration::from_secs(10))
         .expect("recv_over_transport must succeed");
@@ -89,6 +90,18 @@ fn udp_baseline_loopback_round_trips_and_matches() {
         recv_report.pass,
         "recv failures: {:?}",
         recv_report.failures
+    );
+    // (regression pin) the default (no `--no-klv-digest`) path must
+    // still produce a real hash on both sides, not silently regress to
+    // `None` — see `no_klv_digest_true_yields_null_hash_with_counts_unchanged`
+    // below for the opposite case.
+    assert!(
+        send_metrics.klv_set_sha256.is_some(),
+        "default send-side klv_set_sha256 must be Some(..)"
+    );
+    assert!(
+        recv_report.metrics.klv_set_sha256.is_some(),
+        "default recv-side klv_set_sha256 must be Some(..)"
     );
     assert_eq!(
         send_metrics.klv_set_sha256, recv_report.metrics.klv_set_sha256,
@@ -101,6 +114,69 @@ fn udp_baseline_loopback_round_trips_and_matches() {
     assert_eq!(
         send_metrics.bytes, recv_report.metrics.bytes,
         "sent and received byte counts must match"
+    );
+}
+
+/// (Fix-round regression) `--no-klv-digest` (`no_klv_digest: true` at
+/// the library level) must skip the digest accumulation entirely on
+/// BOTH sides — `klv_set_sha256` comes back `None`, not just omitted
+/// from the JSON — while every count (`video_aus`, `klv_records`) and
+/// the byte-transparent `stream_sha256`/`bytes` fields stay exactly as
+/// correct as the default path above. UDP loopback chosen for this
+/// (rather than a live SRT/RIST cell) because it's the cheapest real
+/// end-to-end exercise of the actual `send_over_transport`/
+/// `recv_over_transport` code paths this flag touches — no handshake,
+/// sub-millisecond setup, same cost class as the default-path test
+/// above.
+#[test]
+fn no_klv_digest_true_yields_null_hash_with_counts_unchanged() {
+    let profile = profiles::by_name("baseline").expect("baseline profile must exist");
+    let url = format!("udp://127.0.0.1:{}", free_port());
+
+    let recv_transport = transport::make_recv(&url).expect("bind udp recv");
+    let recv_handle = {
+        let seconds = SECONDS;
+        thread::spawn(move || recv::recv_over_transport(recv_transport, profile, seconds, true))
+    };
+
+    let send_metrics =
+        send::run(profile, &url, SECONDS, None, true).expect("udp send must succeed");
+
+    let recv_report = join_with_timeout(recv_handle, Duration::from_secs(10))
+        .expect("recv_over_transport must succeed");
+
+    assert!(
+        recv_report.pass,
+        "recv failures: {:?}",
+        recv_report.failures
+    );
+    assert!(
+        send_metrics.klv_set_sha256.is_none(),
+        "--no-klv-digest must make the send-side hash None, not Some"
+    );
+    assert!(
+        recv_report.metrics.klv_set_sha256.is_none(),
+        "--no-klv-digest must make the recv-side hash None, not Some"
+    );
+    assert!(
+        send_metrics.klv_records > 0,
+        "the flag must not affect the klv_records COUNT, only the hash"
+    );
+    assert_eq!(
+        send_metrics.klv_records, recv_report.metrics.klv_records,
+        "sent and received KLV record counts must still match"
+    );
+    assert_eq!(
+        send_metrics.video_aus, recv_report.metrics.video_aus,
+        "video AU counts must be entirely unaffected by this KLV-only flag"
+    );
+    assert_eq!(
+        send_metrics.stream_sha256, recv_report.metrics.stream_sha256,
+        "byte-transparency must be unaffected by this flag"
+    );
+    assert_eq!(
+        send_metrics.bytes, recv_report.metrics.bytes,
+        "sent and received byte counts must still match"
     );
 }
 
@@ -118,7 +194,7 @@ fn send_with_retry(
 ) -> tst_interop::report_types::CellMetrics {
     let deadline = Instant::now() + budget;
     loop {
-        match send::run(profile, url, seconds, None) {
+        match send::run(profile, url, seconds, None, false) {
             Ok(metrics) => return metrics,
             Err(e) => {
                 assert!(
@@ -177,7 +253,7 @@ fn srt_baseline_loopback_round_trips_and_matches() {
     // the resulting race instead.
     let recv_handle = {
         let recv_url = recv_url.clone();
-        thread::spawn(move || recv::run(&recv_url, profile, SECONDS, None))
+        thread::spawn(move || recv::run(&recv_url, profile, SECONDS, None, false))
     };
 
     let send_metrics = send_with_retry(profile, &send_url, SECONDS, Duration::from_secs(5));

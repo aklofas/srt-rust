@@ -65,14 +65,18 @@
 #
 # Then launch the real 72h run (the canonical seed below reproduces the
 # exact same impairment decision sequence — see impair.rs's module doc
-# on why the engine is deterministic given seed+config):
+# on why the engine is deterministic given seed+config). This script's
+# own send/recv invocations already pass `--no-klv-digest` on every
+# process it launches — nothing extra to pass here for that; see the
+# "Expected outputs" note below on what it changes in the per-leg JSON:
 #
 #   nohup bash scripts/interop/soak.sh --outdir ~/interop-soak-$(date +%F) --seed 1 &
 #
 # Expected outputs under `--outdir`:
 #   rss.csv            - elapsed_s,leg,process,pid,rss_kb (6 PIDs, 3 process names, both legs)
-#   srt/{proxy-stats,recv-report,send-report}.json
-#   rist/{proxy-stats,recv-report,send-report}.json
+#   srt/{proxy-stats,recv-report,send-report}.json  - klv_set_sha256 is `null` in both
+#   rist/{proxy-stats,recv-report,send-report}.json   report/send JSONs (--no-klv-digest;
+#                                                      counts/every other field unaffected)
 #   logs/*.log          - one file per launched process
 #   pids/*.pid          - one PID per launched process + the RSS sampler
 #   soak-results.json   - `report soak`'s verdict document
@@ -129,7 +133,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,99p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,103p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -274,14 +278,24 @@ SRT_PROXY_ADDR=$(wait_for_bound_addr "$SRT_PROXY_STDOUT")
 echo "soak: srt proxy warming up ${SRT_PROXY_WARMUP_S}s past its initial outage window before starting send/recv..." >&2
 sleep "$SRT_PROXY_WARMUP_S"
 
+# --no-klv-digest on every send/recv below: without it, both sides
+# accumulate one hex digest string per KLV record for the ENTIRE run
+# (needed for klv_set_sha256, an order-insensitive fingerprint that has
+# to sort every digest before hashing) — confirmed during Task 14's own
+# smoke run to cost ~3.6-5.8 MiB/h of RSS growth that's pure harness
+# bookkeeping, unrelated to the library code this soak measures, and
+# would otherwise swamp the RSS-slope evidence over 72h. The short
+# interop-matrix cells run-matrix.sh drives do NOT pass this flag —
+# their transparent-tier byte comparisons need the hash, and their runs
+# are seconds long, so the accumulation never mattered there.
 "$BIN" recv --url "srt://:$SRT_RECV_PORT?mode=listener" --expect baseline \
-  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/srt/recv-report.json" \
+  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/srt/recv-report.json" --no-klv-digest \
   >"$OUTDIR/logs/srt-recv.log" 2>&1 &
 record_pid srt-recv $!
 sleep "$SETTLE"
 
 "$BIN" send --profile baseline --url "srt://$SRT_PROXY_ADDR" --managed \
-  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/srt/send-report.json" \
+  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/srt/send-report.json" --no-klv-digest \
   >"$OUTDIR/logs/srt-send.log" 2>&1 &
 record_pid srt-send $!
 
@@ -291,7 +305,7 @@ record_pid srt-send $!
 
 RIST_RECV_PORT=$(free_port)
 "$BIN" recv --url "rist://@0.0.0.0:$RIST_RECV_PORT" --expect baseline \
-  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/rist/recv-report.json" \
+  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/rist/recv-report.json" --no-klv-digest \
   >"$OUTDIR/logs/rist-recv.log" 2>&1 &
 record_pid rist-recv $!
 sleep "$SETTLE"
@@ -305,7 +319,7 @@ record_pid rist-proxy $!
 RIST_PROXY_ADDR=$(wait_for_bound_addr "$RIST_PROXY_STDOUT")
 
 "$BIN" send --profile baseline --url "rist://$RIST_PROXY_ADDR" \
-  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/rist/send-report.json" \
+  --seconds "$TOTAL_SECONDS" --json "$OUTDIR/rist/send-report.json" --no-klv-digest \
   >"$OUTDIR/logs/rist-send.log" 2>&1 &
 record_pid rist-send $!
 

@@ -87,7 +87,7 @@ fn send_with_retry(
 ) -> CellMetrics {
     let deadline = Instant::now() + budget;
     loop {
-        match send::run(profile, url, seconds, None) {
+        match send::run(profile, url, seconds, None, false) {
             Ok(metrics) => return metrics,
             Err(e) => {
                 assert!(
@@ -556,7 +556,7 @@ fn srt_round_trip_through_lossy_proxy_recovers_via_retransmission() {
     let recv_url = format!("srt://127.0.0.1:{listener_port}?mode=listener");
     let recv_handle = {
         let recv_url = recv_url.clone();
-        thread::spawn(move || recv::run(&recv_url, profile, SECONDS, None))
+        thread::spawn(move || recv::run(&recv_url, profile, SECONDS, None, false))
     };
 
     let cfg = ImpairConfig {

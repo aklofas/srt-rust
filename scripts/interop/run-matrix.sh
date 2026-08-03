@@ -103,6 +103,21 @@ done
   exit 2
 }
 
+# Hard dependencies, distinct from the optional per-cell peer tools
+# `have()`/emit_skipped gate below: this script cannot run AT ALL
+# without these (jq builds meta.json + every cell JSON; python3 backs
+# free_port(); timeout wraps every process this script spawns). Fail
+# loudly here with an actionable message rather than letting a missing
+# one surface many minutes in as an obscure "command not found" from
+# deep inside a cell shape — matters for the cloud-VM portability story
+# (a fresh box may be missing one of these), not just this dev box/CI.
+for dep in jq python3 timeout; do
+  have "$dep" || {
+    echo "run-matrix.sh: required tool '$dep' not found on PATH — install it before running this script (see README.md's header for the full prerequisite list)" >&2
+    exit 2
+  }
+done
+
 mkdir -p "$OUTDIR/cells" "$OUTDIR/logs" "$OUTDIR/work"
 CELLS_DIR="$OUTDIR/cells"
 LOGS_DIR="$OUTDIR/logs"

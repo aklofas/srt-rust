@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 use sha2::{Digest, Sha256};
 use tst_core::codec::misp_time::MispTimestamp;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::transport::Transport;
-use tst_pipeline::MuxSender;
+use tst_core::transport::{Transport, TransportError};
+use tst_pipeline::{ManagedTransport, MuxSender, ReconnectPolicy};
 
 use crate::fixtures;
 use crate::mux_setup;
@@ -177,6 +177,52 @@ pub fn send_over_transport(
         bytes,
         stream_sha256,
     })
+}
+
+/// Like [`run`], but wraps the transport in a [`ManagedTransport`] that
+/// reconnects by re-dialing `url` on transport breakage, instead of
+/// failing the whole push loop the moment the underlying transport goes
+/// `Broken`. `soak.sh`'s SRT leg uses this: a scheduled proxy outage
+/// window (every packet dropped for its duration) eventually surfaces
+/// to libsrt as a dead connection, and the reconnect factory here just
+/// re-dials the same `url` — the proxy itself never goes away, it just
+/// resumes forwarding once the outage window closes.
+///
+/// Uses `max_attempts: None` (retry forever) rather than
+/// `ReconnectPolicy::default()`'s `Some(10)`: the default's exponential
+/// backoff caps at 10s/attempt, so exhausting 10 attempts takes at most
+/// ~100s of waiting alone — uncomfortably close to (and, with any
+/// scheduling jitter, sometimes less than) a 90s outage window this
+/// arc's soak topology configures. Giving up mid-outage would strand
+/// the sender for the rest of a multi-day run, which is a strictly
+/// worse failure mode than retrying indefinitely against a proxy
+/// address that's known to still be alive (it's discarding packets, not
+/// gone).
+pub fn run_managed(
+    p: &Profile,
+    url: &str,
+    seconds: f64,
+    json_out: Option<&str>,
+) -> Result<CellMetrics, String> {
+    let initial = transport::make_send(url)?;
+    let dial_url = url.to_string();
+    let factory = move || {
+        transport::make_send(&dial_url).map_err(|e| TransportError::Broken {
+            msg: e,
+            errno_code: None,
+        })
+    };
+    let policy = ReconnectPolicy {
+        max_attempts: None,
+        ..ReconnectPolicy::default()
+    };
+    let managed: Box<dyn Transport> = Box::new(ManagedTransport::new(initial, factory, policy));
+
+    let metrics = send_over_transport(p, managed, seconds)?;
+    if let Some(target) = json_out {
+        write_json(target, &metrics)?;
+    }
+    Ok(metrics)
 }
 
 fn write_json(target: &str, metrics: &CellMetrics) -> Result<(), String> {

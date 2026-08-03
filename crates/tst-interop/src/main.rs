@@ -148,7 +148,7 @@ fn run_gen(args: &[String]) -> ! {
     std::process::exit(0);
 }
 
-/// `send --profile NAME --url URL --seconds N [--json OUT]`
+/// `send --profile NAME --url URL --seconds N [--json OUT] [--managed]`
 ///
 /// Builds a live transport from `URL` and pushes `N` seconds of profile
 /// `NAME`'s synthetic MPEG-TS/KLV traffic through it, paced to real
@@ -163,11 +163,19 @@ fn run_gen(args: &[String]) -> ! {
 /// doc comment for why these two schemes work this way). `--json` is
 /// ignored for these two schemes — there is no sent-side `CellMetrics`
 /// to write (no wire-level Transport tee; see `serve.rs`'s scope notes).
+///
+/// `--managed` wraps the transport in `tst_pipeline::ManagedTransport`
+/// (see `send::run_managed`'s doc comment) so a transport break
+/// reconnects by re-dialing `URL` instead of failing the push loop —
+/// `soak.sh`'s SRT leg uses this to survive scheduled proxy outage
+/// windows. Rejected (exit 2) for the `hls://`/`rtsp://` serve schemes,
+/// which have no connect-mode transport to reconnect.
 fn run_send(args: &[String]) -> ! {
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
     let mut seconds: Option<f64> = None;
     let mut json_out: Option<String> = None;
+    let mut managed = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -187,6 +195,10 @@ fn run_send(args: &[String]) -> ! {
             "--json" => {
                 json_out = Some(require_value(args, i, "send: --json"));
                 i += 2;
+            }
+            "--managed" => {
+                managed = true;
+                i += 1;
             }
             other => {
                 eprintln!("send: unknown argument: {other}");
@@ -215,6 +227,13 @@ fn run_send(args: &[String]) -> ! {
     // hls:// / rtsp:// (+ TLS variants) are serve (bind) modes — branch
     // out before the connect-side transport path below.
     if let Some(scheme) = serve::serve_scheme_of(&url) {
+        if managed {
+            eprintln!(
+                "send: --managed is not meaningful for {url} (hls/rtsp are serve/bind modes, \
+                 not connect modes — nothing to reconnect)"
+            );
+            std::process::exit(2);
+        }
         let result = match scheme {
             serve::ServeScheme::Hls => serve::run_hls_url(p, &url, seconds),
             serve::ServeScheme::Rtsp => serve::run_rtsp_url(p, &url, seconds),
@@ -227,7 +246,12 @@ fn run_send(args: &[String]) -> ! {
         std::process::exit(0);
     }
 
-    let metrics = send::run(p, &url, seconds, json_out.as_deref()).unwrap_or_else(|e| {
+    let metrics = if managed {
+        send::run_managed(p, &url, seconds, json_out.as_deref())
+    } else {
+        send::run(p, &url, seconds, json_out.as_deref())
+    }
+    .unwrap_or_else(|e| {
         eprintln!("send: {e}");
         std::process::exit(2);
     });
@@ -545,15 +569,16 @@ fn run_proxy(args: &[String]) -> ! {
     }
 }
 
-/// `report merge|render` — dispatches to the two `report` sub-subcommands.
+/// `report merge|render|soak` — dispatches to the `report` sub-subcommands.
 fn run_report(args: &[String]) -> ! {
     if args.is_empty() {
-        eprintln!("report: expected a subcommand (merge|render)");
+        eprintln!("report: expected a subcommand (merge|render|soak)");
         std::process::exit(2);
     }
     match args[0].as_str() {
         "merge" => run_report_merge(&args[1..]),
         "render" => run_report_render(&args[1..]),
+        "soak" => run_report_soak(&args[1..]),
         other => {
             eprintln!("report: unknown subcommand: {other}");
             std::process::exit(2);
@@ -718,4 +743,191 @@ fn run_report_render(args: &[String]) -> ! {
 
     eprintln!("report render: wrote {}", out.display());
     std::process::exit(0);
+}
+
+/// `report soak --rss FILE --proxy-stats FILE --recv-report FILE
+/// --send-report FILE --outage-period-s N
+/// [--rist-proxy-stats FILE --rist-recv-report FILE --rist-send-report FILE]
+/// [--rss-slope-threshold-kb-per-hour F] --out FILE`
+///
+/// Turns `soak.sh`'s raw artifacts into `soak-results.json` — see
+/// `tst_interop::report::soak`'s module doc for the verdict shapes and
+/// their documented telemetry limitations.
+///
+/// `--proxy-stats`/`--recv-report`/`--send-report`/`--outage-period-s`
+/// describe the `srt` leg (scheduled outage + managed-reconnect
+/// sender). The three `--rist-*` flags describe the second,
+/// sustained-impairment-only leg and must be given together or not at
+/// all (that leg has no outage schedule, hence no matching
+/// `--rist-outage-period-s` flag) — omit all three for a single-leg
+/// (srt-only) run, e.g. a local smoke test.
+///
+/// Exits 1 iff the resulting `SoakResults::overall_pass` is false, 2 on
+/// a usage/IO/parse error.
+fn run_report_soak(args: &[String]) -> ! {
+    let mut rss: Option<PathBuf> = None;
+    let mut proxy_stats: Option<PathBuf> = None;
+    let mut recv_report: Option<PathBuf> = None;
+    let mut send_report: Option<PathBuf> = None;
+    let mut outage_period_s: Option<u64> = None;
+    let mut rist_proxy_stats: Option<PathBuf> = None;
+    let mut rist_recv_report: Option<PathBuf> = None;
+    let mut rist_send_report: Option<PathBuf> = None;
+    let mut rss_slope_threshold: Option<f64> = None;
+    let mut out: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--rss" => {
+                rss = Some(PathBuf::from(require_value(args, i, "report soak: --rss")));
+                i += 2;
+            }
+            "--proxy-stats" => {
+                proxy_stats = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report soak: --proxy-stats",
+                )));
+                i += 2;
+            }
+            "--recv-report" => {
+                recv_report = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report soak: --recv-report",
+                )));
+                i += 2;
+            }
+            "--send-report" => {
+                send_report = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report soak: --send-report",
+                )));
+                i += 2;
+            }
+            "--outage-period-s" => {
+                let v = require_value(args, i, "report soak: --outage-period-s");
+                outage_period_s = Some(v.parse().unwrap_or_else(|_| {
+                    eprintln!(
+                        "report soak: --outage-period-s must be a non-negative integer, got '{v}'"
+                    );
+                    std::process::exit(2);
+                }));
+                i += 2;
+            }
+            "--rist-proxy-stats" => {
+                rist_proxy_stats = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report soak: --rist-proxy-stats",
+                )));
+                i += 2;
+            }
+            "--rist-recv-report" => {
+                rist_recv_report = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report soak: --rist-recv-report",
+                )));
+                i += 2;
+            }
+            "--rist-send-report" => {
+                rist_send_report = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report soak: --rist-send-report",
+                )));
+                i += 2;
+            }
+            "--rss-slope-threshold-kb-per-hour" => {
+                let v = require_value(args, i, "report soak: --rss-slope-threshold-kb-per-hour");
+                rss_slope_threshold = Some(v.parse().unwrap_or_else(|_| {
+                    eprintln!(
+                        "report soak: --rss-slope-threshold-kb-per-hour must be a number, got '{v}'"
+                    );
+                    std::process::exit(2);
+                }));
+                i += 2;
+            }
+            "--out" => {
+                out = Some(PathBuf::from(require_value(args, i, "report soak: --out")));
+                i += 2;
+            }
+            other => {
+                eprintln!("report soak: unknown argument: {other}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let rss = rss.unwrap_or_else(|| {
+        eprintln!("report soak: --rss is required");
+        std::process::exit(2);
+    });
+    let proxy_stats = proxy_stats.unwrap_or_else(|| {
+        eprintln!("report soak: --proxy-stats is required");
+        std::process::exit(2);
+    });
+    let recv_report = recv_report.unwrap_or_else(|| {
+        eprintln!("report soak: --recv-report is required");
+        std::process::exit(2);
+    });
+    let send_report = send_report.unwrap_or_else(|| {
+        eprintln!("report soak: --send-report is required");
+        std::process::exit(2);
+    });
+    let outage_period_s = outage_period_s.unwrap_or_else(|| {
+        eprintln!("report soak: --outage-period-s is required");
+        std::process::exit(2);
+    });
+    let out = out.unwrap_or_else(|| {
+        eprintln!("report soak: --out is required");
+        std::process::exit(2);
+    });
+
+    let rist_given = [&rist_proxy_stats, &rist_recv_report, &rist_send_report]
+        .iter()
+        .filter(|f| f.is_some())
+        .count();
+    if rist_given != 0 && rist_given != 3 {
+        eprintln!(
+            "report soak: --rist-proxy-stats/--rist-recv-report/--rist-send-report must be \
+             given together or not at all"
+        );
+        std::process::exit(2);
+    }
+    let rist = if rist_given == 3 {
+        Some((
+            rist_proxy_stats.as_deref().expect("checked above"),
+            rist_recv_report.as_deref().expect("checked above"),
+            rist_send_report.as_deref().expect("checked above"),
+        ))
+    } else {
+        None
+    };
+
+    let results = report::soak::run(
+        &rss,
+        &proxy_stats,
+        &recv_report,
+        &send_report,
+        outage_period_s,
+        rist,
+        rss_slope_threshold,
+        &out,
+    )
+    .unwrap_or_else(|e| {
+        eprintln!("report soak: {e}");
+        std::process::exit(2);
+    });
+
+    eprintln!(
+        "report soak: overall_pass={} ({} verdict(s), {} provisional)",
+        results.overall_pass,
+        results.verdicts.len(),
+        results.verdicts.iter().filter(|v| v.provisional).count()
+    );
+    std::process::exit(if results.overall_pass { 0 } else { 1 });
 }

@@ -2128,3 +2128,53 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A consumer needs to ingest legacy ST
   0903.4/.5 captures that still carry the (now-removed) VTrack LS /
   VTrackItem pack.
+
+## TLS interop cells (`tcps` / `rtsps` / `hlss` vs. third-party clients)
+
+- **Status:** Not implemented. The published interop matrix
+  ([`docs/project/validation-evidence.md`](/docs/project/validation-evidence.md),
+  driven by `scripts/interop/run-matrix.sh`) exercises `udp`, `tcp`,
+  `srt`, `rist`, `hls`, and `rtsp` against real third-party tools, but
+  every one of those cells runs in plaintext. The TLS-wrapped transports
+  this codebase supports — `tcps://` (raw TCP over TLS), `rtsps://`
+  (RTSP over TLS), and HLS served with `tls` enabled — have no
+  corresponding matrix cell exchanging encrypted traffic with FFmpeg,
+  TSDuck, VLC, mpv, or GStreamer.
+- **Why deferred:** Each TLS transport needs its own cert/trust-anchor
+  setup per cell (a self-signed cert the harness generates and each peer
+  tool has to be told to trust or explicitly told to ignore, with
+  different flags per tool), which is real additional harness work
+  beyond the plaintext matrix's existing peer-command shapes. SRT's own
+  encryption (mbedTLS-backed passphrase encryption, not TLS) already has
+  matrix coverage via the `srt/*-encrypted` cells — this gap is
+  specifically about the three transports that wrap a *TLS* handshake
+  rather than SRT's native encryption.
+- **Trigger to revisit:** A consumer asks for interop evidence on an
+  encrypted `tcps`/`rtsps`/`hlss` deployment specifically, or the
+  harness gains a shared TLS-cert-provisioning helper cheap enough to
+  extend to these three transports without a bespoke setup per cell.
+
+## `release-validation.sh` consolidation into the interop matrix
+
+- **Status:** Not done. The maintainer's local pre-release validation
+  battery (Tier B: FFmpeg differential muxing, a player decode
+  compatibility matrix, PTS-rollover/PCR-jitter checks, a soak run, long-
+  budget fuzzing, and a real-corpus structural cross-check) predates
+  this arc's published interop matrix and soak runner
+  ([`docs/project/validation-evidence.md`](/docs/project/validation-evidence.md)) and
+  overlaps it in places — both now separately exercise "does this decode
+  in a real player," "does FFmpeg round-trip this correctly," and
+  "does this survive a multi-hour run." The two batteries have not been
+  consolidated; both still run as separate steps at release time.
+- **Why deferred:** The pre-release battery also covers the sensitive
+  real-world capture corpus and long-budget fuzzing, which are out of
+  scope for the interop matrix's remit (real tools over real synthetic
+  traffic, on a stock CI runner). Consolidating the overlapping steps —
+  deciding which battery owns the player-decode-matrix and FFmpeg-
+  differential checks going forward — is a deliberate design decision,
+  not a mechanical merge, and hasn't been made yet.
+- **Trigger to revisit:** Before or during a future release-validation
+  pass, deliberately decide which steps move into the interop matrix
+  (and get retired from the pre-release battery) versus which stay
+  pre-release-only (corpus- or fuzzing-dependent steps that don't fit
+  the interop matrix's synthetic-traffic, real-tool shape).

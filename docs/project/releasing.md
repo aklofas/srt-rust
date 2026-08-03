@@ -88,7 +88,17 @@ Central Portal in a **staged** state that a maintainer releases manually.
    `gh workflow run python-wheels.yml` builds every wheel + sdist and skips
    publish (publish is tag-gated). Confirm all legs are green, and watch for a
    leg sitting *queued* — that is the v0.1.0 failure mode.
-4. **CHANGELOG:** retitle the `[Unreleased]` section to `[X.Y.Z] — <date>`
+4. **Refresh the published interop/soak evidence.** Run a full local
+   `scripts/interop/run-matrix.sh` matrix and note the resulting census
+   (total/PASS/FAIL/EXPECTED-UNSUPPORTED/SKIPPED) against what
+   [`docs/project/validation-evidence.md`](/docs/project/validation-evidence.md) currently
+   claims — a changed census (a new unexpected `FAIL`, or a documented gap
+   now passing) means the page needs updating before the release, not after.
+   Also confirm the linked public CI run
+   (`.github/workflows/interop.yml`, weekly + `workflow_dispatch`) is the
+   latest one and still green; update the cited run URL if a newer one has
+   landed since the page was last touched.
+5. **CHANGELOG:** retitle the `[Unreleased]` section to `[X.Y.Z] — <date>`
    and open a fresh `[Unreleased]` stub. The "Release highlights" block is
    the seed for the GitHub Release notes.
 

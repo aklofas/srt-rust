@@ -34,14 +34,20 @@ use crate::verify;
 /// `bytes`/`stream_sha256` from the exact TS bytes handed to the
 /// transport). Writes the same metrics as JSON to `json_out` (or
 /// stdout for `"-"`) when given.
+///
+/// `no_klv_digest` skips accumulating the per-record digest list this
+/// function would otherwise need to compute `klv_set_sha256` —
+/// `CellMetrics::klv_set_sha256` comes back `None` instead. See that
+/// field's own doc comment for why a multi-day soak run needs this.
 pub fn run(
     p: &Profile,
     url: &str,
     seconds: f64,
     json_out: Option<&str>,
+    no_klv_digest: bool,
 ) -> Result<CellMetrics, String> {
     let transport = transport::make_send(url)?;
-    let metrics = send_over_transport(p, transport, seconds)?;
+    let metrics = send_over_transport(p, transport, seconds, no_klv_digest)?;
     if let Some(target) = json_out {
         write_json(target, &metrics)?;
     }
@@ -56,6 +62,7 @@ pub fn send_over_transport(
     p: &Profile,
     transport: Box<dyn Transport>,
     seconds: f64,
+    no_klv_digest: bool,
 ) -> Result<CellMetrics, String> {
     let cfg = mux_setup::build_config(p);
     let (teeing, tap) = Teeing::new(transport);
@@ -80,6 +87,9 @@ pub fn send_over_transport(
     // onto both programs' KLV PIDs, and a receiver demuxing that capture
     // sees (and digests) each occurrence separately, so the sent-side
     // fingerprint must count the same way for the two to compare equal.
+    // Never pushed to when `no_klv_digest` — see `CellMetrics::
+    // klv_set_sha256`'s doc comment for why this list is unbounded over
+    // a multi-day run and needs an explicit opt-out.
     let mut klv_digests: Vec<String> = Vec::new();
 
     let wall_start = Instant::now();
@@ -130,7 +140,9 @@ pub fn send_over_transport(
                         .send_klv_to(handle, &record, pts, 0x00)
                         .map_err(|e| format!("send_klv_to: {e}"))?;
                     klv_records += 1;
-                    klv_digests.push(verify::to_hex(&Sha256::digest(&record)));
+                    if !no_klv_digest {
+                        klv_digests.push(verify::to_hex(&Sha256::digest(&record)));
+                    }
                 }
             }
             Event::Audio { frame_idx } => {
@@ -166,7 +178,7 @@ pub fn send_over_transport(
         video_aus,
         keyframes,
         klv_records,
-        klv_set_sha256: verify::klv_set_hash(&klv_digests),
+        klv_set_sha256: (!no_klv_digest).then(|| verify::klv_set_hash(&klv_digests)),
         audio_frames,
         programs_seen: p.programs,
         // We generate every event in strictly ascending PTS order (the
@@ -203,6 +215,7 @@ pub fn run_managed(
     url: &str,
     seconds: f64,
     json_out: Option<&str>,
+    no_klv_digest: bool,
 ) -> Result<CellMetrics, String> {
     let initial = transport::make_send(url)?;
     let dial_url = url.to_string();
@@ -218,7 +231,7 @@ pub fn run_managed(
     };
     let managed: Box<dyn Transport> = Box::new(ManagedTransport::new(initial, factory, policy));
 
-    let metrics = send_over_transport(p, managed, seconds)?;
+    let metrics = send_over_transport(p, managed, seconds, no_klv_digest)?;
     if let Some(target) = json_out {
         write_json(target, &metrics)?;
     }

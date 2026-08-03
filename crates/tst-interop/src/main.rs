@@ -148,7 +148,8 @@ fn run_gen(args: &[String]) -> ! {
     std::process::exit(0);
 }
 
-/// `send --profile NAME --url URL --seconds N [--json OUT] [--managed]`
+/// `send --profile NAME --url URL --seconds N [--json OUT] [--managed]
+/// [--no-klv-digest]`
 ///
 /// Builds a live transport from `URL` and pushes `N` seconds of profile
 /// `NAME`'s synthetic MPEG-TS/KLV traffic through it, paced to real
@@ -170,12 +171,22 @@ fn run_gen(args: &[String]) -> ! {
 /// `soak.sh`'s SRT leg uses this to survive scheduled proxy outage
 /// windows. Rejected (exit 2) for the `hls://`/`rtsp://` serve schemes,
 /// which have no connect-mode transport to reconnect.
+///
+/// `--no-klv-digest` skips the per-record KLV digest accumulation
+/// `CellMetrics::klv_set_sha256` needs — that field comes back `null`
+/// in the JSON instead. `soak.sh` passes this on both legs: a multi-day
+/// run would otherwise accumulate one digest string per KLV record for
+/// the ENTIRE run, an unbounded, harness-only allocation (see
+/// `CellMetrics::klv_set_sha256`'s own doc comment for the measured
+/// impact). Video/KLV/audio counts and every other metric are
+/// unaffected.
 fn run_send(args: &[String]) -> ! {
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
     let mut seconds: Option<f64> = None;
     let mut json_out: Option<String> = None;
     let mut managed = false;
+    let mut no_klv_digest = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -198,6 +209,10 @@ fn run_send(args: &[String]) -> ! {
             }
             "--managed" => {
                 managed = true;
+                i += 1;
+            }
+            "--no-klv-digest" => {
+                no_klv_digest = true;
                 i += 1;
             }
             other => {
@@ -247,9 +262,9 @@ fn run_send(args: &[String]) -> ! {
     }
 
     let metrics = if managed {
-        send::run_managed(p, &url, seconds, json_out.as_deref())
+        send::run_managed(p, &url, seconds, json_out.as_deref(), no_klv_digest)
     } else {
-        send::run(p, &url, seconds, json_out.as_deref())
+        send::run(p, &url, seconds, json_out.as_deref(), no_klv_digest)
     }
     .unwrap_or_else(|e| {
         eprintln!("send: {e}");
@@ -263,18 +278,25 @@ fn run_send(args: &[String]) -> ! {
     std::process::exit(0);
 }
 
-/// `recv --url URL --expect PROFILE --seconds N [--json OUT]`
+/// `recv --url URL --expect PROFILE --seconds N [--json OUT]
+/// [--no-klv-digest]`
 ///
 /// Builds a live transport from `URL` and receives `N` seconds of
 /// traffic from it, checking the result against `PROFILE`'s invariants.
 /// Exits 0 on pass, 1 on fail, 2 on usage/transport error. `--json OUT`
 /// additionally writes the full `VerifyReport` as JSON to `OUT` (or
 /// stdout, if `OUT` is `-`).
+///
+/// `--no-klv-digest` — see `send`'s own doc comment for the shared
+/// rationale (`soak.sh` passes it on both sides of both legs);
+/// `VerifyReport.metrics.klv_set_sha256` comes back `null` instead of
+/// the hash, everything else unaffected.
 fn run_recv(args: &[String]) -> ! {
     let mut url: Option<String> = None;
     let mut expect: Option<String> = None;
     let mut seconds: Option<f64> = None;
     let mut json_out: Option<String> = None;
+    let mut no_klv_digest = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -294,6 +316,10 @@ fn run_recv(args: &[String]) -> ! {
             "--json" => {
                 json_out = Some(require_value(args, i, "recv: --json"));
                 i += 2;
+            }
+            "--no-klv-digest" => {
+                no_klv_digest = true;
+                i += 1;
             }
             other => {
                 eprintln!("recv: unknown argument: {other}");
@@ -319,10 +345,11 @@ fn run_recv(args: &[String]) -> ! {
         std::process::exit(2);
     });
 
-    let report = recv::run(&url, profile, seconds, json_out.as_deref()).unwrap_or_else(|e| {
-        eprintln!("recv: {e}");
-        std::process::exit(2);
-    });
+    let report = recv::run(&url, profile, seconds, json_out.as_deref(), no_klv_digest)
+        .unwrap_or_else(|e| {
+            eprintln!("recv: {e}");
+            std::process::exit(2);
+        });
 
     if report.pass {
         eprintln!("recv: PASS ({expect})");

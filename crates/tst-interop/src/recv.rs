@@ -31,14 +31,20 @@ const POST_START_GRACE: Duration = Duration::from_secs(2);
 /// traffic from it, and check the result against `expect`'s
 /// invariants. Writes the same [`VerifyReport`] as JSON to `json_out`
 /// (or stdout for `"-"`) when given.
+///
+/// `no_klv_digest` skips the per-record digest accumulation
+/// `CellMetrics::klv_set_sha256` needs — that field comes back `None`
+/// instead. See its own doc comment for why a multi-day soak run needs
+/// this.
 pub fn run(
     url: &str,
     expect: &Profile,
     seconds: f64,
     json_out: Option<&str>,
+    no_klv_digest: bool,
 ) -> Result<VerifyReport, String> {
     let transport = transport::make_recv(url)?;
-    let report = recv_over_transport(transport, expect, seconds)?;
+    let report = recv_over_transport(transport, expect, seconds, no_klv_digest)?;
     if let Some(target) = json_out {
         write_json(target, &report)?;
     }
@@ -74,6 +80,7 @@ pub fn recv_over_transport(
     transport: Box<dyn RecvTransport>,
     expect: &Profile,
     seconds: f64,
+    no_klv_digest: bool,
 ) -> Result<VerifyReport, String> {
     let (teeing, tap) = Teeing::new(transport);
     let mut rx = DemuxReceiver::new(teeing);
@@ -82,6 +89,9 @@ pub fn recv_over_transport(
     let mut streaming = false;
     let mut closed = false;
     let mut tally = Tally::new();
+    if no_klv_digest {
+        tally.disable_klv_digest_tracking();
+    }
 
     loop {
         if !closed && Instant::now() >= deadline {

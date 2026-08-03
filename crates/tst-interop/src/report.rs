@@ -744,6 +744,44 @@ pub fn append_github_summary(path: &Path, markdown: &str) -> Result<(), String> 
 ///   provisional reconnect-count verdict above. Unlike the reconnect
 ///   check, this one is NOT provisional: given the inputs available,
 ///   it's fully computable and always enforced.
+///
+/// # RSS-growth harness artifact (`--no-klv-digest`)
+///
+/// Task 14's own 1h smoke run found real, linear (not one-time-step)
+/// RSS growth in every `send`/`recv` process — `proxy` (a plain UDP
+/// relay untouched by `tst-srt`/`tst-rist`) stayed flat at 0.0 KiB/h
+/// the whole run, while `send`/`recv` on both legs ranged ~3.6-5.8
+/// MiB/h. Root-caused (order-of-magnitude verified, not profiler-
+/// confirmed) to `send.rs`'s `send_over_transport` and this crate's
+/// `verify::Tally` both accumulating one hex digest `String` per KLV
+/// record for the ENTIRE run — needed because `verify::klv_set_hash`'s
+/// order-insensitive fingerprint sorts every digest before hashing the
+/// concatenation, so nothing can be freed until the whole capture ends.
+/// At 10 Hz KLV that's ~4 MiB/hour of purely this test HARNESS's own
+/// bookkeeping, unrelated to the `tst-core`/`tst-pipeline`/`tst-srt`/
+/// `tst-rist` library code the soak exists to measure — left unbounded,
+/// a 72h run would accumulate on the order of 300 MiB of it, easily
+/// swamping (or hiding a regression inside) the real library-
+/// attributable signal this RSS-slope mechanism is supposed to surface.
+///
+/// **Mechanism now confirmed as designed around**: `send`/`recv --no-
+/// klv-digest` (see their own doc comments in `send.rs`/`recv.rs`)
+/// skips the accumulation entirely, at the cost of
+/// `CellMetrics::klv_set_sha256` coming back `None` — an explicit,
+/// deliberate trade a multi-day soak makes (it never needed that hash;
+/// `soak.sh` passes the flag on every process it launches), while the
+/// short interop-matrix cells `run-matrix.sh` drives keep tracking it
+/// (their transparent-tier byte-comparisons need it, and their runs are
+/// seconds long, so the accumulation never mattered there in the first
+/// place). **Open watch item, not yet explained**: RIST's send/recv
+/// pair ran measurably higher than SRT's near-identical pair (~5.8/4.0
+/// vs. ~3.7/3.7 MiB/h) despite pushing the identical profile — the
+/// `klv_digests` mechanism above predicts roughly EQUAL growth for both
+/// legs, so there's an unaccounted-for residual specific to RIST
+/// (plausibly librist's own recovery-buffer growth, plausibly just
+/// single-run noise) that `--no-klv-digest` doesn't explain and this
+/// fix doesn't address — worth comparing against the real 72h VM run's
+/// numbers once `--no-klv-digest` is in use there.
 pub mod soak {
     use std::collections::BTreeMap;
     use std::path::Path;
@@ -1065,6 +1103,10 @@ pub mod soak {
             );
         }
 
+        // `rss_samples` is non-empty here (the `is_empty()` hard-error
+        // above already returned), so min_t/max_t are always assigned a
+        // real elapsed_s from the loop below — no separate empty-case
+        // branch needed.
         let run_duration_s = {
             let mut min_t = f64::INFINITY;
             let mut max_t = f64::NEG_INFINITY;
@@ -1072,11 +1114,7 @@ pub mod soak {
                 min_t = min_t.min(s.elapsed_s);
                 max_t = max_t.max(s.elapsed_s);
             }
-            if rss_samples.is_empty() {
-                0.0
-            } else {
-                (max_t - min_t).max(0.0)
-            }
+            (max_t - min_t).max(0.0)
         };
         let warmup_s = MAX_WARMUP_S.min(run_duration_s * WARMUP_DURATION_FRACTION);
 
@@ -1391,7 +1429,7 @@ pub mod soak {
                 video_aus,
                 keyframes: video_aus / 30,
                 klv_records: 0,
-                klv_set_sha256: String::new(),
+                klv_set_sha256: Some(String::new()),
                 audio_frames: 0,
                 programs_seen: 1,
                 pts_monotonic: true,

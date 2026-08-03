@@ -143,6 +143,14 @@ pub struct Expectation {
     pub verdict: ExpectVerdict,
     pub reason: String,
     pub reference: Option<String>,
+    /// Optional substring narrowing: when set, this expectation only
+    /// matches a `FAIL` whose failures text contains it (see the
+    /// private `find_expectation` helper's doc comment for the exact
+    /// matching rule). Never applied to a `PASS` staleness lookup — an
+    /// expectation is checked for staleness by `(cell, profile)` alone,
+    /// regardless of what failure text it was originally written to
+    /// match.
+    pub failure_contains: Option<String>,
 }
 
 /// The two verdicts an expectation can declare. See
@@ -167,6 +175,7 @@ struct ExpectBuilder {
     verdict: Option<String>,
     reason: Option<String>,
     reference: Option<String>,
+    failure_contains: Option<String>,
 }
 
 impl ExpectBuilder {
@@ -180,6 +189,7 @@ impl ExpectBuilder {
             "verdict" => self.verdict = Some(value),
             "reason" => self.reason = Some(value),
             "ref" => self.reference = Some(value),
+            "failure_contains" => self.failure_contains = Some(value),
             other => {
                 return Err(format!(
                     "expectations line {line_no}: unknown key `{other}`"
@@ -221,6 +231,7 @@ impl ExpectBuilder {
             verdict,
             reason,
             reference: self.reference,
+            failure_contains: self.failure_contains,
         })
     }
 }
@@ -322,14 +333,36 @@ fn cell_pattern_matches(pattern: &str, id: &str) -> bool {
 /// First expectation (in file order) whose `cell` pattern and exact
 /// `profile` both match. Ambiguous multi-match expectations files are
 /// the expectations author's problem, not merge's — file order wins.
+///
+/// `failure_text` distinguishes the two call sites in [`build_results`]:
+/// - `Some(joined_failures)` (the `FAIL`-matching path): an expectation
+///   with `failure_contains` set only matches if `failure_text` contains
+///   that substring — a `FAIL` on the same `(cell, profile)` whose text
+///   does *not* contain it is skipped in favor of a later candidate (or,
+///   if none match, surfaces as an unexpected `FAIL`, never silently
+///   absorbed by a same-cell expectation written for a *different*
+///   failure mode).
+/// - `None` (the `PASS`-staleness-check path): `failure_contains` is
+///   never applied — staleness is a property of the whole `(cell,
+///   profile)` pair, independent of which specific failure text the
+///   expectation was originally written against.
+///
+/// An expectation with no `failure_contains` matches either way, exactly
+/// as before this key existed.
 fn find_expectation<'a>(
     expectations: &'a [Expectation],
     cell_id: &str,
     cell_profile: &str,
+    failure_text: Option<&str>,
 ) -> Option<&'a Expectation> {
-    expectations
-        .iter()
-        .find(|e| e.profile == cell_profile && cell_pattern_matches(&e.cell, cell_id))
+    expectations.iter().find(|e| {
+        e.profile == cell_profile
+            && cell_pattern_matches(&e.cell, cell_id)
+            && match (&e.failure_contains, failure_text) {
+                (Some(substr), Some(text)) => text.contains(substr.as_str()),
+                (Some(_), None) | (None, _) => true,
+            }
+    })
 }
 
 /// Apply `expectations` to `raw_cells`, producing the merged, tallied
@@ -344,11 +377,13 @@ pub fn build_results(
     let mut stale = Vec::new();
 
     for raw in raw_cells {
-        let matched = find_expectation(expectations, &raw.id, &raw.profile);
-
         let (verdict, known_flaky, expectation_reason, expectation_ref) = match raw.verdict {
             RawVerdict::SkippedToolMissing => (Verdict::SkippedToolMissing, false, None, None),
             RawVerdict::Pass => {
+                // Staleness is checked by (cell, profile) alone —
+                // `failure_contains` never applies here (see
+                // find_expectation's doc comment).
+                let matched = find_expectation(expectations, &raw.id, &raw.profile, None);
                 if let Some(exp) = matched {
                     if exp.verdict == ExpectVerdict::ExpectedUnsupported {
                         stale.push(StaleExpectation {
@@ -363,15 +398,20 @@ pub fn build_results(
                 }
                 (Verdict::Pass, false, None, None)
             }
-            RawVerdict::Fail => match matched {
-                Some(exp) => (
-                    Verdict::ExpectedUnsupported,
-                    exp.verdict == ExpectVerdict::KnownFlaky,
-                    Some(exp.reason.clone()),
-                    exp.reference.clone(),
-                ),
-                None => (Verdict::Fail, false, None, None),
-            },
+            RawVerdict::Fail => {
+                let failure_text = raw.failures.join("; ");
+                let matched =
+                    find_expectation(expectations, &raw.id, &raw.profile, Some(&failure_text));
+                match matched {
+                    Some(exp) => (
+                        Verdict::ExpectedUnsupported,
+                        exp.verdict == ExpectVerdict::KnownFlaky,
+                        Some(exp.reason.clone()),
+                        exp.reference.clone(),
+                    ),
+                    None => (Verdict::Fail, false, None, None),
+                }
+            }
         };
 
         cells.push(MergedCell {
@@ -667,6 +707,32 @@ mod tests {
             verdict,
             reason: reason.to_string(),
             reference: None,
+            failure_contains: None,
+        }
+    }
+
+    fn raw_cell_with_failures(
+        id: &str,
+        profile: &str,
+        verdict: RawVerdict,
+        failures: &[&str],
+    ) -> RawCell {
+        RawCell {
+            failures: failures.iter().map(|s| s.to_string()).collect(),
+            ..raw_cell(id, profile, verdict)
+        }
+    }
+
+    fn expectation_with_failure_contains(
+        cell: &str,
+        profile: &str,
+        verdict: ExpectVerdict,
+        reason: &str,
+        failure_contains: &str,
+    ) -> Expectation {
+        Expectation {
+            failure_contains: Some(failure_contains.to_string()),
+            ..expectation(cell, profile, verdict, reason)
         }
     }
 
@@ -725,6 +791,104 @@ mod tests {
             results.cells[0].expectation_reason.as_deref(),
             Some("mpv lacks async KLV support")
         );
+    }
+
+    // --- failure_contains ---
+
+    // A FAIL whose joined failures text contains the expectation's
+    // `failure_contains` substring matches, exactly like a plain
+    // (cell, profile)-only expectation would.
+    #[test]
+    fn failure_contains_matches_when_substring_present() {
+        let raw = vec![raw_cell_with_failures(
+            "srt-live/tsp-to-us",
+            "baseline",
+            RawVerdict::Fail,
+            &["byte-transparent tier: stream_sha256 mismatch (source abc, received def)"],
+        )];
+        let exp = expectation_with_failure_contains(
+            "srt-live/tsp-to-us",
+            "baseline",
+            ExpectVerdict::ExpectedUnsupported,
+            "SRT-specific tail loss",
+            "stream_sha256 mismatch",
+        );
+        let results = build_results(raw, &[exp], serde_json::json!({}));
+
+        assert_eq!(results.summary.fail, 0);
+        assert_eq!(results.summary.expected_unsupported, 1);
+        assert_eq!(results.cells[0].verdict, Verdict::ExpectedUnsupported);
+    }
+
+    // A FAIL on the same (cell, profile) but a DIFFERENT failure mode
+    // (text doesn't contain the substring) must NOT be silently
+    // absorbed — this is the whole point of the key: mechanism-blind
+    // (cell, profile)-only matching would have hidden this as
+    // ExpectedUnsupported; failure_contains keeps it a real FAIL.
+    #[test]
+    fn failure_contains_non_match_stays_fail() {
+        let raw = vec![raw_cell_with_failures(
+            "srt-live/tsp-to-us",
+            "baseline",
+            RawVerdict::Fail,
+            &["recv FAILed: video AUs: got 0, want >= 168"],
+        )];
+        let exp = expectation_with_failure_contains(
+            "srt-live/tsp-to-us",
+            "baseline",
+            ExpectVerdict::ExpectedUnsupported,
+            "SRT-specific tail loss",
+            "stream_sha256 mismatch",
+        );
+        let results = build_results(raw, &[exp], serde_json::json!({}));
+
+        assert_eq!(results.summary.fail, 1);
+        assert_eq!(results.summary.expected_unsupported, 0);
+        assert_eq!(results.cells[0].verdict, Verdict::Fail);
+    }
+
+    // An expectation with no `failure_contains` key set (the common
+    // case, and every pre-existing row) matches a FAIL regardless of
+    // its failure text — unchanged behavior from before this key
+    // existed.
+    #[test]
+    fn absent_failure_contains_matches_any_failure_text() {
+        let raw = vec![raw_cell_with_failures(
+            "decode/mpv",
+            "baseline",
+            RawVerdict::Fail,
+            &["anything at all, unrelated to the expectation's own reason text"],
+        )];
+        let exp = expectation(
+            "decode/mpv",
+            "baseline",
+            ExpectVerdict::ExpectedUnsupported,
+            "mpv lacks async KLV support",
+        );
+        let results = build_results(raw, &[exp], serde_json::json!({}));
+
+        assert_eq!(results.summary.fail, 0);
+        assert_eq!(results.cells[0].verdict, Verdict::ExpectedUnsupported);
+    }
+
+    // A `failure_contains` expectation must still catch staleness when
+    // its cell PASSes — the substring constraint only narrows FAIL
+    // matching, never a PASS staleness check (there's no failure text
+    // to test the substring against on a PASS in the first place).
+    #[test]
+    fn failure_contains_expectation_is_still_stale_on_pass() {
+        let raw = vec![raw_cell("srt-live/tsp-to-us", "baseline", RawVerdict::Pass)];
+        let exp = expectation_with_failure_contains(
+            "srt-live/tsp-to-us",
+            "baseline",
+            ExpectVerdict::ExpectedUnsupported,
+            "SRT-specific tail loss",
+            "stream_sha256 mismatch",
+        );
+        let results = build_results(raw, &[exp], serde_json::json!({}));
+
+        assert_eq!(results.summary.stale_expectations.len(), 1);
+        assert_eq!(results.cells[0].verdict, Verdict::Pass);
     }
 
     // (d) expectation whose cell PASSes -> stale_expectations entry.
@@ -1045,6 +1209,26 @@ reason = \"intermittent timeout\"
         assert_eq!(parsed[0].reference.as_deref(), Some("TICKET-123"));
         assert_eq!(parsed[1].verdict, ExpectVerdict::KnownFlaky);
         assert_eq!(parsed[1].reference, None);
+        assert_eq!(parsed[0].failure_contains, None);
+        assert_eq!(parsed[1].failure_contains, None);
+    }
+
+    #[test]
+    fn parses_the_optional_failure_contains_key() {
+        let text = "\
+[[expect]]
+cell = \"srt-live/tsp-to-us\"
+profile = \"baseline\"
+verdict = \"expected_unsupported\"
+reason = \"SRT-specific tail loss\"
+failure_contains = \"stream_sha256 mismatch\"
+";
+        let parsed = parse_expectations(text).expect("valid file must parse");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            parsed[0].failure_contains.as_deref(),
+            Some("stream_sha256 mismatch")
+        );
     }
 
     #[test]

@@ -399,8 +399,8 @@ run_serve_peer_pull() {
 # run_serve_peer_probe <id> <peer> <our_serve_url> -- <peer_cmd...>
 #
 # Same serve setup as run_serve_peer_pull, but the peer is a
-# decode-only probe (no capture file to verify) — mirrors
-# release-validation.sh's "Decoder compatibility matrix" step: PASS iff
+# decode-only probe (no capture file to verify) — mirrors this
+# project's own pre-release decoder-compatibility spot check: PASS iff
 # the peer's combined output has no error/fatal/cannot/failed marker.
 # Tier is always "n/a" (there is nothing byte- or structure-level to
 # compare — a clean decode is the only signal).
@@ -446,8 +446,8 @@ run_serve_peer_probe() {
   wait "$serve_pid" || serve_rc=$?
   echo "--- exit codes: probe=$peer_rc serve=$serve_rc ---" >>"$log"
 
-  # Same permissive, case-insensitive, whole-word marker grep
-  # release-validation.sh's decoder-compatibility step uses — but first
+  # Same permissive, case-insensitive, whole-word marker grep this
+  # project's own decoder-compatibility checks use — but first
   # strip VLC's known-harmless sandbox-startup noise (no PulseAudio/
   # D-Bus session/$DISPLAY in this headless box: VLC's default
   # `--extraintf` list tries `dbus`+`globalhotkeys` regardless of
@@ -457,7 +457,7 @@ run_serve_peer_probe() {
   # A real stream/decode problem (e.g. VLC's own "buffer deadlock
   # prevented") is untouched by this filter.
   local filtered
-  filtered=$(grep -Ev "$VLC_ENV_NOISE" "$probe_log")
+  filtered=$(grep -Ev "$VLC_ENV_NOISE" "$probe_log" || true)
   if grep -Eqi '\b(error|fatal|cannot|failed)\b' <<<"$filtered"; then
     local sample
     sample=$(grep -Ei '\b(error|fatal|cannot|failed)\b' <<<"$filtered" | head -3 | tr '\n' ';')
@@ -601,10 +601,10 @@ run_analyze_tsp() {
 # Local, no-transport container-acceptance probe (see lib.sh's
 # DECODE_PAYLOAD_NOISE doc comment for the pass criterion and the
 # verified, per-player exclusion filters). Exit code of <player_cmd> is
-# IGNORED on purpose — mirrors release-validation.sh step 7's own
-# `|| true` convention verbatim; decode acceptance here is signaled
-# purely through log content, exactly as that script already
-# established (cited in this cell's log header).
+# IGNORED on purpose — mirrors this project's own pre-release
+# decoder-compatibility check's `|| true` convention verbatim; decode
+# acceptance here is signaled purely through log content, exactly as
+# established there.
 run_decode_probe() {
   local player=$1 profile=$2
   shift 2
@@ -614,10 +614,11 @@ run_decode_probe() {
 
   cell_selected "$id" || return 0
   echo "run-matrix: cell $id" >&2
-  # gst-play's real binary is gst-play-1.0 (matches
-  # release-validation.sh's own step 7 invocation); the cell id keeps the
-  # short "gst-play" form per the task's Interfaces line, mirroring how
-  # "srt/us-to-gst" already abbreviates its gst-launch-1.0 peer.
+  # gst-play's real binary is gst-play-1.0 (matches the invocation this
+  # project's own pre-release decoder-compatibility check uses); the
+  # cell id keeps the short "gst-play" form per the task's Interfaces
+  # line, mirroring how "srt/us-to-gst" already abbreviates its
+  # gst-launch-1.0 peer.
   local bin_name=$player
   [[ "$player" == "gst-play" ]] && bin_name="gst-play-1.0"
   if ! have "$bin_name"; then
@@ -631,7 +632,7 @@ run_decode_probe() {
   budget=$(cell_timeout "$SECONDS_ARG")
   {
     echo "=== cell: $id (decode-probe, no transport, profile=$profile) ==="
-    echo "--- release-validation.sh step 7's invocation, lifted verbatim (exit code ignored, see this function's doc comment) ---"
+    echo "--- pre-release decoder-compatibility invocation, lifted verbatim (exit code ignored, see this function's doc comment) ---"
     printf '+ '
     printf '%q ' "${player_cmd[@]}"
     echo
@@ -943,9 +944,13 @@ analyze_cells_for_profile() {
 
 # decode_cells_for_profile <profile>
 #
-# release-validation.sh step 7's four invocations, lifted verbatim
-# (command line + `|| true` exit-code-ignored convention) onto this
-# profile's $GEN_FILE — cited inline in each invocation's comment.
+# This project's own four canonical per-player headless decode
+# invocations (from its pre-release decoder-compatibility check), onto
+# this profile's $GEN_FILE — cited inline in each invocation's comment.
+# ffplay/vlc/gst-play-1.0 are lifted verbatim; mpv's is deliberately
+# NOT verbatim (`--vo=null`, not `--no-video` — see its own comment
+# below for why) but keeps the same `|| true` exit-code-ignored
+# convention.
 decode_cells_for_profile() {
   local profile=$1
 
@@ -957,9 +962,15 @@ decode_cells_for_profile() {
   run_decode_probe vlc "$profile" -- \
     vlc -I dummy --play-and-exit --no-audio --run-time=1 "$GEN_FILE"
 
-  # mpv: --no-video --frames=10 --ao=null $BASELINE
+  # mpv: --vo=null --frames=10 --ao=null $BASELINE — NOT --no-video (see
+  # lib.sh's MPV_NO_STREAMS_SELECTED doc comment for why: --no-video
+  # disables video TRACK SELECTION outright, not just display, so it
+  # validated nothing about the video PID at all on any profile without
+  # an audio track. --vo=null discards the rendered frames but leaves
+  # track selection + decode genuinely exercised — a real
+  # container-acceptance probe.
   run_decode_probe mpv "$profile" -- \
-    mpv --no-video --frames=10 --ao=null "$GEN_FILE"
+    mpv --vo=null --frames=10 --ao=null "$GEN_FILE"
 
   # gst-play-1.0: --no-interactive --quiet $BASELINE
   run_decode_probe gst-play "$profile" -- \

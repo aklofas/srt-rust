@@ -237,15 +237,19 @@ tsp_analyze_counters_zero() {
 #   - aac: "Reserved bit set", "Number of bands (N) exceeds limit (N)",
 #     "Scalefactor (N) out of range", "channel element N is not
 #     allocated", "Error decoding audio."
+#   - mpv-specific decode-loop phrasing (only surfaces once mpv's own
+#     `--vo=null` genuinely selects+decodes a track, unlike its old
+#     `--no-video` invocation — see MPV_NO_STREAMS_SELECTED below):
+#     "Error while decoding frame!"
 # None of these indicate a container/PSI-level problem; all are excluded
 # from the marker-grep every decode cell applies. Every alternative below
 # is anchored to the surrounding fixed text actually observed (not a
 # bare, generic word like "is not allocated" or "Scalefactor" alone) so
 # this can't swallow an unrelated real error that happens to share a
-# word — re-verified against the same 36 captured logs (12 profiles x
+# word — re-verified against the same captured logs (12 profiles x
 # ffplay/vlc/mpv) this was originally built from: identical PASS/FAIL
 # outcome per cell before and after tightening.
-DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.'
+DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.|Error while decoding frame!'
 
 # ffplay-specific: `-nodisp` in this headless sandbox (no $DISPLAY, no
 # real video output device) makes ffplay print "Failed to open file '...'
@@ -261,22 +265,37 @@ FFPLAY_ENV_NOISE="Failed to open file .* or configure filtergraph"
 # $DISPLAY-less headless noise — see that function's doc comment).
 VLC_ENV_NOISE='vlcpulse audio output error|dbus interface error|globalhotkeys|no suitable interface module|main libvlc error: interface'
 
-# mpv-specific, NOT a text exclusion: mpv's own release-validation.sh-
-# verbatim invocation (`mpv --no-video --frames=10 --ao=null <file>`)
-# sets `--no-video`, which disables video TRACK SELECTION outright (not
-# just display) — on every profile except `audio`, this crate's
-# synthetic fixtures carry no audio track either, so mpv ends up with
-# literally nothing to select and exits having validated NOTHING about
-# the file, printing the deterministic, distinguishable self-report line
-# "No video or audio streams selected." (confirmed on a plain
-# ffmpeg-authored control file too — an inherent property of the
-# `--no-video`-on-video-only-content combination, not this crate's
-# stream content). That phrase does NOT itself match the generic
+# mpv-specific, NOT a text exclusion: mpv's invocation is
+# `--vo=null --frames=10 --ao=null <file>` — deliberately `--vo=null`
+# (discard rendered video frames), NOT `--no-video` (an earlier version
+# of this cell used `--no-video`, which disables video TRACK SELECTION
+# outright, not just display — on every profile but `audio`, this
+# crate's synthetic fixtures carry no audio track either, so mpv ended
+# up with literally nothing to select and validated NOTHING about the
+# file at all; switched to `--vo=null` specifically to make this a
+# genuine container-acceptance probe). With `--vo=null`, mpv genuinely
+# selects and attempts to decode the video track — this codebase's
+# H.264/H.265 filler content decodes with the same "Error while
+# decoding frame!" noise `DECODE_PAYLOAD_NOISE` already excludes, so
+# `baseline`-shaped profiles now PASS this cell. Two profile classes
+# still hit "No video or audio streams selected." even with genuine
+# track selection enabled, for their own real, verified reasons: `av1`
+# profiles (this codebase's AV1 carriage, PMT stream_type 0x06, is
+# never classified as a video track by mpv's ffmpeg-based demuxer, same
+# root cause as the AV1-in-TS gap documented elsewhere) and `h266-klv`
+# (mpv identifies the VVC video track but "Failed to initialize a
+# decoder for codec 'vvc'" — this box's mpv build has no working VVC
+# decoder at all, a distinct finding from ffmpeg's own vps_id=0
+# rejection — both are left as unexcluded, real marker matches). Confirmed
+# on a plain ffmpeg-authored control file too that "No video or audio
+# streams selected." is deterministic given these conditions, not
+# input-specific. That phrase does NOT itself match the generic
 # error-marker grep (case-insensitively, `\berror\b` doesn't match the
 # plural "Errors" in mpv's own trailing "Exiting... (Errors when loading
 # file)" line) — so unlike ffplay/vlc, mpv needs an EXPLICIT substring
-# check in addition to the marker-grep, or this systemic non-validation
-# would silently read as a clean PASS. See run_decode_probe's caller.
+# check in addition to the marker-grep, or a genuine no-track-selected
+# failure would silently read as a clean PASS. See run_decode_probe's
+# caller.
 MPV_NO_STREAMS_SELECTED="No video or audio streams selected"
 
 # ---------------------------------------------------------------------

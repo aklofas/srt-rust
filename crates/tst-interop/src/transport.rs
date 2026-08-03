@@ -476,6 +476,21 @@ impl<T> Teeing<T> {
             tap,
         )
     }
+
+    /// Like [`Self::new`], but tees into an ALREADY-EXISTING `tap`
+    /// rather than allocating a fresh one. Needed for `recv --managed`:
+    /// `ManagedRecvTransport<R>`'s factory rebuilds a brand-new `R` on
+    /// every reconnect, and if that `R` were `Teeing<..>` built via
+    /// plain `new()`, each rebuild would start a fresh, empty tally —
+    /// silently discarding every byte tallied before the most recent
+    /// reconnect. Wrapping the factory's freshly-built raw transport
+    /// with this constructor, reusing the ONE tap captured before the
+    /// `ManagedRecvTransport` was ever constructed, keeps
+    /// `bytes`/`stream_sha256` accumulating across the whole session
+    /// regardless of how many times the inner transport gets rebuilt.
+    pub(crate) fn with_tap(inner: T, tap: Arc<Mutex<TeeState>>) -> Self {
+        Self { inner, tap }
+    }
 }
 
 impl<T: Transport> Transport for Teeing<T> {

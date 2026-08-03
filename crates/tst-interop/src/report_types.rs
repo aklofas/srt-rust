@@ -47,4 +47,20 @@ pub struct VerifyReport {
     /// violated invariant (e.g. names the observed vs. expected count).
     pub failures: Vec<String>,
     pub metrics: CellMetrics,
+    /// Number of times the underlying transport was successfully
+    /// rebuilt (`tst_pipeline::ManagedRecvTransport::reconnects_count`
+    /// — for a listener-mode SRT URL, a re-bind + re-accept), or `None`
+    /// for a plain (non-`recv --managed`) capture, which has no such
+    /// counter at all.
+    ///
+    /// Counts RECEIVE-SIDE rebuilds only — a distinct event from
+    /// however many times the (independently managed) SENDER
+    /// reconnected, which this process can't observe directly. For
+    /// `soak.sh`'s topology the two are expected to track closely (the
+    /// receive-side accepted socket only dies because the sender's
+    /// connection died first, and vice versa — both driven by the same
+    /// underlying outage), but this field is NOT itself a measurement
+    /// of "how many times the sender reconnected," only "how many times
+    /// this recv rebuilt its own transport."
+    pub reconnects: Option<u64>,
 }

@@ -523,9 +523,26 @@ pub fn merge(
 // Rendering
 // ---------------------------------------------------------------------
 
+/// Escape a value about to be interpolated into a single GFM table
+/// cell. A literal `|` in a `FAIL` failure message or an
+/// `expectations.toml` `reason` field would otherwise read as a new
+/// column boundary, and an embedded newline would split one logical
+/// row across several visual lines — both corrupt not just the
+/// published markdown file but the CI step-summary render it's pasted
+/// into verbatim. Backslash-escape `|` (GFM's own escape for a literal
+/// pipe) and fold newlines into `<br>` (GFM's own in-cell-multiline
+/// convention) so the table stays well-formed regardless of what a
+/// peer tool's raw error text or a hand-written reason string
+/// contains.
+fn escape_markdown_table_cell(s: &str) -> String {
+    s.replace('|', "\\|")
+        .replace("\r\n", "\n")
+        .replace('\n', "<br>")
+}
+
 /// Verdict cell text and notes-column text for one [`MergedCell`].
 fn render_verdict(cell: &MergedCell) -> (&'static str, String) {
-    match cell.verdict {
+    let (label, notes) = match cell.verdict {
         Verdict::Pass => ("✅ PASS", String::new()),
         Verdict::Fail => ("❌ FAIL", cell.failures.join("; ")),
         Verdict::ExpectedUnsupported => {
@@ -541,7 +558,8 @@ fn render_verdict(cell: &MergedCell) -> (&'static str, String) {
             (label, notes)
         }
         Verdict::SkippedToolMissing => ("⏭ SKIPPED", cell.failures.join("; ")),
-    }
+    };
+    (label, escape_markdown_table_cell(&notes))
 }
 
 /// Render `results` as the published markdown evidence page: a `**Meta**`
@@ -707,18 +725,31 @@ pub fn append_github_summary(path: &Path, markdown: &str) -> Result<(), String> 
 /// instead approximated — every [`soak::SoakResults`] documents both in
 /// its `limitations` field:
 ///
-/// - **Reconnect count.** `ManagedTransport` exposes no reconnect-cycle
-///   counters today (`docs/project/deferred-features.md`'s "Reconnect
-///   counters on ManagedTransport stats" entry), and `recv`'s
-///   `VerifyReport` carries no per-event delivery-gap timestamps either
-///   — there is no artifact this module can read that says "N
-///   reconnects happened." `soak`'s internal `expected_outage_windows`
-///   helper computes how many outage windows *should* have started
-///   within the observed run (from the configured schedule alone, never
-///   from anything observed), and the
-///   `reconnect_count_matches_outage_count_<leg>` verdict records that
-///   expectation as `provisional` — informational, never gating
-///   [`soak::SoakResults::overall_pass`].
+/// - **Reconnect count.** `recv --managed`'s `VerifyReport.reconnects`
+///   (populated from `ManagedRecvTransport::reconnects_count` — see
+///   `recv.rs`'s `run_managed`) IS a real, observed count of successful
+///   receive-side transport rebuilds, unlike the send side
+///   (`ManagedTransport` exposes no equivalent counter today —
+///   `docs/project/deferred-features.md`'s "Reconnect counters on
+///   ManagedTransport stats" entry covers the send-side gap only) —
+///   `recv`'s `VerifyReport` still carries no per-event delivery-gap
+///   timestamps, so exact gap TIMING still can't be checked. `soak`'s
+///   internal `expected_outage_windows` helper computes how many outage
+///   windows *should* have started within the observed run (from the
+///   configured schedule alone, never from anything observed), and the
+///   `reconnect_count_matches_outage_count_<leg>` verdict compares that
+///   expectation against the real observed count when one is available
+///   (a leg whose recv wasn't run `--managed` falls back to the old
+///   recorded-not-verified message). The verdict stays `provisional` —
+///   informational, never gating [`soak::SoakResults::overall_pass`] —
+///   even when a real count is available: empirically, a single outage
+///   window does not always drive exactly one rebuild (a short 8s-outage
+///   dry-run during this arc's own fix wave observed a SECOND rebuild
+///   cycle shortly after the first succeeded, before the one scheduled
+///   outage window had even repeated), and the real 90s-outage-duration
+///   ratio hasn't been confirmed by enough runs yet to assert a hard
+///   1:1 pass/fail. See the verdict's own `detail` string for exactly
+///   what was observed on a given run.
 /// - **Delivery-gap timing.** For the same reason, "gaps only inside
 ///   outage windows, ±30s" can't be checked at per-event resolution.
 ///   `soak`'s internal `expected_drop_fraction` helper instead models
@@ -744,13 +775,35 @@ pub fn append_github_summary(path: &Path, markdown: &str) -> Result<(), String> 
 ///   provisional reconnect-count verdict above. Unlike the reconnect
 ///   check, this one is NOT provisional: given the inputs available,
 ///   it's fully computable and always enforced.
+/// - **Outage-leg drop-rate excess (watch item, not a bug in itself).**
+///   The continuous-impairment-only model above is a slight
+///   underestimate on a leg that also carries outage windows: a
+///   `ManagedTransport` sender backing off through an outage doesn't
+///   sit perfectly silent — each reconnect attempt's handshake can fire
+///   before the sender's own `Broken` detection has caught up to the
+///   outage clearing (or before it's caught up to the outage
+///   *starting*), and any such attempt that lands while the proxy's
+///   outage window is still active gets counted as `dropped` same as
+///   continuous loss, even though `expected_drop_fraction` never
+///   modeled it. Per outage window this is a handful of packets — at
+///   72h scale (roughly a dozen windows over the default schedule)
+///   that accumulates to a small, genuinely expected excess on the
+///   order of ~0.02-0.2 percentage points over the continuous-only
+///   expectation, which can occasionally eat into (or on a bad draw,
+///   slightly exceed) the `DROP_RATE_TOLERANCE_FLOOR` (0.1pp) the
+///   non-outage leg never has to absorb. If
+///   `drop_rate_consistent_with_impairment_<leg>` fails specifically on
+///   the outage-bearing leg and by a small margin, treat this as the
+///   first hypothesis to rule out (compare against the reconnect count
+///   and the size of the excess) before escalating it as a library
+///   regression.
 ///
 /// # RSS-growth harness artifact (`--no-klv-digest`)
 ///
 /// Task 14's own 1h smoke run found real, linear (not one-time-step)
 /// RSS growth in every `send`/`recv` process — `proxy` (a plain UDP
 /// relay untouched by `tst-srt`/`tst-rist`) stayed flat at 0.0 KiB/h
-/// the whole run, while `send`/`recv` on both legs ranged ~3.6-5.8
+/// the whole run, while `send`/`recv` on both legs ranged ~3.6-5.7
 /// MiB/h. Root-caused (order-of-magnitude verified, not profiler-
 /// confirmed) to `send.rs`'s `send_over_transport` and this crate's
 /// `verify::Tally` both accumulating one hex digest `String` per KLV
@@ -774,7 +827,7 @@ pub fn append_github_summary(path: &Path, markdown: &str) -> Result<(), String> 
 /// (their transparent-tier byte-comparisons need it, and their runs are
 /// seconds long, so the accumulation never mattered there in the first
 /// place). **Open watch item, not yet explained**: RIST's send/recv
-/// pair ran measurably higher than SRT's near-identical pair (~5.8/4.0
+/// pair ran measurably higher than SRT's near-identical pair (~5.7/4.0
 /// vs. ~3.7/3.7 MiB/h) despite pushing the identical profile — the
 /// `klv_digests` mechanism above predicts roughly EQUAL growth for both
 /// legs, so there's an unaccounted-for residual specific to RIST
@@ -806,8 +859,16 @@ pub mod soak {
     /// sampler. `rss_kb: None` means `/proc/<pid>/status` couldn't be
     /// read at this tick — the sampler's own crash signal (see
     /// [`SoakResults::process_exits`]); a healthy run never produces one
-    /// until the runner's own intentional shutdown, which stops the
-    /// sampler first.
+    /// at all. NOT because the sampler outlives every tracked process —
+    /// the opposite is true and deliberately so: `soak.sh`'s sampler
+    /// stops `SAMPLER_END_SLACK_S` (35s) before its own nominal
+    /// deadline, specifically so it never samples a process that has
+    /// ALREADY exited on schedule (both proxies' own `--run-seconds`
+    /// budgets, sized from their own, earlier launch instants, can
+    /// otherwise elapse a few real seconds before the sampler's next
+    /// tick — confirmed empirically, ~6.5s for the srt leg, ~2.5s for
+    /// rist). A `None` here means a process died UNEXPECTEDLY, mid-run,
+    /// not that the run reached its end.
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct RssSample {
         pub elapsed_s: f64,
@@ -1257,17 +1318,33 @@ pub mod soak {
                 },
             });
 
+            let observed_reconnects = artifacts.recv_report.reconnects;
             verdicts.push(SoakVerdict {
                 name: format!("reconnect_count_matches_outage_count_{leg_name}"),
-                pass: true,
+                pass: observed_reconnects.is_none_or(|n| n == outage_windows),
                 provisional: true,
-                detail: format!(
-                    "{leg_name}: expected {outage_windows} outage window(s) over {:.1}h; \
-                     ManagedTransport exposes no reconnect-cycle counter to compare against \
-                     (deferred-features: 'Reconnect counters on ManagedTransport stats') — \
-                     recorded, not verified",
-                    run_duration_s / 3600.0
-                ),
+                detail: match observed_reconnects {
+                    Some(observed) => format!(
+                        "{leg_name}: recv --managed observed {observed} successful receive-side \
+                         transport rebuild(s) (`ManagedRecvTransport::reconnects_count`) against \
+                         {outage_windows} expected outage window(s) over {:.1}h. That counter \
+                         counts every successful factory rebuild, not outage windows directly — \
+                         a single outage window CAN drive more than one rebuild if the \
+                         freshly-reconnected transport breaks again before the outage fully \
+                         clears (observed empirically during this fix wave's own short-outage \
+                         dry-run testing at an 8s outage duration; not yet confirmed either way \
+                         at the 90s outage duration this run schedule actually uses). Recorded \
+                         for comparison, still provisional until enough real runs establish the \
+                         actual rebuild-to-window ratio at production outage duration.",
+                        run_duration_s / 3600.0
+                    ),
+                    None => format!(
+                        "{leg_name}: expected {outage_windows} outage window(s) over {:.1}h; \
+                         recv wasn't run with --managed on this leg (no reconnect counter \
+                         available) — recorded, not verified",
+                        run_duration_s / 3600.0
+                    ),
+                },
             });
 
             verdicts.push(SoakVerdict {
@@ -1311,15 +1388,28 @@ pub mod soak {
             verdicts,
             overall_pass,
             limitations: vec![
-                "ManagedTransport exposes no reconnect-cycle counters (deferred-features: \
-                 'Reconnect counters on ManagedTransport stats'); \
-                 reconnect_count_matches_outage_count_* verdicts record the expected \
-                 outage-window count only and never gate the run."
+                "ManagedTransport (send side) exposes no reconnect-cycle counter \
+                 (deferred-features: 'Reconnect counters on ManagedTransport stats'); \
+                 recv --managed's ManagedRecvTransport::reconnects_count IS a real observed \
+                 count, but a single outage window has not been confirmed to always drive \
+                 exactly one rebuild (a short 8s-outage dry-run observed a second rebuild \
+                 shortly after the first, before the real 90s-outage-duration ratio could be \
+                 established over enough runs), so reconnect_count_matches_outage_count_* \
+                 verdicts stay provisional and never gate the run even when a real count is \
+                 present."
                     .to_string(),
                 "recv's VerifyReport carries no per-event delivery-gap timestamps; \
                  drop_rate_consistent_with_impairment_* verdicts approximate 'gaps confined to \
                  outage windows' via an aggregate drop-rate check against the proxy's cumulative \
                  counters instead of a per-event ±30s timestamp localization."
+                    .to_string(),
+                "On an outage-bearing leg, each outage window contributes a small \
+                 proxy-visible drop-rate excess beyond the continuous-impairment-only model \
+                 (reconnect handshake attempts that land while the outage is still active get \
+                 counted as dropped) — roughly 0.02-0.2 percentage points at 72h scale against \
+                 this run's 0.1pp tolerance floor. A small drop_rate_consistent_with_impairment \
+                 excess on that leg specifically is this known, benign model artifact to rule \
+                 out first, not automatically a library regression."
                     .to_string(),
             ],
         })
@@ -1444,6 +1534,7 @@ pub mod soak {
                 pass: true,
                 failures: Vec::new(),
                 metrics: cell_metrics(video_aus),
+                reconnects: None,
             }
         }
 
@@ -2635,6 +2726,40 @@ mod tests {
         let rendered = render_markdown(&results);
         assert!(!rendered.contains("<details>"));
         assert!(rendered.contains("## decode"));
+    }
+
+    // A literal `|` or newline in a failure message must not corrupt the
+    // GFM table it's interpolated into (see `escape_markdown_table_cell`)
+    // — a peer tool's own error text (e.g. a multi-line stderr capture,
+    // or a message that itself quotes a `|`-delimited value) is
+    // untrusted input to this renderer and must come out as one
+    // well-formed table row, not a broken column count or a split row.
+    #[test]
+    fn failure_text_with_pipe_and_newline_is_escaped_in_the_table() {
+        let raw = vec![raw_cell_with_failures(
+            "decode/ffmpeg",
+            "baseline",
+            RawVerdict::Fail,
+            &["stderr: `a | b`\nsecond line"],
+        )];
+        let results = build_results(raw, &[], serde_json::json!({}));
+
+        let rendered = render_markdown(&results);
+        // An unescaped embedded newline would split this row across two
+        // `lines()` entries, so finding exactly one confirms it stayed a
+        // single logical line.
+        let row = rendered
+            .lines()
+            .find(|l| l.starts_with("| decode/ffmpeg "))
+            .expect("the cell's row must be present as a single line");
+        assert!(
+            row.contains("a \\| b"),
+            "the literal pipe must be backslash-escaped, not a bare column break:\n{row}"
+        );
+        assert!(
+            row.contains("<br>"),
+            "the embedded newline must fold to GFM's <br>:\n{row}"
+        );
     }
 
     // --- Expectations TOML parser ---

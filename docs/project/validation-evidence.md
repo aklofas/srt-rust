@@ -93,7 +93,7 @@ Every `FAIL` this matrix produces is investigated and recorded — in
 already-evidenced gaps" section and/or the corresponding
 [`expectations.toml`](/scripts/interop/expectations.toml) reason field,
 each with the mechanism and a peer-tool version stamp — not papered over
-with a looser assertion. Five clusters account for all 65
+with a looser assertion. Five clusters account for 64 of the 65
 `EXPECTED-UNSUPPORTED` + `KNOWN-FLAKY` cells:
 
 - **FFmpeg strips the leading 5 bytes of every KLV record on `-c copy`
@@ -147,6 +147,13 @@ with a looser assertion. Five clusters account for all 65
   a wire-protocol one, corroborated by the identical message appearing on a
   bare local file with no transport involved at all.
 
+The 65th cell, `rtsp-consume/vlc-serve-ffmpeg-pull`, is the one `KNOWN-FLAKY`
+entry rather than an `EXPECTED-UNSUPPORTED` one: VLC's own `--sout` RTSP
+serving intermittently returns a 5XX Server Error to ffmpeg's DESCRIBE. It
+has no `tst-interop` transport leg at all (VLC serves, ffmpeg pulls
+peer-to-peer), so it doesn't exercise this codebase's own RTSP code either
+way — wired `known_flaky` from day one, not a finding about this project.
+
 None of these are library bugs on this codebase's own PMT signaling, PES
 framing, or wire conformance — each is independently confirmed by
 byte-level or log-level evidence, recorded in README.md's gaps list for
@@ -169,28 +176,41 @@ loss/jitter/reorder behave the same over hours as it does over a
 five-second matrix cell"). `tst-interop report soak` renders a pass/fail
 verdict plus RSS-growth slopes per process.
 
-**One-hour smoke run (2026-08-03, seed 1) — both legs PASS, zero crashes:**
+**One-hour smoke run (2026-08-03, seed 1, `recv --managed` now on the SRT
+leg) — both legs PASS, zero crashes:**
 
 | Leg | Sent (video AUs) | Received | Drop rate (observed vs. expected) | Verdict |
 | --- | --- | --- | --- | --- |
-| SRT (managed, 1 outage window) | 108,000 | 107,939 | 2.028% vs. 2.00% expected | PASS |
-| RIST (no outage) | 108,000 | 107,984 | 2.030% vs. 2.00% expected | PASS |
+| SRT (managed send + managed recv) | 108,000 | 107,999 | 2.027% vs. 2.00% expected | PASS |
+| RIST (no outage) | 108,000 | 107,987 | 2.029% vs. 2.00% expected | PASS |
 
 Both legs' observed drop rate sits well inside a 6σ binomial tolerance band
 around the proxy's configured 2% loss rate (±0.159 percentage points for
 the SRT leg's packet volume, ±0.177pp for RIST's — the actual deviation is
-roughly one sigma in both cases, comfortably inside the 6σ tolerance band —
-a 5.8-5.9x margin), and `recv` reported no verification failures on either
-leg.
+roughly one sigma in both cases (~1.01σ for SRT, ~0.99σ for RIST),
+comfortably inside the 6σ tolerance band — a 5.9-6.1x margin), and `recv`
+reported no verification failures on either leg. This run is also the
+first to exercise `recv --managed`'s receive-side reconnect wrapper (the
+SRT leg's `recv`, not just its `send`, now survives a transport break via
+`ManagedRecvTransport`/`ManagedDemuxReceiver`) — as expected for a run
+this short, the 6-hourly outage schedule never actually fires against the
+send/recv pair (only the proxy's own pre-warmup window elapses, which the
+runner deliberately shields them from), so the recv-side reconnect counter
+correctly reads 0; this is recorded, not gating (see `report.rs`'s own
+module doc for why that check stays provisional even once a real count is
+available).
 
-RSS sampling showed apparent growth of roughly 3.6-5.7 MiB/hour in the
-`send`/`recv` processes (the proxy processes themselves stayed flat). This
-is a harness bookkeeping artifact, not a leak in the library under test:
-`send`/`recv` were accumulating an unbounded KLV digest for post-run
-verification, and RSS growth tracks that accumulation, not the library's
-transport or muxer/demuxer state. The fix is `--no-klv-digest` (now the
-soak driver's default on every process it launches), which drops that
-accumulation entirely; the pending 72-hour run below uses it.
+RSS sampling with `--no-klv-digest` active on every process (the fix from
+an earlier round) shows the SRT leg's `send`/`recv` both flat at 0.0
+KiB/hour, matching the proxy baseline — the digest-accumulation fix
+accounts for its entire prior growth. The RIST leg's `send`/`recv` still
+show measurable growth (1485.1 / 349.3 KiB/hour respectively) — an order
+of magnitude down from the pre-fix ~5.8 / ~4.0 MiB/hour, confirming digest
+accumulation was the dominant cause there too, but not zero: an
+unexplained RIST-specific residual remains an open watch item (plausibly
+librist's own recovery-buffer growth, per the earlier round's own
+unresolved note), to compare against the real 72-hour run's own numbers
+before pinning an `--rss-slope-threshold-kb-per-hour` value.
 
 **The first real 72-hour soak run is pending, on dedicated hardware** (a
 multi-hour unattended run doesn't fit this environment's execution model).

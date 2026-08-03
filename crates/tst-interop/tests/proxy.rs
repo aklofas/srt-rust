@@ -291,6 +291,96 @@ fn spoofed_third_party_datagram_does_not_hijack_the_return_path() {
     );
 }
 
+/// (Fix-wave regression) A datagram from a NEW source, arriving after
+/// the current `client_peer` has gone quiet for longer than
+/// `CLIENT_RELEARN_GRACE`, must be treated as a legitimate reconnect —
+/// replies must route to the NEW source afterward, not the stale
+/// original one. Positive-control twin of the spoofed-datagram test
+/// above (that one's spoofer arrives with essentially zero gap and must
+/// NOT hijack the path; this one's "new client" arrives after a
+/// genuine multi-second quiet gap and MUST take over it) — together
+/// they pin exactly the boundary the grace period is meant to draw.
+/// Found empirically while developing `recv --managed`: a `send
+/// --managed` reconnect after a real SRT-level break uses a brand-new
+/// ephemeral source port every attempt (`tst-srt`'s `Socket::
+/// connect_with` never explicitly binds a local port first), and the
+/// proxy's OLD "learn the first datagram, forever" rule left every
+/// reconnect attempt's replies routed to a dead port, so the handshake
+/// could never complete no matter how many times either side retried.
+#[test]
+fn client_relearns_after_a_genuine_quiet_period() {
+    let dest_sock = UdpSocket::bind("127.0.0.1:0").expect("bind destination socket");
+    dest_sock
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+    let dest_addr = dest_sock.local_addr().expect("destination local_addr");
+
+    let (proxy_addr, proxy_handle) = spawn_proxy(
+        "127.0.0.1:0".parse().unwrap(),
+        dest_addr,
+        ImpairConfig::default(),
+        None,
+        10,
+    );
+
+    let original_client = UdpSocket::bind("127.0.0.1:0").expect("bind original client socket");
+    original_client
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+    let reconnected_client =
+        UdpSocket::bind("127.0.0.1:0").expect("bind reconnected client socket");
+    reconnected_client
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+
+    // Original client establishes client_peer.
+    original_client
+        .send_to(b"hello-from-original", proxy_addr)
+        .expect("send from original client");
+    let mut buf = [0u8; 64];
+    let n = dest_sock
+        .recv(&mut buf)
+        .expect("destination must see the original client's datagram");
+    assert_eq!(&buf[..n], b"hello-from-original");
+
+    // Let client_peer go quiet past the grace period — simulates the
+    // real gap a genuine SRT peer-idle-timeout break produces (per this
+    // module's own doc comment: confirmed empirically to be several
+    // seconds, never sub-second — 2.2s sits safely past the proxy's own
+    // 2s `CLIENT_RELEARN_GRACE`).
+    thread::sleep(Duration::from_millis(2200));
+
+    // "Reconnect": a DIFFERENT source sends forward-direction traffic.
+    reconnected_client
+        .send_to(b"hello-from-reconnect", proxy_addr)
+        .expect("send from reconnected client");
+    let n = dest_sock
+        .recv(&mut buf)
+        .expect("destination must see the reconnected client's datagram");
+    assert_eq!(&buf[..n], b"hello-from-reconnect");
+
+    // The reply must now route to the RECONNECTED client, not the
+    // stale original one.
+    dest_sock
+        .send_to(b"reply", proxy_addr)
+        .expect("send reply from destination");
+    let n = reconnected_client
+        .recv(&mut buf)
+        .expect("reconnected client must receive the reply after a genuine reconnect");
+    assert_eq!(&buf[..n], b"reply");
+    assert!(
+        original_client.recv(&mut buf).is_err(),
+        "the stale original client must NOT receive the reply after a genuine reconnect"
+    );
+
+    let stats =
+        join_with_timeout(proxy_handle, Duration::from_secs(10)).expect("proxy::run must succeed");
+    assert_eq!(
+        stats.forwarded, 2,
+        "both the original and reconnected datagrams were forwarded"
+    );
+}
+
 /// `outage_period_s=2, outage_dur_s=1` at 10Hz for ~6s (3 full periods):
 /// the receiver must observe MULTIPLE periodic ~1s gaps where the outage
 /// windows suppressed traffic — not just one contiguous pause — and the

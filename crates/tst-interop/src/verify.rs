@@ -387,6 +387,12 @@ impl Tally {
             pass: failures.is_empty(),
             failures,
             metrics,
+            // `Tally` is transport-agnostic (fed events, not a live
+            // transport) and has no notion of reconnects — `recv.rs`'s
+            // `run_managed` overwrites this with `Some(n)` afterward,
+            // the same way it patches `metrics.bytes`/`stream_sha256`
+            // in from the `Teeing` tap post-hoc.
+            reconnects: None,
         }
     }
 }

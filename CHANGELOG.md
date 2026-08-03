@@ -54,6 +54,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`DemuxReceiver`: the final access unit of a live receive session was
+  silently dropped whenever the session ended any way other than a clean
+  peer close.** H.264 video is muxed with `PES_packet_length = 0`
+  ("unbounded" — the encoder doesn't know an access unit's length up front),
+  so the demuxer only recognizes the last AU is complete when the next PES
+  starts or the caller explicitly flushes. `DemuxReceiver::recv_event` only
+  flushed on a clean `TransportError::Closed` (peer end-of-stream); a broken
+  socket (`ShellErrorKind::TransportBroken` — the common case for a live SRT
+  session ending) or a caller-initiated cross-thread `close()`/`cancel()`
+  (`ShellErrorKind::Closed`) bypassed the flush entirely, so the buffered
+  final AU was lost even though the bytes had fully arrived. Both paths now
+  flush before surfacing the error, matching the existing clean-EOF
+  behavior. `Demuxer::flush` is PID-agnostic, so any other stream (audio,
+  KLV) with bytes still buffered when the transport ends benefits the same
+  way; on a genuine mid-stream break the recovered sample can be a truncated
+  access unit rather than a complete one, the same trade-off already
+  accepted on the clean-EOF path. No public API changes.
 - **RTSP server: the `active_sessions` stats gauge could transiently read
   `max_sessions + 1`** while an over-cap connection was being refused. The
   accept loop reserved a slot with an increment, bound-checked, then released

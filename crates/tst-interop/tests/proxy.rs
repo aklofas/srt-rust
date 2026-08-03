@@ -42,6 +42,7 @@
 
 use std::net::{SocketAddr, UdpSocket};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -214,6 +215,80 @@ fn transparent_relay_preserves_order_and_bytes() {
     assert_eq!(stats.forwarded, payloads.len() as u64);
     assert_eq!(stats.dropped, 0);
     assert_eq!(stats.duped, 0);
+}
+
+/// The client peer is learned from the FIRST forward-direction datagram
+/// only (per `proxy::run`'s own module doc) -- a stray datagram from a
+/// third socket later in the session must not re-aim the return path.
+/// Regression test for a bug where `client_peer` was unconditionally
+/// overwritten on every forward-direction packet.
+#[test]
+fn spoofed_third_party_datagram_does_not_hijack_the_return_path() {
+    let dest_sock = UdpSocket::bind("127.0.0.1:0").expect("bind destination socket");
+    dest_sock
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+    let dest_addr = dest_sock.local_addr().expect("destination local_addr");
+
+    let (proxy_addr, proxy_handle) = spawn_proxy(
+        "127.0.0.1:0".parse().unwrap(),
+        dest_addr,
+        ImpairConfig::default(),
+        None,
+        3,
+    );
+
+    let real_client = UdpSocket::bind("127.0.0.1:0").expect("bind real client socket");
+    real_client
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+    let spoofer = UdpSocket::bind("127.0.0.1:0").expect("bind spoofer socket");
+    spoofer
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("set_read_timeout");
+
+    // Real client's first datagram learns client_peer.
+    real_client
+        .send_to(b"hello-from-real-client", proxy_addr)
+        .expect("send from real client");
+    let mut buf = [0u8; 64];
+    let n = dest_sock
+        .recv(&mut buf)
+        .expect("destination must see the real client's datagram");
+    assert_eq!(&buf[..n], b"hello-from-real-client");
+
+    // A stray datagram from a THIRD, unrelated socket -- must still be
+    // relayed (impairment applies to forward-direction traffic
+    // regardless of source), but must NOT re-aim the learned return path.
+    spoofer
+        .send_to(b"spoofed", proxy_addr)
+        .expect("send spoofed datagram");
+    let n = dest_sock
+        .recv(&mut buf)
+        .expect("spoofed datagram must still be relayed");
+    assert_eq!(&buf[..n], b"spoofed");
+
+    // The "server" (forward) now replies -- this must reach the REAL
+    // client, not the spoofer.
+    dest_sock
+        .send_to(b"reply", proxy_addr)
+        .expect("send reply from destination");
+
+    let n = real_client
+        .recv(&mut buf)
+        .expect("real client must receive the reply");
+    assert_eq!(&buf[..n], b"reply");
+    assert!(
+        spoofer.recv(&mut buf).is_err(),
+        "the spoofer must NOT receive the reply -- the return path must stay aimed at the real client"
+    );
+
+    let stats =
+        join_with_timeout(proxy_handle, Duration::from_secs(10)).expect("proxy::run must succeed");
+    assert_eq!(
+        stats.forwarded, 2,
+        "both the real and spoofed datagrams were forwarded"
+    );
 }
 
 /// `outage_period_s=2, outage_dur_s=1` at 10Hz for ~6s (3 full periods):
@@ -570,4 +645,49 @@ fn srt_round_trip_through_lossy_proxy_recovers_via_retransmission() {
             .expect("proxy thread panicked")
             .expect("proxy::run must succeed");
     }
+}
+
+/// `--stats-json` with no following value must exit 2 like every sibling
+/// flag (`--listen`/`--forward`/`--jitter`/etc.), not silently no-op.
+/// Regression test for a bug where `args.get(i+1).map(PathBuf::from)`
+/// swallowed a missing value into `None` instead of requiring presence.
+/// Drives the real built CLI binary as a subprocess (the only way to
+/// exercise `main.rs`'s argument loop directly -- it calls
+/// `std::process::exit`, so it can't be unit-tested in-process).
+///
+/// `--run-seconds 1` is included even though the FIXED behavior never
+/// reaches it (argument validation fails and exits before `proxy::run`
+/// is ever called): without it, a REGRESSION back to the silent-no-op
+/// bug would let `stats_json` fall back to `None` and `run_seconds` stay
+/// unset too, starting a real relay that runs until killed -- turning a
+/// test failure into an indefinitely hanging subprocess. This bounds
+/// that failure mode to ~1s instead, so a regression fails fast with a
+/// clear mismatch instead of wedging the test run.
+#[test]
+fn stats_json_missing_value_exits_with_usage_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_tst-interop"))
+        .args([
+            "proxy",
+            "--listen",
+            "127.0.0.1:0",
+            "--forward",
+            "127.0.0.1:1",
+            "--run-seconds",
+            "1",
+            "--stats-json",
+        ])
+        .output()
+        .expect("spawn tst-interop binary");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "missing --stats-json value must exit 2, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("stats-json"),
+        "usage error should name the flag, got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

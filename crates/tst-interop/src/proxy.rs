@@ -361,6 +361,22 @@ pub fn run(
                 }
             }
             Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+            // Windows: a datagram sent to a peer whose port already
+            // closed can surface as ConnectionReset/ConnectionAborted on
+            // a LATER, otherwise-unrelated recv_from on this same
+            // unconnected socket (Linux just stays silent) — a peer
+            // process exiting early must not kill the whole relay over
+            // an async ICMP artifact like this.
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted
+                ) =>
+            {
+                eprintln!(
+                    "proxy: recv_from reported {e} (peer likely closed; continuing to relay)"
+                );
+            }
             Err(e) => return Err(format!("proxy recv_from: {e}")),
         }
 

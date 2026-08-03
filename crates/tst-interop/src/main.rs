@@ -30,6 +30,34 @@ Options:
         .to_string()
 }
 
+/// Returns the value following a value-taking flag at `args[i]`
+/// (i.e. `args[i + 1]`), or exits with an actionable error (never
+/// returns) if that slot is missing entirely OR looks like the start
+/// of another flag (`--...`). Every subcommand below except `proxy`
+/// (which already gets equivalent protection for free: its flags all
+/// route through a typed parser that rejects a flag-shaped string,
+/// e.g. `"--forward".parse::<SocketAddr>()` fails) used to fetch a
+/// flag's value with a bare `args.get(i + 1)`, which — for a flag
+/// given with NO value — silently consumes the FOLLOWING flag's own
+/// name as if it were this flag's value, then desyncs every argument
+/// after it. The user sees a misleading "unknown argument" error many
+/// tokens later instead of anything pointing at the flag that was
+/// actually missing its value. `context` is the full "subcommand:
+/// --flag" prefix for the error message (e.g. `"gen: --profile"`).
+fn require_value(args: &[String], i: usize, context: &str) -> String {
+    match args.get(i + 1) {
+        None => {
+            eprintln!("{context} requires a value");
+            std::process::exit(2);
+        }
+        Some(v) if v.starts_with("--") => {
+            eprintln!("{context} requires a value, got '{v}' (looks like another flag)");
+            std::process::exit(2);
+        }
+        Some(v) => v.clone(),
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -73,15 +101,15 @@ fn run_gen(args: &[String]) -> ! {
     while i < args.len() {
         match args[i].as_str() {
             "--profile" => {
-                profile = args.get(i + 1).cloned();
+                profile = Some(require_value(args, i, "gen: --profile"));
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
+                seconds = cli::parse_seconds(&require_value(args, i, "gen: --seconds"));
                 i += 2;
             }
             "--out" => {
-                out = args.get(i + 1).map(PathBuf::from);
+                out = Some(PathBuf::from(require_value(args, i, "gen: --out")));
                 i += 2;
             }
             other => {
@@ -145,19 +173,19 @@ fn run_send(args: &[String]) -> ! {
     while i < args.len() {
         match args[i].as_str() {
             "--profile" => {
-                profile = args.get(i + 1).cloned();
+                profile = Some(require_value(args, i, "send: --profile"));
                 i += 2;
             }
             "--url" => {
-                url = args.get(i + 1).cloned();
+                url = Some(require_value(args, i, "send: --url"));
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
+                seconds = cli::parse_seconds(&require_value(args, i, "send: --seconds"));
                 i += 2;
             }
             "--json" => {
-                json_out = args.get(i + 1).cloned();
+                json_out = Some(require_value(args, i, "send: --json"));
                 i += 2;
             }
             other => {
@@ -228,19 +256,19 @@ fn run_recv(args: &[String]) -> ! {
     while i < args.len() {
         match args[i].as_str() {
             "--url" => {
-                url = args.get(i + 1).cloned();
+                url = Some(require_value(args, i, "recv: --url"));
                 i += 2;
             }
             "--expect" => {
-                expect = args.get(i + 1).cloned();
+                expect = Some(require_value(args, i, "recv: --expect"));
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
+                seconds = cli::parse_seconds(&require_value(args, i, "recv: --seconds"));
                 i += 2;
             }
             "--json" => {
-                json_out = args.get(i + 1).cloned();
+                json_out = Some(require_value(args, i, "recv: --json"));
                 i += 2;
             }
             other => {
@@ -297,19 +325,19 @@ fn run_verify(args: &[String]) -> ! {
     while i < args.len() {
         match args[i].as_str() {
             "--file" => {
-                file = args.get(i + 1).map(PathBuf::from);
+                file = Some(PathBuf::from(require_value(args, i, "verify: --file")));
                 i += 2;
             }
             "--expect" => {
-                expect = args.get(i + 1).cloned();
+                expect = Some(require_value(args, i, "verify: --expect"));
                 i += 2;
             }
             "--seconds" => {
-                seconds = args.get(i + 1).and_then(|s| cli::parse_seconds(s));
+                seconds = cli::parse_seconds(&require_value(args, i, "verify: --seconds"));
                 i += 2;
             }
             "--json" => {
-                json_out = args.get(i + 1).cloned();
+                json_out = Some(require_value(args, i, "verify: --json"));
                 i += 2;
             }
             other => {
@@ -551,19 +579,31 @@ fn run_report_merge(args: &[String]) -> ! {
     while i < args.len() {
         match args[i].as_str() {
             "--cells-dir" => {
-                cells_dir = args.get(i + 1).map(PathBuf::from);
+                cells_dir = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report merge: --cells-dir",
+                )));
                 i += 2;
             }
             "--expectations" => {
-                expectations = args.get(i + 1).map(PathBuf::from);
+                expectations = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report merge: --expectations",
+                )));
                 i += 2;
             }
             "--meta" => {
-                meta = args.get(i + 1).map(PathBuf::from);
+                meta = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report merge: --meta",
+                )));
                 i += 2;
             }
             "--out" => {
-                out = args.get(i + 1).map(PathBuf::from);
+                out = Some(PathBuf::from(require_value(args, i, "report merge: --out")));
                 i += 2;
             }
             other => {
@@ -629,11 +669,15 @@ fn run_report_render(args: &[String]) -> ! {
     while i < args.len() {
         match args[i].as_str() {
             "--in" => {
-                in_path = args.get(i + 1).map(PathBuf::from);
+                in_path = Some(PathBuf::from(require_value(args, i, "report render: --in")));
                 i += 2;
             }
             "--out" => {
-                out = args.get(i + 1).map(PathBuf::from);
+                out = Some(PathBuf::from(require_value(
+                    args,
+                    i,
+                    "report render: --out",
+                )));
                 i += 2;
             }
             "--github-summary" => {

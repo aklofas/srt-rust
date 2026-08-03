@@ -107,8 +107,25 @@ SERVE_LINGER_MARGIN=20
 
 # `$1` = --seconds value for this cell (a plain non-negative integer —
 # run-matrix.sh's own --seconds parsing enforces that, see its --help).
+# Two defensive details, both load-bearing even though today's one
+# caller (run-matrix.sh's own --seconds flag) already validates its
+# input before this ever runs:
+# - The explicit digits-only guard turns a malformed/empty `$1` into a
+#   clear message instead of a cryptic `$(( ))` syntax error, and stops
+#   it here rather than propagating an empty/garbage timeout budget to
+#   every `timeout` call this script makes.
+# - The `10#` base-10 prefix on the arithmetic itself is REQUIRED even
+#   after the digits-only guard passes: bash's arithmetic evaluator
+#   treats a leading-zero literal as octal, and "08"/"09" aren't valid
+#   octal digits — `$(( 08 * 3 + 15 ))` fails with "value too large for
+#   base" despite `08` passing a plain `^[0-9]+$` check. `10#08` forces
+#   base-10 interpretation regardless of leading zeros.
 cell_timeout() {
-  echo $(( $1 * CELL_TIMEOUT_MULTIPLIER + CELL_TIMEOUT_FLOOR ))
+  [[ "$1" =~ ^[0-9]+$ ]] || {
+    echo "cell_timeout: expected a non-negative integer, got: ${1:-<empty>}" >&2
+    return 1
+  }
+  echo $(( 10#$1 * CELL_TIMEOUT_MULTIPLIER + CELL_TIMEOUT_FLOOR ))
 }
 
 serve_timeout() {

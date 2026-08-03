@@ -1,0 +1,213 @@
+name: interop
+
+# Weekly public interop evidence: exchanges the `tst-interop` driver's
+# synthetic MPEG-TS/KLV traffic with real third-party tools (ffmpeg,
+# TSDuck's tsp, GStreamer, VLC, mpv) over live network sessions plus local
+# analyze/decode probes, across every transport this workspace supports
+# and every canonical stream profile. See scripts/interop/README.md for
+# the full cell inventory, tier semantics, and the known-gap catalogue
+# expectations.toml already documents.
+#
+# This is the arc's continuously-refreshed public evidence: the run's
+# GITHUB_STEP_SUMMARY table + uploaded artifacts are what a consumer reads
+# to see this codebase actually interoperate with real tools on a stock
+# runner, not another closed-loop self-test. linux-x86_64 only, matching
+# scripts/interop/'s own stance (see lib.sh's header).
+
+on:
+  schedule:
+    # Mondays 05:00 UTC — weekly cadence, off-peak, and clear of the
+    # sanitizers.yml nightly (03:00 UTC daily).
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/tst-interop/**'
+      - 'scripts/interop/**'
+      - '.github/workflows/interop.yml'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same rustup-sync-vs-preinstalled-clippy avoidance as ci.yml's
+  # ubuntu-latest jobs (reference_maturin_develop_ci_venv_recipe).
+  RUSTUP_TOOLCHAIN: "1.85"
+
+jobs:
+  interop-matrix:
+    name: interop matrix (linux-x86_64)
+    runs-on: ubuntu-latest
+    # Worst-case budget: 157 cells at the run-matrix.sh default of 10s
+    # each, plus per-cell settle/timeout margin (lib.sh's cell_timeout)
+    # and a --release build of tst-interop's native-linking dependency
+    # chain (tst-srt + tst-rist, i.e. vendored libsrt/librist/mbedTLS).
+    # ~45-60 min observed budget arithmetic; 90 min leaves real margin
+    # without letting one wedged cell burn the 6-hour job default.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build prerequisites
+        # build-essential/cmake/pkg-config: vendored libsrt + mbedTLS
+        # (cmake-driven, mirrors ci.yml's Linux prereqs). meson/ninja-build:
+        # vendored librist (meson-driven). Both native builds run as part
+        # of the `cargo build --release -p tst-interop` step below, since
+        # tst-interop depends on tst-srt + tst-rist directly.
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y build-essential cmake pkg-config meson ninja-build
+
+      - name: Install peer tools
+        # Real third-party tools this matrix exchanges traffic with (see
+        # scripts/interop/README.md's cell inventory). A tool absent from
+        # PATH degrades its cells to SKIPPED_TOOL_MISSING (lib.sh's
+        # `have()`), never a fake pass/fail — this list is deliberately
+        # narrower than "every tool the matrix could ever exercise":
+        #   - ffmpeg: also provides ffprobe (the analyze/ffprobe cells).
+        #   - vlc: also provides cvlc (decode/vlc, rtsp-serve/vlc-probe,
+        #     rtsp-consume's VLC-serves leg).
+        #   - mpv: decode/mpv cells.
+        #   - gstreamer1.0-tools: gst-launch-1.0, needed by the
+        #     transport-axis SRT "gst" cells (srt/us-to-gst,
+        #     srt/gst-to-us).
+        #   - gstreamer1.0-plugins-bad: srtsink/srtsrc — the GStreamer SRT
+        #     elements those same two cells actually build a pipeline
+        #     with. NOT on PATH via gstreamer1.0-tools alone (pulls in
+        #     plugins-base + plugins-good as apt dependencies for free).
+        #     Load-bearing, not optional polish: without it, gst-launch-1.0
+        #     itself is still present, so `have()` would NOT skip these
+        #     cells — the pipeline would instead fail to build ("no such
+        #     element or plugin"), a different failure text than the
+        #     documented SRT-tail-loss finding expectations.toml's
+        #     `failure_contains = "stream_sha256 mismatch"` keys on for
+        #     srt/gst-to-us, and srt/us-to-gst has no expectations row at
+        #     all (it's expected to PASS) — either way a surprise FAIL
+        #     that would red this job for the wrong reason.
+        #   - jq: required by run-matrix.sh/lib.sh's own JSON handling
+        #     (README.md).
+        #
+        # Deliberately NOT installed: gstreamer1.0-plugins-base-apps
+        # (ships gst-play-1.0, used only by the format-axis decode/gst-play
+        # cells across all 12 profiles). Those cells have never executed
+        # anywhere and would first-run unattended on this runner with no
+        # expectations.toml rows to catch a surprise — left
+        # SKIPPED_TOOL_MISSING here (honest) until a local evidence run
+        # exercises them first and either documents a gap or confirms a
+        # clean pass; then add the apt package here in the same PR.
+        run: |
+          sudo apt-get -o Acquire::Retries=5 install -y ffmpeg vlc mpv gstreamer1.0-tools gstreamer1.0-plugins-bad jq
+
+      - name: Install TSDuck
+        # Not in Ubuntu's apt repos — install the pinned upstream .deb
+        # release directly, verified by sha256 before dpkg -i. A version
+        # bump is a deliberate PR (per the arc's spec), never an automatic
+        # float. Asset picked to match ubuntu-latest's current OS (Ubuntu
+        # 24.04 — see actions/runner-images' README; ubuntu-latest is a
+        # migrating label, so a future bump to 26.04 should revisit this
+        # asset name + version together, not just re-pin the version).
+        env:
+          TSDUCK_DEB_URL: "https://github.com/tsduck/tsduck/releases/download/v3.44-4676/tsduck_3.44-4676.ubuntu24_amd64.deb"
+          TSDUCK_DEB_SHA256: "03a983a5147c5f733ef89aafd23f2d83e19a9e987ae4a575a7ee62ab4b16986e"
+        run: |
+          curl -sL --retry 5 -o /tmp/tsduck.deb "$TSDUCK_DEB_URL"
+          echo "$TSDUCK_DEB_SHA256  /tmp/tsduck.deb" | sha256sum -c -
+          sudo dpkg -i /tmp/tsduck.deb || sudo apt-get -o Acquire::Retries=5 install -y -f
+          rm -f /tmp/tsduck.deb
+          tsp --version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+
+      - name: Cache cargo + build artifacts
+        # Own key prefix (cargo-interop-): this is a --release build of a
+        # crate no other workflow builds, and the WP-SAN lesson (never let
+        # a differently-built native artifact hide behind another job's
+        # cache key) applies here too even though this job has no
+        # sanitizer instrumentation to protect against — a stale
+        # non-release target/ layout from a hypothetical future debug step
+        # in this same workflow must not collide with another workflow's
+        # cache either.
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+          key: cargo-interop-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-interop-${{ runner.os }}-
+
+      - name: cargo build --release -p tst-interop
+        # --release: run-matrix.sh's $BIN points at target/release/tst-interop
+        # (a live 157-cell matrix needs the muxer/demuxer at real speed, not
+        # a debug build). SRT/RIST_FORCE_VENDORED: this runner has no
+        # system libsrt/librist, so pkg-config would already fall through
+        # to vendored — set explicitly anyway, matching every other
+        # workflow's convention, so a future runner-image change can never
+        # silently link a stray system copy instead.
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+        run: cargo build --release -p tst-interop
+
+      - name: Run interop matrix
+        # scripts/interop/run-matrix.sh drives every cell across every
+        # canonical profile and writes results.json/results.md itself (see
+        # the script's own doc comment) before exiting. Its exit code is
+        # `report merge`'s: 0 iff every FAIL matched a documented row in
+        # expectations.toml, nonzero on any unexpected FAIL — that decides
+        # this step's (and hence this job's) conclusion. No `if:` guard
+        # here on purpose: a failure here is what SHOULD fail the job. The
+        # two steps below use `if: always()` so the evidence still gets
+        # published even when this step fails.
+        run: |
+          bash scripts/interop/run-matrix.sh \
+            --outdir "$RUNNER_TEMP/interop" \
+            --seconds 10
+
+      - name: Publish step summary
+        # Re-render with --github-summary so the verdict table appears
+        # directly on the workflow run's summary page, not only inside the
+        # uploaded artifact. Cheap: reads the results.json the matrix step
+        # above already wrote: no re-run. Guarded on the file's existence
+        # rather than letting a missing-file error double-report the
+        # failure — a results.json can only be absent if the matrix step
+        # died before ever reaching `report merge` (e.g. a bootstrap
+        # gen/verify FATAL), which the previous step has already failed
+        # the job for.
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/interop/results.json" ]]; then
+            target/release/tst-interop report render \
+              --in "$RUNNER_TEMP/interop/results.json" \
+              --out "$RUNNER_TEMP/interop/results.md" \
+              --github-summary
+          else
+            echo "::warning::results.json not found — the matrix run failed before completing report merge; nothing to summarize (see the previous step's log)." >&2
+          fi
+
+      - name: Upload interop evidence
+        # cells/ and logs/ get created (mkdir -p) at the very start of
+        # run-matrix.sh, so they exist even on an early failure;
+        # if-no-files-found: warn covers the results.json/.md pair on that
+        # same early-failure path without failing this step.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interop-evidence
+          path: |
+            ${{ runner.temp }}/interop/results.json
+            ${{ runner.temp }}/interop/results.md
+            ${{ runner.temp }}/interop/cells
+            ${{ runner.temp }}/interop/logs
+          retention-days: 90
+          if-no-files-found: warn

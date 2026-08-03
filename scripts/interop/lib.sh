@@ -227,18 +227,25 @@ tsp_analyze_counters_zero() {
 # EVERY profile it can open at all — verified line-for-line against real
 # captured logs (all 12 profiles x ffplay/vlc/mpv on this box) before
 # being added here, not guessed:
-#   - h264: "crop values invalid", "sps_id ... out of range",
-#     "non-existing PPS/SPS", "decode_slice_header error", "no frame!",
-#     "Error decoding the extradata"
-#   - h265/h266 (vvc): "PPS id ... out of range"/"not available",
-#     "vps_video_parameter_set_id out of range", "Failed to read unit",
-#     "Failed to parse picture unit", "Error parsing NAL unit"
-#   - aac: "Reserved bit set", "Number of bands ... exceeds limit",
-#     "Scalefactor ... out of range", "channel element ... is not
+#   - h264: "crop values invalid", "sps_id N out of range",
+#     "non-existing PPS/SPS N referenced", "decode_slice_header error",
+#     "no frame!", "Error decoding the extradata"
+#   - h265/h266 (vvc): "PPS id N not available"/"PPS id out of range",
+#     "vps_video_parameter_set_id out of range", "Failed to read unit N
+#     (type N)", "Failed to parse picture unit", "Error parsing NAL
+#     unit #N"
+#   - aac: "Reserved bit set", "Number of bands (N) exceeds limit (N)",
+#     "Scalefactor (N) out of range", "channel element N is not
 #     allocated", "Error decoding audio."
 # None of these indicate a container/PSI-level problem; all are excluded
-# from the marker-grep every decode cell applies.
-DECODE_PAYLOAD_NOISE='crop values invalid|sps_id.*out of range|non-existing (PPS|SPS)|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit|Failed to parse picture unit|PPS id|Error parsing NAL unit|Error decoding the extradata|Reserved bit set|Number of bands|Scalefactor|is not allocated|Error decoding audio\.'
+# from the marker-grep every decode cell applies. Every alternative below
+# is anchored to the surrounding fixed text actually observed (not a
+# bare, generic word like "is not allocated" or "Scalefactor" alone) so
+# this can't swallow an unrelated real error that happens to share a
+# word — re-verified against the same 36 captured logs (12 profiles x
+# ffplay/vlc/mpv) this was originally built from: identical PASS/FAIL
+# outcome per cell before and after tightening.
+DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.'
 
 # ffplay-specific: `-nodisp` in this headless sandbox (no $DISPLAY, no
 # real video output device) makes ffplay print "Failed to open file '...'

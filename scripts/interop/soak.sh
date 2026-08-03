@@ -282,7 +282,7 @@ sleep "$SRT_PROXY_WARMUP_S"
 # accumulate one hex digest string per KLV record for the ENTIRE run
 # (needed for klv_set_sha256, an order-insensitive fingerprint that has
 # to sort every digest before hashing) — confirmed during Task 14's own
-# smoke run to cost ~3.6-5.8 MiB/h of RSS growth that's pure harness
+# smoke run to cost ~3.6-5.7 MiB/h of RSS growth that's pure harness
 # bookkeeping, unrelated to the library code this soak measures, and
 # would otherwise swamp the RSS-slope evidence over 72h. The short
 # interop-matrix cells run-matrix.sh drives do NOT pass this flag —

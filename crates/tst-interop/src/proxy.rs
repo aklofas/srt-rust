@@ -321,8 +321,13 @@ pub fn run(
                     }
                 } else {
                     // Forward direction: this is the traffic
-                    // `impair::Engine` governs.
-                    client_peer = Some(peer);
+                    // `impair::Engine` governs. Learn the client peer
+                    // from the FIRST such datagram only (per the module
+                    // doc's "Topology and direction semantics" section)
+                    // -- a stray datagram from some other source later
+                    // in the session must not re-aim the return path
+                    // mid-stream.
+                    client_peer.get_or_insert(peer);
                     let elapsed_ms = run_start.elapsed().as_millis() as u64;
                     let order_key = next_order;
                     next_order += 1;

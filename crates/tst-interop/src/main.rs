@@ -462,7 +462,11 @@ fn run_proxy(args: &[String]) -> ! {
                 i += 2;
             }
             "--stats-json" => {
-                stats_json = args.get(i + 1).map(PathBuf::from);
+                stats_json = Some(
+                    args.get(i + 1)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| bad_arg("stats-json", "a file path")),
+                );
                 i += 2;
             }
             "--run-seconds" => {

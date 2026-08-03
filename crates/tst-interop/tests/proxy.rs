@@ -460,15 +460,18 @@ fn unwritable_stats_path_does_not_fail_the_relay() {
 /// "nextest group placement" section for why.
 ///
 /// The `GracefulSrtClose` send-side close wait (300ms, reasoned against
-/// unimpaired loopback — see `transport.rs`) gets its first real
-/// pressure here. Verified enforcement is exact for KLV (`klv_set_sha256`
-/// equality) and NARROWLY bounded for video (see the assertion's own
-/// comment: an empirical 10-run sample found at most 1 trailing AU
-/// occasionally still in flight when the receive grace window closes,
-/// never more) — a WIDER video deficit, a KLV mismatch, or a `send`-side
-/// error during close would all still fail this test loudly. That is the
-/// real signal to watch for: don't widen these bounds to chase a flake,
-/// investigate it (see the arc's watch-item note on this margin).
+/// unimpaired loopback — see `transport.rs`) gets real pressure here, and
+/// was the first suspect for this test's video-AU deficit — but it was
+/// experimentally RULED OUT (raising it to 1000ms changed nothing; see
+/// the assertion's own comment for the full evidence chain, which
+/// isolates the real cause to a `tst-pipeline`/`tst-srt` gap unrelated to
+/// this margin, this proxy, or impairment at all). Verified enforcement
+/// is exact for KLV (`klv_set_sha256` equality) and NARROWLY bounded for
+/// video (deficit 0 or 1, never more — never a `send`-side error during
+/// close either). A WIDER video deficit or a KLV mismatch would still
+/// fail this test loudly — that is the real signal to watch for: don't
+/// widen these bounds to chase a flake, investigate it the way the
+/// assertion's own comment documents this one was.
 #[test]
 fn srt_round_trip_through_lossy_proxy_recovers_via_retransmission() {
     let profile = profiles::by_name("baseline").expect("baseline profile must exist");
@@ -509,23 +512,49 @@ fn srt_round_trip_through_lossy_proxy_recovers_via_retransmission() {
     // `recv_report.pass` alone doesn't catch a video tail-truncation
     // flake (its 70% nominal-count slack floor would tolerate over a
     // second of trailing AUs silently vanishing) -- but exact equality
-    // is ALSO wrong here: a 10-run empirical sample showed 9/10 short by
-    // exactly 1 AU (150 sent / 149 received every time it missed, never
-    // more, never fewer than -1), the very last frame's TSBPD delivery
-    // occasionally still in flight when `recv::recv_over_transport`'s
-    // POST_START_GRACE window closes -- a real but bounded/understood
-    // artifact of this test's own close timing, not data loss. Named,
-    // narrow tolerance (at most 1 AU short, never more, never over) so a
-    // WIDER mismatch -- the actual tail-truncation flake shape -- still
-    // fails loudly.
+    // is ALSO wrong here, for a reason that is NOT the `GracefulSrtClose`/
+    // POST_START_GRACE margin this test originally suspected. Isolated
+    // by experiment (see the arc's fix-round report for the full
+    // evidence chain):
+    //   1. Raising `transport::CLOSE_DRAIN` 300ms -> 1000ms did NOT
+    //      change the deficit (10/10 runs each, always sent=150/
+    //      received=149) -- rules out the send-side close margin.
+    //   2. Giving `recv::run` a much larger wait budget (15s vs. the
+    //      sender's real 5s) did NOT close the gap either (video_aus
+    //      stayed 149) -- rules out the receive-side grace window too.
+    //   3. `send_metrics.bytes`/`stream_sha256` matched
+    //      `recv_report.metrics.bytes`/`stream_sha256` EXACTLY every
+    //      run -- SRT delivered every wire byte; this is not data loss.
+    //   4. Instrumenting `recv::recv_over_transport`'s loop showed the
+    //      session ends with `ShellErrorKind::TransportBroken`, not
+    //      `EndOfStream` -- `DemuxReceiver::recv_event()` only flushes
+    //      its pending-PES reassembly state (needed to emit the final
+    //      video AU: H.264 PES packets carry `PES_packet_length=0` and
+    //      are demuxed by watching for the NEXT PES's PUSI, so the
+    //      stream's last AU has no "next" to complete it without an
+    //      explicit flush) on `EndOfStream` specifically; `Broken`
+    //      bypasses that flush entirely.
+    //   5. Confirmed this is NOT proxy/impairment-specific: the same
+    //      exact-video-AU check against `tests/loopback.rs`'s plain,
+    //      UNIMPAIRED SRT loopback cell showed the identical shape (5/5
+    //      runs, deficit exactly 1, e.g. sent=90/received=89) -- this is
+    //      a pre-existing gap in `tst-pipeline`/`tst-srt`'s
+    //      `TransportBroken`-vs-`Closed` classification on a clean SRT
+    //      disconnect, not something this proxy task introduced or can
+    //      fix from `tst-interop` (flagged separately to the team lead;
+    //      out of scope here).
+    // Given that, the correct assertion for THIS test is the same
+    // narrow, named bound as before -- deficit is 0 or 1, NEVER more --
+    // but the comment above now reflects the actual, verified mechanism
+    // instead of the disproven TSBPD-margin theory.
     let video_deficit = send_metrics
         .video_aus
         .saturating_sub(recv_report.metrics.video_aus);
     assert!(
         video_deficit <= 1 && recv_report.metrics.video_aus <= send_metrics.video_aus,
         "SRT with retransmission over 2% loss must deliver every video AU except, at \
-         most, the one still in flight at the receive grace window's close (sent={}, \
-         received={}, allowed deficit=0..=1)",
+         most, the one whose demux-side flush is skipped by the TransportBroken-vs-\
+         EndOfStream gap documented above (sent={}, received={}, allowed deficit=0..=1)",
         send_metrics.video_aus,
         recv_report.metrics.video_aus
     );

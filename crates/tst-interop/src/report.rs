@@ -971,19 +971,49 @@ pub mod soak {
     }
 
     /// Number of outage windows (`impair::Engine::in_outage`'s zero-based
-    /// `[k*period, k*period+dur)` numbering) that have STARTED within
-    /// `[0, duration_s)`. Window `k=0` starts at `t=0` (proxy launch), so
-    /// a nonzero `duration_s` with any outage configured always counts
-    /// at least window 0 — a pre-existing shape of the impairment
-    /// engine, not something this reporting logic corrects.
-    fn expected_outage_windows(duration_s: f64, outage_period_s: Option<u64>) -> u64 {
+    /// `[k*period, k*period+dur)` numbering, measured from the PROXY's
+    /// own launch instant) whose START falls within the period send/recv
+    /// are actually active.
+    ///
+    /// `duration_s` is `run_duration_s` — the active-traffic period's own
+    /// length, NOT measured from the proxy's `t=0` but from when
+    /// send/recv themselves start. `soak.sh` deliberately launches the
+    /// proxy `outage_dur_s + 30` seconds ahead of send/recv (its own
+    /// `SRT_PROXY_WARMUP_S` constant — mirrored here as `head_start_s`,
+    /// two independent literals for one concept; keep them in sync if
+    /// either changes) specifically so scheduled window `k=0` — which
+    /// always starts at the proxy's `t=0`, before send/recv exist — can
+    /// never reach real traffic. The pre-fix version of this function
+    /// measured from the proxy's own `t=0` and so always counted window
+    /// 0 for any nonzero `duration_s`, even though it's structurally
+    /// impossible for send/recv to ever observe it (caught in PR review:
+    /// a 1h smoke run, whose active period never reaches window 1 either,
+    /// was reporting "1 window expected" as if window 0 were a real,
+    /// reachable event). Fixed by counting windows whose start `k*period_s`
+    /// falls within `[head_start_s, head_start_s + duration_s)` instead —
+    /// window 0's start (`t=0`) is always before `head_start_s`, so it's
+    /// now correctly excluded.
+    fn expected_outage_windows(
+        duration_s: f64,
+        outage_period_s: Option<u64>,
+        outage_dur_s: u64,
+    ) -> u64 {
         let Some(period_s) = outage_period_s else {
             return 0;
         };
         if period_s == 0 || duration_s <= 0.0 {
             return 0;
         }
-        (duration_s / period_s as f64).ceil() as u64
+        let period_s = period_s as f64;
+        let head_start_s = outage_dur_s as f64 + 30.0;
+        let active_end_s = head_start_s + duration_s;
+        // Smallest k with k*period_s >= head_start_s (first window whose
+        // start can reach the active period), and the smallest k with
+        // k*period_s >= active_end_s (first window whose start is past
+        // it) — the count of windows in between is the answer.
+        let first_reachable = (head_start_s / period_s).ceil() as u64;
+        let first_past_end = (active_end_s / period_s).ceil() as u64;
+        first_past_end.saturating_sub(first_reachable)
     }
 
     /// Fraction of packets the proxy's CONTINUOUS configured impairment
@@ -1289,7 +1319,8 @@ pub mod soak {
         for (leg_name, artifacts) in &legs {
             let outage_dur_s = artifacts.proxy_stats.config.outage_dur_s;
             let loss_pct = artifacts.proxy_stats.config.loss_pct;
-            let outage_windows = expected_outage_windows(run_duration_s, artifacts.outage_period_s);
+            let outage_windows =
+                expected_outage_windows(run_duration_s, artifacts.outage_period_s, outage_dur_s);
             let total = artifacts.proxy_stats.forwarded + artifacts.proxy_stats.dropped;
             let expected = expected_drop_fraction(loss_pct);
             let tolerance = drop_rate_tolerance(expected, total);
@@ -1740,6 +1771,75 @@ pub mod soak {
                 v.detail
             );
             assert!(results.overall_pass);
+        }
+
+        /// (Copilot PR-review fix regression) `expected_outage_windows`
+        /// must not count window 0: `soak.sh` deliberately launches the
+        /// proxy `outage_dur_s + 30` seconds ahead of send/recv
+        /// specifically so window 0 (which always starts at the proxy's
+        /// own `t=0`) never overlaps traffic that hasn't started yet.
+        /// The 1h smoke's own real shape (outage_period_s=21600,
+        /// outage_dur_s=90, ~3542s of active traffic) never reaches
+        /// window 1 either (that starts at t=21600 in the proxy's frame,
+        /// long after the ~3572s active period this shape covers) — so
+        /// the correct expectation is 0, not 1 (the pre-fix answer,
+        /// which always counted window 0 for any nonzero duration even
+        /// though it's structurally unreachable).
+        #[test]
+        fn expected_outage_windows_excludes_the_unreachable_warmup_window() {
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "send", 3542.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(98_000, 2_000, 2.0, Some(21600), 90),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: Some(21600),
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            assert_eq!(
+                results.legs[0].expected_outage_windows, 0,
+                "a 1h-smoke-shaped run must never reach window 0 (proxy-only, before \
+                 send/recv start) or window 1 (t=21600, long after this run ends)"
+            );
+        }
+
+        /// The opposite direction, so the fix isn't just trivially always
+        /// zero: a run long enough to actually reach several scheduled
+        /// windows must count them correctly, still excluding window 0.
+        /// 72h at a 6h period reaches windows 1..=12 (window 12 starts at
+        /// t=259200, comfortably inside the ~259320s active period the
+        /// 120s head-start leaves room for; window 13 at t=280800 does
+        /// not).
+        #[test]
+        fn expected_outage_windows_counts_real_72h_schedule_correctly() {
+            let samples = vec![
+                rss_row("srt", "send", 0.0, Some(1000)),
+                rss_row("srt", "send", 259200.0, Some(1000)),
+            ];
+            let results = build_soak_results(SoakInputs {
+                rss_samples: samples,
+                legs: one_leg(LegArtifacts {
+                    proxy_stats: proxy_stats(98_000, 2_000, 2.0, Some(21600), 90),
+                    recv_report: passing_recv_report(1000),
+                    send_metrics: cell_metrics(1000),
+                    outage_period_s: Some(21600),
+                }),
+                rss_slope_threshold_kb_per_hour: None,
+            })
+            .expect("non-empty rss_samples must not error");
+
+            assert_eq!(
+                results.legs[0].expected_outage_windows, 12,
+                "72h at a 6h period must count windows 1..=12 (never window 0, the \
+                 proxy-only warmup window)"
+            );
         }
 
         /// (Important fix regression) The tolerance must SCALE DOWN with

@@ -40,7 +40,9 @@
 #
 # # Running the soak on a fresh host
 #
-# Prerequisites: Linux (x86_64 or aarch64), `git`, a Rust toolchain via
+# Prerequisites: Linux — validated on x86_64; aarch64 is expected to work
+# (no arch-specific code anywhere in this path: pure Rust + bash + /proc)
+# but hasn't actually been validated yet. `git`, a Rust toolchain via
 # rustup (this repo pins 1.85 via rust-toolchain.toml — `rustup` picks
 # it up automatically once you're inside the repo), `jq` + `python3` on
 # PATH (this script's own port allocation and small JSON assembly — the
@@ -119,9 +121,10 @@
 # that's an accepted, well-understood trade-off ahead of the real 72h
 # run, which DOES reach the schedule's outage windows for real.
 #
-# linux-x86_64/aarch64 only, like the rest of this arc's interop
-# tooling (see lib.sh's header for the shell-portability stance this
-# whole directory takes — this script is not made macOS-portable).
+# Validated on linux-x86_64; linux-aarch64 is expected to work (no
+# arch-specific code: pure Rust + bash + /proc) but hasn't been
+# validated yet — see lib.sh's header for the shell-portability stance
+# this whole directory takes (this script is not made macOS-portable).
 
 set -euo pipefail
 

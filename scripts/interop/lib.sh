@@ -2,15 +2,20 @@
 # Shared helpers for the transport-axis interop orchestrator
 # (run-matrix.sh). Meant to be SOURCED, not executed.
 #
-# linux-x86_64 only, like the rest of this arc's live-tool matrix — the
-# peer tools (ffmpeg/tsp/gst-launch-1.0/vlc/cvlc) are discovered at
-# runtime via `have()` rather than assumed, but the shell itself is not
-# made macOS-portable (bash arrays, `mapfile`-style idioms, and GNU
-# `timeout --kill-after` are all fair game; see scripts/check/**'s
-# opposite convention — this directory is intentionally NOT part of
-# that rail sweep). No bare `sleep N` as a standalone statement inside a
-# loop (the sandbox blocks that shape); the short fixed settle sleeps
-# below are one-shot, not loop bodies.
+# Validated on linux-x86_64; linux-aarch64 is expected to work for the
+# orchestration itself (no arch-specific code: pure bash + the tools it
+# shells out to) but hasn't been validated yet, and separately depends
+# on whichever peer tools (ffmpeg/tsp/gst-launch-1.0/vlc/cvlc) are
+# available as aarch64 apt/deb packages on a given box — they're
+# discovered at runtime via `have()` rather than assumed, so a missing
+# one degrades to a SKIPPED cell rather than a hard failure, but that's
+# a per-tool availability question this directory doesn't track. The
+# shell itself is not made macOS-portable (bash arrays, `mapfile`-style
+# idioms, and GNU `timeout --kill-after` are all fair game; see
+# scripts/check/**'s opposite convention — this directory is
+# intentionally NOT part of that rail sweep). No bare `sleep N` as a
+# standalone statement inside a loop (the sandbox blocks that shape);
+# the short fixed settle sleeps below are one-shot, not loop bodies.
 #
 # NOT sourced with `set -e` baked in on purpose: the whole point of this
 # file's callers is to keep going after one cell's peer command fails.

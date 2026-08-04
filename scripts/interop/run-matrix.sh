@@ -11,8 +11,12 @@
 #     srt-live/{us-to-ffmpeg,ffmpeg-to-us,us-to-tsp,tsp-to-us}/<profile>,
 #     once per --profiles entry (task 12's inventory).
 #
-# linux-x86_64 only (see lib.sh's header for the shell-portability
-# stance this whole directory takes). Requires `jq` and `python3`
+# Validated on linux-x86_64; linux-aarch64 is expected to work for the
+# orchestration itself but hasn't been validated yet, and separately
+# depends on per-arch apt/deb availability of the peer tools below (see
+# lib.sh's header for the full platform-support statement and the
+# shell-portability stance this whole directory takes). Requires `jq`
+# and `python3`
 # (port allocation) on PATH; peer tools are individually optional —
 # `have()` gates every cell that needs one, emitting
 # SKIPPED_TOOL_MISSING instead of a fake pass/fail when it's absent.

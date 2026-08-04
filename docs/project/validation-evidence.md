@@ -30,8 +30,11 @@ bash scripts/interop/soak.sh --outdir /tmp/interop-soak-smoke --hours 1 --seed 1
 `run-matrix.sh` requires `jq` and `python3` on `PATH`, plus whichever peer
 tools (`ffmpeg`, TSDuck's `tsp`, `gst-launch-1.0`, `vlc`, `mpv`) you want
 exercised — a missing tool degrades its cells to `SKIPPED`, never a fake
-pass or fail. Linux x86_64 only. `soak.sh` needs no third-party media
-tools at all; both legs are `tst-interop` talking to itself through its own
+pass or fail. Both scripts are validated on linux-x86_64; linux-aarch64 is
+expected to work (no arch-specific code) but hasn't been validated yet —
+`run-matrix.sh` additionally depends on per-arch apt/deb availability of
+the peer tools above, while `soak.sh` needs no third-party media tools at
+all, both legs being `tst-interop` talking to itself through its own
 impairment proxy.
 
 ## The transport + format interop matrix

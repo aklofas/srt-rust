@@ -13,10 +13,14 @@ This is the arc's core deliverable: real tools talking to this codebase over
 a real wire (or a real local decode/analysis pass), not another closed-loop
 self-test.
 
-**linux-x86_64 only.** Peer tools are discovered at runtime (`have()` in
-`lib.sh`) — a missing tool produces a `SKIPPED_TOOL_MISSING` cell, never a
-fake pass or fail. Requires `jq` and `python3` on `PATH` in addition to
-whichever peer tools you want exercised.
+**Validated on linux-x86_64.** linux-aarch64 is expected to work for the
+orchestration itself (no arch-specific code) but hasn't been validated
+yet, and separately depends on whichever peer tools (ffmpeg, TSDuck,
+GStreamer, VLC) are available as aarch64 apt/deb packages on a given box.
+Peer tools are discovered at runtime (`have()` in `lib.sh`) — a missing
+tool produces a `SKIPPED_TOOL_MISSING` cell, never a fake pass or fail.
+Requires `jq` and `python3` on `PATH` in addition to whichever peer tools
+you want exercised.
 
 ## Running it
 

@@ -54,6 +54,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`tst-srt`: a connection accepted via `Listener::accept_timeout` could
+  permanently inherit non-blocking mode and die on its first read with
+  zero delivery.** `accept_timeout`'s readiness probe briefly toggles the
+  listener socket into non-blocking mode, and libsrt's own handshake
+  thread clones the listener's option state into newly accepted sockets
+  asynchronously — a connection completing its handshake inside that
+  window picked up `SRTO_RCVSYN=false`, its first `recv` returned
+  `SRT_EASYNCRCV` immediately, and the error was classified as fatal,
+  killing the session before any data flowed. Timing-dependent (observed
+  only on heavily loaded hosts). `Socket::from_accepted` now pins every
+  accepted socket back to blocking mode before timeouts are applied, so
+  the race is closed at the one construction point all accept paths share.
+  No public API changes.
 - **`DemuxReceiver`: the final access unit of a live receive session was
   silently dropped whenever the session ended any way other than a clean
   peer close.** H.264 video is muxed with `PES_packet_length = 0`

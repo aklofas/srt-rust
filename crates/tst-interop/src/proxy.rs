@@ -163,6 +163,12 @@ pub struct ConfigEcho {
     pub reorder_pct: f64,
     pub reorder_hold: u32,
     pub jitter_ms_max: u32,
+    /// `#[serde(default)]` so stats JSON written before this knob
+    /// existed (e.g. an archived soak run's `proxy-stats.json`) still
+    /// deserializes — absent means 0, which is exactly what those runs
+    /// were configured with.
+    #[serde(default)]
+    pub base_delay_ms: u32,
     pub outage_period_s: Option<u64>,
     pub outage_dur_s: u64,
 }
@@ -175,6 +181,7 @@ impl From<&ImpairConfig> for ConfigEcho {
             reorder_pct: cfg.reorder_pct,
             reorder_hold: cfg.reorder_hold,
             jitter_ms_max: cfg.jitter_ms_max,
+            base_delay_ms: cfg.base_delay_ms,
             outage_period_s: cfg.outage_period_s,
             outage_dur_s: cfg.outage_dur_s,
         }

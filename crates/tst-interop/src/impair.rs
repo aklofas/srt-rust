@@ -90,6 +90,12 @@ pub struct ImpairConfig {
     /// Upper bound (inclusive) of a uniform `0..=jitter_ms_max`
     /// millisecond delay added to every non-dropped packet.
     pub jitter_ms_max: u32,
+    /// Constant delay, in milliseconds, added to every non-dropped
+    /// packet — models a link's base one-way latency (WAN lag), on top
+    /// of which `jitter_ms_max` varies and `reorder_hold` bumps. `0`
+    /// (the default) preserves the pre-existing decision sequence
+    /// exactly: no RNG draw is consumed for it.
+    pub base_delay_ms: u32,
     /// RNG seed. `0` is remapped to a fixed nonzero constant (see
     /// [`XorShift64`]).
     pub seed: u64,
@@ -177,7 +183,11 @@ impl Engine {
         } else {
             0
         };
-        let delay_ms = jitter_delay.saturating_add(reorder_bump);
+        let delay_ms = self
+            .cfg
+            .base_delay_ms
+            .saturating_add(jitter_delay)
+            .saturating_add(reorder_bump);
 
         if dup_roll < self.cfg.dup_pct {
             Action::DupForward { delay_ms }
@@ -203,6 +213,7 @@ mod tests {
             reorder_pct: 4.0,
             reorder_hold: 20,
             jitter_ms_max: 15,
+            base_delay_ms: 0,
             seed: 12345,
             outage_period_s: Some(10),
             outage_dur_s: 1,
@@ -226,6 +237,7 @@ mod tests {
             reorder_pct: 4.0,
             reorder_hold: 20,
             jitter_ms_max: 15,
+            base_delay_ms: 0,
             seed: 1,
             outage_period_s: None,
             outage_dur_s: 0,
@@ -252,6 +264,7 @@ mod tests {
             reorder_pct: 0.0,
             reorder_hold: 0,
             jitter_ms_max: 0,
+            base_delay_ms: 0,
             seed: 777,
             outage_period_s: None,
             outage_dur_s: 0,
@@ -312,6 +325,7 @@ mod tests {
             reorder_pct: 0.0,
             reorder_hold: 0,
             jitter_ms_max: 0,
+            base_delay_ms: 0,
             seed: 42,
             outage_period_s: Some(5),
             outage_dur_s: 2,
@@ -320,6 +334,41 @@ mod tests {
 
         for elapsed_ms in [0u64, 500, 1999, 5000, 6500, 10_000, 11_999] {
             assert_eq!(engine.decide(elapsed_ms), Action::Drop);
+        }
+    }
+
+    /// (g) `base_delay_ms` (constant one-way link latency, e.g. a WAN
+    /// RTT's worth of lag) is applied to EVERY non-dropped packet, on
+    /// top of jitter/reorder — with every probabilistic knob at 0 it is
+    /// the exact delay of every decision.
+    #[test]
+    fn base_delay_ms_applies_to_every_non_dropped_packet() {
+        let cfg = ImpairConfig {
+            base_delay_ms: 40,
+            seed: 7,
+            ..ImpairConfig::default()
+        };
+        let mut engine = Engine::new(cfg);
+        for i in 0..1_000u64 {
+            assert_eq!(engine.decide(i * 3), Action::Forward { delay_ms: 40 });
+        }
+    }
+
+    /// (h) `base_delay_ms` composes additively with the reorder hold:
+    /// a packet selected for reorder is delayed `base + hold` (jitter 0
+    /// here so the sum is exact).
+    #[test]
+    fn base_delay_ms_composes_with_reorder_hold() {
+        let cfg = ImpairConfig {
+            base_delay_ms: 30,
+            reorder_pct: 100.0,
+            reorder_hold: 200,
+            seed: 7,
+            ..ImpairConfig::default()
+        };
+        let mut engine = Engine::new(cfg);
+        for i in 0..100u64 {
+            assert_eq!(engine.decide(i * 3), Action::Forward { delay_ms: 230 });
         }
     }
 

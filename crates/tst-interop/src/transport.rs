@@ -548,6 +548,14 @@ impl<T: RecvTransport> RecvTransport for Teeing<T> {
     }
 }
 
+/// Bytes tallied into `tap` so far — the live, non-consuming
+/// counterpart to [`tee_tally`], for `send`/`recv`'s periodic heartbeat
+/// lines. Safe to call while the pipeline shell still owns its clone
+/// (unlike `tee_tally`): it only locks and reads the counter.
+pub(crate) fn tee_bytes_so_far(tap: &Arc<Mutex<TeeState>>) -> u64 {
+    tap.lock().expect("tee mutex poisoned").bytes
+}
+
 /// Read back the final `(bytes, sha256_hex)` from a tap handle returned
 /// by [`Teeing::new`]. Call only after the pipeline shell that owned
 /// the `Teeing` has been dropped (releasing its clone of the tap) —

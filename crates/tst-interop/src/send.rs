@@ -19,7 +19,7 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::transport::{Transport, TransportError};
 use tst_pipeline::{ManagedTransport, MuxSender, ReconnectPolicy};
 
-use crate::fixtures;
+use crate::fixtures::{self, AuSizeMode};
 use crate::mux_setup;
 use crate::profiles::{KlvMode, Profile, VideoCodec};
 use crate::report_types::CellMetrics;
@@ -39,15 +39,21 @@ use crate::verify;
 /// function would otherwise need to compute `klv_set_sha256` —
 /// `CellMetrics::klv_set_sha256` comes back `None` instead. See that
 /// field's own doc comment for why a multi-day soak run needs this.
+///
+/// `au_sizes` picks the video AU size regime — `Compact` (the
+/// original tiny fixtures every interop-matrix cell uses) or
+/// `Realistic` (GOP-structured multi-KB AUs, the soak's true-bandwidth
+/// mode); see [`AuSizeMode`].
 pub fn run(
     p: &Profile,
     url: &str,
     seconds: f64,
     json_out: Option<&str>,
     no_klv_digest: bool,
+    au_sizes: AuSizeMode,
 ) -> Result<CellMetrics, String> {
     let transport = transport::make_send(url)?;
-    let metrics = send_over_transport(p, transport, seconds, no_klv_digest)?;
+    let metrics = send_over_transport(p, transport, seconds, no_klv_digest, au_sizes)?;
     if let Some(target) = json_out {
         write_json(target, &metrics)?;
     }
@@ -63,6 +69,7 @@ pub fn send_over_transport(
     transport: Box<dyn Transport>,
     seconds: f64,
     no_klv_digest: bool,
+    au_sizes: AuSizeMode,
 ) -> Result<CellMetrics, String> {
     let cfg = mux_setup::build_config(p);
     let (teeing, tap) = Teeing::new(transport);
@@ -93,7 +100,19 @@ pub fn send_over_transport(
     let mut klv_digests: Vec<String> = Vec::new();
 
     let wall_start = Instant::now();
+    let mut last_heartbeat = Instant::now();
     for (pts_ticks, event) in events {
+        // Progress heartbeat → stderr → the soak's per-process log
+        // file. See `crate::HEARTBEAT_INTERVAL`'s doc comment.
+        if last_heartbeat.elapsed() >= crate::HEARTBEAT_INTERVAL {
+            last_heartbeat = Instant::now();
+            eprintln!(
+                "send: heartbeat elapsed_s={} video_aus={video_aus} keyframes={keyframes} \
+                 klv_records={klv_records} audio_frames={audio_frames} wire_bytes={}",
+                wall_start.elapsed().as_secs(),
+                transport::tee_bytes_so_far(&tap),
+            );
+        }
         // Wall-clock pacing: sleep until this event's target offset from
         // `wall_start` has actually elapsed. Recomputed from the target
         // offset each iteration (not a fixed per-event sleep) so pacing
@@ -107,7 +126,7 @@ pub fn send_over_transport(
         let pts = Pts90khz::new(pts_ticks);
         match event {
             Event::Video { frame_idx } => {
-                let (au, keyframe) = fixtures::video_au(p.video, frame_idx);
+                let (au, keyframe) = fixtures::video_au_sized(p.video, frame_idx, au_sizes);
                 for &handle in &video_handles {
                     if p.klv == KlvMode::AsyncWithMisp {
                         // ST 0604 SEI carriage is H.264/H.265-only; the
@@ -216,6 +235,7 @@ pub fn run_managed(
     seconds: f64,
     json_out: Option<&str>,
     no_klv_digest: bool,
+    au_sizes: AuSizeMode,
 ) -> Result<CellMetrics, String> {
     let initial = transport::make_send(url)?;
     let dial_url = url.to_string();
@@ -231,7 +251,7 @@ pub fn run_managed(
     };
     let managed: Box<dyn Transport> = Box::new(ManagedTransport::new(initial, factory, policy));
 
-    let metrics = send_over_transport(p, managed, seconds, no_klv_digest)?;
+    let metrics = send_over_transport(p, managed, seconds, no_klv_digest, au_sizes)?;
     if let Some(target) = json_out {
         write_json(target, &metrics)?;
     }

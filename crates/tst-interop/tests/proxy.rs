@@ -87,7 +87,14 @@ fn send_with_retry(
 ) -> CellMetrics {
     let deadline = Instant::now() + budget;
     loop {
-        match send::run(profile, url, seconds, None, false) {
+        match send::run(
+            profile,
+            url,
+            seconds,
+            None,
+            false,
+            tst_interop::fixtures::AuSizeMode::Compact,
+        ) {
             Ok(metrics) => return metrics,
             Err(e) => {
                 assert!(

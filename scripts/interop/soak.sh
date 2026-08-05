@@ -12,8 +12,9 @@
 # module doc for the verdict shapes this run's evidence feeds):
 #   - `srt` leg: `tst-interop send --managed` (SRT, wrapped in
 #     `tst_pipeline::ManagedTransport` so a transport break reconnects)
-#     -> impairment proxy (2% loss, 20ms jitter, 1% reorder, a seeded
-#     RNG, and a 90s full-drop outage window every 6h) -> `tst-interop
+#     -> impairment proxy (2% loss, 20ms jitter over a 30ms base delay,
+#     1% reorder, a seeded RNG, and a 90s full-drop outage window every
+#     6h) -> `tst-interop
 #     recv --managed` (`ManagedRecvTransport`/`ManagedDemuxReceiver` —
 #     a listener-mode SRT recv otherwise accepts exactly ONE connection
 #     for its whole process lifetime, so without this flag the FIRST
@@ -64,10 +65,15 @@
 # talking to itself through its own impairment proxy.
 #
 #   git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
-#   cd ts-transformer/ts-transformer
+#   cd ts-transformer            # the clone root IS the workspace root
 #   curl https://sh.rustup.rs -sSf | sh -s -- -y   # if rustup isn't already installed
-#   sudo apt install -y jq python3 build-essential cmake meson ninja-build
+#   sudo apt install -y jq python3 build-essential cmake meson ninja-build clang libclang-dev
 #   SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo build --release -p tst-interop
+#
+# (`clang`/`libclang-dev`: bindgen — run by both sys crates' build
+# scripts — loads libclang at build time; librist's meson build also
+# wants a clang toolchain present. Both were missing from this list the
+# first time it ran on a genuinely fresh Ubuntu host, 2026-08-04.)
 #
 # Then launch the real 72h run (the canonical seed below reproduces the
 # exact same impairment decision sequence — see impair.rs's module doc
@@ -95,10 +101,27 @@
 #   srt/{proxy-stats,recv-report,send-report}.json  - klv_set_sha256 is `null` in both
 #   rist/{proxy-stats,recv-report,send-report}.json   report/send JSONs (--no-klv-digest;
 #                                                      counts/every other field unaffected)
-#   logs/*.log          - one file per launched process
+#   logs/*.log          - one file per launched process (each send/recv beats a
+#                         one-line "heartbeat" into its log every 60s — counters +
+#                         wire bytes — so a dead process is findable to the minute)
 #   pids/*.pid          - one PID per launched process + the RSS sampler
+#   soak-events.log     - timestamped lifecycle events (launches, premature
+#                         deaths, fail-fast kills)
+#   soak-FAILED         - written ONLY when the supervisor fail-fasts a run
+#                         after a worker died mid-run (names the role + log)
 #   soak-results.json   - `report soak`'s verdict document
 #   summary.txt         - short human-readable render of the same
+#
+# Supervisor fail-fast: soak run 1 (2026-08-04) lost its BOTH senders to
+# a fixture panic 14.5h in, and the remaining processes idled for 12+
+# hours before anyone noticed — the `wait`-until-deadline shape below
+# has no way to notice a death early. The supervisor loop polls every
+# worker PID every 30s; a death more than SUPERVISOR_GRACE_S before the
+# deadline kills the whole run immediately, records soak-FAILED +
+# soak-events.log, and exits nonzero (still attempting the report over
+# whatever evidence exists). Deaths within the last SUPERVISOR_GRACE_S
+# are normal end-of-run staggering (send's own --seconds window starts
+# before the sampler's START_EPOCH), handled by the ordinary waits.
 #
 # Harvest steps once it completes: read `summary.txt` for the headline
 # (overall_pass, per-leg drop rates, RSS slopes), then feed the numbers
@@ -133,6 +156,16 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# Panics from any tst-interop process land in its log WITH a backtrace —
+# run 1's senders died with a bare panic line and no frames, which was
+# enough this time (the panic message named the value) but won't always
+# be. RUST_LOG=info additionally surfaces tst-pipeline's managed-
+# reconnect attempt/backoff logs (see main.rs's init_tracing doc), the
+# exact visibility a stuck reconnect loop needs; leaves libsrt/librist
+# at their modest info volume.
+export RUST_BACKTRACE=1
+export RUST_LOG="${RUST_LOG:-info}"
+
 HOURS=72
 OUTDIR=""
 SEED=1
@@ -157,7 +190,11 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,103p' "$0" | sed 's/^# \{0,1\}//'
+      # Print the whole header comment block (line 2 up to the first
+      # non-comment line) rather than a hardcoded line range — the old
+      # '2,103p' range silently truncated the help text every time the
+      # header grew.
+      awk 'NR >= 2 { if ($0 !~ /^#/) exit; print }' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -205,6 +242,12 @@ mkdir -p "$OUTDIR/srt" "$OUTDIR/rist" "$OUTDIR/logs" "$OUTDIR/pids"
 RSS_CSV="$OUTDIR/rss.csv"
 printf 'elapsed_s,leg,process,pid,rss_kb\n' >"$RSS_CSV"
 
+# Timestamped lifecycle event log — see the header's outputs list.
+EVENTS_LOG="$OUTDIR/soak-events.log"
+event() {
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >>"$EVENTS_LOG"
+}
+
 TOTAL_SECONDS=$((10#$HOURS * 3600))
 # Outage schedule (srt leg only — see this file's header). Kept as
 # separate numeric/unit-suffixed forms rather than duplicating "6h"
@@ -215,7 +258,14 @@ OUTAGE_PERIOD_S=21600 # 6h
 OUTAGE_DUR_S=90
 LOSS_PCT=2
 JITTER_MS=20
+# Constant one-way base delay on top of the jitter — a realistic WAN
+# hop's worth of lag (both legs' senders otherwise talk to their proxy
+# over loopback's ~0ms, which no real link has).
+DELAY_MS=30
 REORDER="1,200" # 1%, held 200ms — several packet intervals at this traffic's rate
+# How close to the nominal deadline a worker death stops being treated
+# as a mid-run failure — see the header's "Supervisor fail-fast" note.
+SUPERVISOR_GRACE_S=120
 
 # Settle time between binding a listener and starting its peer — see
 # run-matrix.sh's own SETTLE for the same reasoning (every scheme here
@@ -257,6 +307,7 @@ record_pid() {
   local role=$1 pid=$2
   PIDS[$role]=$pid
   echo "$pid" >"$OUTDIR/pids/$role.pid"
+  event "LAUNCHED role=$role pid=$pid"
 }
 
 # wait_for_bound_addr <stdout_file> -- polls (sanctioned `until ...; do
@@ -313,7 +364,7 @@ SRT_RECV_PORT=$(free_port)
 
 SRT_PROXY_STDOUT="$OUTDIR/logs/srt-proxy.stdout"
 "$BIN" proxy --listen 127.0.0.1:0 --forward "127.0.0.1:$SRT_RECV_PORT" \
-  --loss "$LOSS_PCT" --jitter "$JITTER_MS" --reorder "$REORDER" --seed "$SEED" \
+  --loss "$LOSS_PCT" --jitter "$JITTER_MS" --delay "$DELAY_MS" --reorder "$REORDER" --seed "$SEED" \
   --outage "period=${OUTAGE_PERIOD_S}s,dur=${OUTAGE_DUR_S}s" \
   --stats-json "$OUTDIR/srt/proxy-stats.json" --run-seconds "$SRT_PROXY_RUN_SECONDS" \
   >"$SRT_PROXY_STDOUT" 2>"$OUTDIR/logs/srt-proxy.log" &
@@ -340,8 +391,13 @@ sleep "$SRT_PROXY_WARMUP_S"
 record_pid srt-recv $!
 sleep "$SETTLE"
 
+# --au-sizes realistic (both legs' senders): GOP-structured multi-KB
+# AUs at ~1.7 Mb/s — the soak measures endurance under a real encoder's
+# traffic shape, not the interop matrix's tiny compact fixtures. See
+# `fixtures::AuSizeMode`.
 "$BIN" send --profile baseline --url "srt://$SRT_PROXY_ADDR" --managed \
   --seconds "$TOTAL_SECONDS" --json "$OUTDIR/srt/send-report.json" --no-klv-digest \
+  --au-sizes realistic \
   >"$OUTDIR/logs/srt-send.log" 2>&1 &
 record_pid srt-send $!
 
@@ -361,7 +417,7 @@ RIST_PROXY_STDOUT="$OUTDIR/logs/rist-proxy.stdout"
 # --run-seconds above.
 RIST_PROXY_RUN_SECONDS=$((TOTAL_SECONDS + SAMPLER_END_SLACK_S))
 "$BIN" proxy --listen 127.0.0.1:0 --forward "127.0.0.1:$RIST_RECV_PORT" \
-  --loss "$LOSS_PCT" --jitter "$JITTER_MS" --reorder "$REORDER" --seed "$SEED" \
+  --loss "$LOSS_PCT" --jitter "$JITTER_MS" --delay "$DELAY_MS" --reorder "$REORDER" --seed "$SEED" \
   --stats-json "$OUTDIR/rist/proxy-stats.json" --run-seconds "$RIST_PROXY_RUN_SECONDS" \
   >"$RIST_PROXY_STDOUT" 2>"$OUTDIR/logs/rist-proxy.log" &
 record_pid rist-proxy $!
@@ -369,6 +425,7 @@ RIST_PROXY_ADDR=$(wait_for_bound_addr "$RIST_PROXY_STDOUT")
 
 "$BIN" send --profile baseline --url "rist://$RIST_PROXY_ADDR" \
   --seconds "$TOTAL_SECONDS" --json "$OUTDIR/rist/send-report.json" --no-klv-digest \
+  --au-sizes realistic \
   >"$OUTDIR/logs/rist-send.log" 2>&1 &
 record_pid rist-send $!
 
@@ -423,6 +480,41 @@ sample_rss_loop "$SAMPLER_DEADLINE" "$START_EPOCH" "$RSS_CSV" \
 record_pid sampler $!
 
 # ---------------------------------------------------------------------
+# Supervisor: fail fast on a mid-run worker death
+# ---------------------------------------------------------------------
+#
+# See the header's "Supervisor fail-fast" note for why this exists
+# (run 1's senders died 14.5h in; the waits below can't notice until
+# the 72h deadline). Polls every worker + the sampler every 30s until
+# SUPERVISOR_GRACE_S before the nominal deadline; end-of-run process
+# exits inside that grace window are normal staggering and are left to
+# the ordinary waits below.
+ALL_ROLES=(srt-recv srt-proxy srt-send rist-recv rist-proxy rist-send)
+PREMATURE_DEATH=""
+until [[ $(date +%s) -ge $((DEADLINE - SUPERVISOR_GRACE_S)) || -n "$PREMATURE_DEATH" ]]; do
+  for role in "${ALL_ROLES[@]}" sampler; do
+    kill -0 "${PIDS[$role]}" 2>/dev/null || {
+      PREMATURE_DEATH=$role
+      break
+    }
+  done
+  [[ -n "$PREMATURE_DEATH" ]] || sleep 30
+done
+
+if [[ -n "$PREMATURE_DEATH" ]]; then
+  event "PREMATURE-DEATH role=$PREMATURE_DEATH pid=${PIDS[$PREMATURE_DEATH]} — failing fast, killing every worker"
+  echo "soak: $PREMATURE_DEATH (pid ${PIDS[$PREMATURE_DEATH]}) died mid-run — failing the whole run NOW rather than idling to the deadline; see logs/$PREMATURE_DEATH.log" >&2
+  {
+    echo "role=$PREMATURE_DEATH"
+    echo "detected_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "log=logs/$PREMATURE_DEATH.log"
+  } >"$OUTDIR/soak-FAILED"
+  for role in "${ALL_ROLES[@]}"; do
+    kill "${PIDS[$role]}" 2>/dev/null || true
+  done
+fi
+
+# ---------------------------------------------------------------------
 # Wait for the run to finish
 # ---------------------------------------------------------------------
 #
@@ -435,11 +527,13 @@ record_pid sampler $!
 # logged loudly, but this script still proceeds to build the report —
 # discarding hours of already-collected evidence over one process's
 # exit code would be a worse outcome than a report that names the
-# problem.
+# problem. (On the fail-fast path above, the freshly-killed workers
+# reap here too — nonzero, so they land in FAILED_ROLES as well.)
 FAILED_ROLES=()
 for role in srt-recv srt-proxy srt-send rist-recv rist-proxy rist-send; do
   wait "${PIDS[$role]}" || {
     echo "soak: $role (pid ${PIDS[$role]}) exited nonzero — see logs/$role.log" >&2
+    event "EXIT-NONZERO role=$role pid=${PIDS[$role]}"
     FAILED_ROLES+=("$role")
   }
 done
@@ -475,11 +569,25 @@ REPORT_RC=0
   echo "=== soak summary ==="
   echo "outdir: $OUTDIR"
   echo "hours: $HOURS  seed: $SEED  outage_period_s: $OUTAGE_PERIOD_S  outage_dur_s: $OUTAGE_DUR_S"
-  echo "loss_pct: $LOSS_PCT  jitter_ms: $JITTER_MS  reorder: $REORDER"
+  echo "loss_pct: $LOSS_PCT  jitter_ms: $JITTER_MS  delay_ms: $DELAY_MS  reorder: $REORDER  au_sizes: realistic"
   echo "failed process exits: ${FAILED_ROLES[*]:-none}"
+  [[ -z "$PREMATURE_DEATH" ]] || echo "PREMATURE DEATH: $PREMATURE_DEATH (fail-fast — see soak-FAILED + soak-events.log)"
   echo
-  jq '{overall_pass, run_duration_s, warmup_s, rss_slope_threshold_kb_per_hour,
-       rss_slopes, process_exits, legs, limitations}' "$OUTDIR/soak-results.json"
+  # On the fail-fast path `report soak` typically exits 2 with no
+  # output file (a killed recv never writes its report JSON) — the
+  # summary must still get written rather than dying here under
+  # `pipefail` on the missing file.
+  if [[ -s "$OUTDIR/soak-results.json" ]]; then
+    jq '{overall_pass, run_duration_s, warmup_s, rss_slope_threshold_kb_per_hour,
+         rss_slopes, process_exits, legs, limitations}' "$OUTDIR/soak-results.json"
+  else
+    echo "no soak-results.json (report soak rc=$REPORT_RC — run did not produce a complete artifact set)"
+  fi
 } | tee "$OUTDIR/summary.txt" >&2
 
+# A fail-fasted run must exit nonzero regardless of what the report
+# step managed to salvage.
+if [[ -n "$PREMATURE_DEATH" && "$REPORT_RC" -eq 0 ]]; then
+  REPORT_RC=1
+fi
 exit "$REPORT_RC"

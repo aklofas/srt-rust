@@ -31,6 +31,7 @@ use std::net::UdpSocket;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use tst_interop::fixtures::AuSizeMode;
 use tst_interop::{profiles, recv, send, transport};
 
 /// Shared by both cells — long enough to clear the 70%-of-nominal count
@@ -80,8 +81,8 @@ fn udp_baseline_loopback_round_trips_and_matches() {
         thread::spawn(move || recv::recv_over_transport(recv_transport, profile, seconds, false))
     };
 
-    let send_metrics =
-        send::run(profile, &url, SECONDS, None, false).expect("udp send must succeed");
+    let send_metrics = send::run(profile, &url, SECONDS, None, false, AuSizeMode::Compact)
+        .expect("udp send must succeed");
 
     let recv_report = join_with_timeout(recv_handle, Duration::from_secs(10))
         .expect("recv_over_transport must succeed");
@@ -139,8 +140,8 @@ fn no_klv_digest_true_yields_null_hash_with_counts_unchanged() {
         thread::spawn(move || recv::recv_over_transport(recv_transport, profile, seconds, true))
     };
 
-    let send_metrics =
-        send::run(profile, &url, SECONDS, None, true).expect("udp send must succeed");
+    let send_metrics = send::run(profile, &url, SECONDS, None, true, AuSizeMode::Compact)
+        .expect("udp send must succeed");
 
     let recv_report = join_with_timeout(recv_handle, Duration::from_secs(10))
         .expect("recv_over_transport must succeed");
@@ -192,9 +193,20 @@ fn send_with_retry(
     seconds: f64,
     budget: Duration,
 ) -> tst_interop::report_types::CellMetrics {
+    send_with_retry_sized(profile, url, seconds, budget, AuSizeMode::Compact)
+}
+
+/// [`send_with_retry`] with an explicit [`AuSizeMode`].
+fn send_with_retry_sized(
+    profile: &profiles::Profile,
+    url: &str,
+    seconds: f64,
+    budget: Duration,
+    au_sizes: AuSizeMode,
+) -> tst_interop::report_types::CellMetrics {
     let deadline = Instant::now() + budget;
     loop {
-        match send::run(profile, url, seconds, None, false) {
+        match send::run(profile, url, seconds, None, false, au_sizes) {
             Ok(metrics) => return metrics,
             Err(e) => {
                 assert!(
@@ -273,6 +285,60 @@ fn srt_baseline_loopback_round_trips_and_matches() {
     assert_eq!(
         send_metrics.stream_sha256, recv_report.metrics.stream_sha256,
         "SRT is a reliable in-order transport, so a loopback capture should be byte-transparent too"
+    );
+}
+
+/// Realistic (GOP-structured, multi-KB) AU sizes must survive the full
+/// mux → transport → demux round trip exactly like the compact
+/// fixtures do — a keyframe here spans hundreds of TS packets, so this
+/// exercises real PES/TS packetization bursts the compact tests never
+/// reach. SRT (reliable, in-order) rather than UDP so byte-transparency
+/// is guaranteed by the protocol and the burst can't flake the test via
+/// loopback rcvbuf overflow.
+#[test]
+fn srt_realistic_au_sizes_round_trip_and_match() {
+    let profile = profiles::by_name("baseline").expect("baseline profile must exist");
+    let port = free_port();
+    let recv_url = format!("srt://127.0.0.1:{port}?mode=listener");
+    let send_url = format!("srt://127.0.0.1:{port}");
+
+    let recv_handle = {
+        let recv_url = recv_url.clone();
+        thread::spawn(move || recv::run(&recv_url, profile, SECONDS, None, false))
+    };
+
+    let send_metrics = send_with_retry_sized(
+        profile,
+        &send_url,
+        SECONDS,
+        Duration::from_secs(5),
+        AuSizeMode::Realistic,
+    );
+
+    let recv_report =
+        join_with_timeout(recv_handle, Duration::from_secs(15)).expect("recv::run must succeed");
+
+    assert!(
+        recv_report.pass,
+        "recv failures: {:?}",
+        recv_report.failures
+    );
+    assert_eq!(
+        send_metrics.video_aus, recv_report.metrics.video_aus,
+        "every realistic-size AU must survive the round trip"
+    );
+    assert_eq!(
+        send_metrics.stream_sha256, recv_report.metrics.stream_sha256,
+        "SRT loopback must stay byte-transparent at realistic sizes"
+    );
+    // ~3s at ~217 KB/s of elementary stream — far beyond what the
+    // compact fixtures could ever produce (~25 KB total). Pins that
+    // Realistic mode actually changed the traffic regime rather than
+    // silently falling back to compact sizes.
+    assert!(
+        send_metrics.bytes > 300_000,
+        "realistic mode must produce hundreds of KB in {SECONDS}s, got {} bytes",
+        send_metrics.bytes
     );
 }
 

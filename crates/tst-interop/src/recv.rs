@@ -103,11 +103,28 @@ pub fn recv_over_transport(
     if no_klv_digest {
         tally.disable_klv_digest_tracking();
     }
+    let start = Instant::now();
+    let mut events_seen: u64 = 0;
+    let mut last_heartbeat = Instant::now();
 
     loop {
         if !closed && Instant::now() >= deadline {
             rx.close();
             closed = true;
+        }
+        // Progress heartbeat → stderr → the soak's per-process log
+        // file. See `crate::HEARTBEAT_INTERVAL`'s doc comment. Runs
+        // even while idle (the transport's bounded recv returns
+        // Backpressure every ~200ms), so a silent stream still beats —
+        // "receiving nothing" and "process wedged" look different in
+        // the log.
+        if last_heartbeat.elapsed() >= crate::HEARTBEAT_INTERVAL {
+            last_heartbeat = Instant::now();
+            eprintln!(
+                "recv: heartbeat elapsed_s={} events={events_seen} wire_bytes={}",
+                start.elapsed().as_secs(),
+                transport::tee_bytes_so_far(&tap),
+            );
         }
         match rx.recv_event() {
             Ok(Some(ev)) => {
@@ -115,6 +132,7 @@ pub fn recv_over_transport(
                     streaming = true;
                     deadline = Instant::now() + Duration::from_secs_f64(seconds) + POST_START_GRACE;
                 }
+                events_seen += 1;
                 tally.feed(&ev);
             }
             Ok(None) => break,
@@ -285,8 +303,28 @@ pub fn run_managed(
     if no_klv_digest {
         tally.disable_klv_digest_tracking();
     }
+    let start = Instant::now();
+    let mut events_seen: u64 = 0;
+    let mut last_heartbeat = Instant::now();
 
     loop {
+        // Same heartbeat as `recv_over_transport`, plus the managed
+        // wrapper's reconnect counter — a beat whose `reconnects` is
+        // climbing while `events` stalls is the log signature of a
+        // reconnect storm (vs. a quiet-but-healthy link). Checked
+        // between `recv_event` calls only, so during one long blocking
+        // reconnect attempt the beat pauses too — a HEARTBEAT GAP in
+        // the log is itself diagnostic (the loop is stuck inside the
+        // managed transport, not spinning).
+        if last_heartbeat.elapsed() >= crate::HEARTBEAT_INTERVAL {
+            last_heartbeat = Instant::now();
+            eprintln!(
+                "recv: heartbeat elapsed_s={} events={events_seen} wire_bytes={} reconnects={}",
+                start.elapsed().as_secs(),
+                transport::tee_bytes_so_far(&tap),
+                rx.reconnects_count(),
+            );
+        }
         match rx.recv_event() {
             Ok(Some(ev)) => {
                 if !streaming {
@@ -294,6 +332,7 @@ pub fn run_managed(
                     let mut d = deadline.lock().expect("deadline mutex poisoned");
                     *d = Instant::now() + Duration::from_secs_f64(seconds) + POST_START_GRACE;
                 }
+                events_seen += 1;
                 tally.feed(&ev);
             }
             Ok(None) => break,

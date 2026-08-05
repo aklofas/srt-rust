@@ -170,17 +170,26 @@ version, and root-cause argument behind each one.
 
 `soak.sh` runs two concurrent, hours-long legs of `tst-interop` pushing
 synthetic MPEG-TS/KLV traffic through an impaired proxy (2% loss, 20ms
-jitter, 1% reorder held 200ms, seeded deterministically): an SRT leg
+jitter over a 30ms base link delay, 1% reorder held 200ms, seeded
+deterministically): an SRT leg
 wrapped in `tst_pipeline::ManagedTransport` (so it must reconnect across a
 90-second full-drop outage window injected every 6 hours) and a RIST leg
 under the same continuous impairment with no outage (RIST has no managed
 reconnect wrapper in this codebase, so its job is purely "does sustained
 loss/jitter/reorder behave the same over hours as it does over a
-five-second matrix cell"). `tst-interop report soak` renders a pass/fail
+five-second matrix cell"). Both legs' senders run `--au-sizes realistic`
+— GOP-structured video AUs (keyframes tens of KB, inter frames a few KB,
+~1.7 Mb/s at 30 fps) rather than the interop matrix's tiny compact
+fixtures, so the soak measures endurance under a real encoder's traffic
+shape and burst pattern. `tst-interop report soak` renders a pass/fail
 verdict plus RSS-growth slopes per process.
 
 **One-hour smoke run (2026-08-03, seed 1, `recv --managed` now on the SRT
-leg) — both legs PASS, zero crashes:**
+leg) — both legs PASS, zero crashes.** (This smoke predates the
+realistic-AU-size and base-delay knobs — it ran compact fixtures over a
+0ms-base-delay proxy — so its byte volumes are not directly comparable
+to the 72-hour run's; its drop-rate and RSS conclusions are
+regime-independent.)
 
 | Leg | Sent (video AUs) | Received | Drop rate (observed vs. expected) | Verdict |
 | --- | --- | --- | --- | --- |

@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use tst_interop::cli;
+use tst_interop::fixtures::AuSizeMode;
 use tst_interop::r#gen;
 use tst_interop::impair::ImpairConfig;
 use tst_interop::profiles;
@@ -167,7 +168,7 @@ fn run_gen(args: &[String]) -> ! {
 }
 
 /// `send --profile NAME --url URL --seconds N [--json OUT] [--managed]
-/// [--no-klv-digest]`
+/// [--no-klv-digest] [--au-sizes compact|realistic]`
 ///
 /// Builds a live transport from `URL` and pushes `N` seconds of profile
 /// `NAME`'s synthetic MPEG-TS/KLV traffic through it, paced to real
@@ -198,6 +199,13 @@ fn run_gen(args: &[String]) -> ! {
 /// `CellMetrics::klv_set_sha256`'s own doc comment for the measured
 /// impact). Video/KLV/audio counts and every other metric are
 /// unaffected.
+///
+/// `--au-sizes realistic` switches the video AU factory to GOP-
+/// structured multi-KB sizes (~1.7 Mb/s at the schedule's 30 fps) —
+/// `soak.sh`'s true-bandwidth regime. The default (`compact`) is
+/// byte-identical to what this subcommand has always sent, so every
+/// interop-matrix invocation is unaffected. See
+/// `fixtures::AuSizeMode`.
 fn run_send(args: &[String]) -> ! {
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
@@ -205,6 +213,7 @@ fn run_send(args: &[String]) -> ! {
     let mut json_out: Option<String> = None;
     let mut managed = false;
     let mut no_klv_digest = false;
+    let mut au_sizes = AuSizeMode::Compact;
 
     let mut i = 0;
     while i < args.len() {
@@ -232,6 +241,19 @@ fn run_send(args: &[String]) -> ! {
             "--no-klv-digest" => {
                 no_klv_digest = true;
                 i += 1;
+            }
+            "--au-sizes" => {
+                au_sizes = match require_value(args, i, "send: --au-sizes").as_str() {
+                    "compact" => AuSizeMode::Compact,
+                    "realistic" => AuSizeMode::Realistic,
+                    other => {
+                        eprintln!(
+                            "send: --au-sizes must be 'compact' or 'realistic', got '{other}'"
+                        );
+                        std::process::exit(2);
+                    }
+                };
+                i += 2;
             }
             other => {
                 eprintln!("send: unknown argument: {other}");
@@ -280,9 +302,23 @@ fn run_send(args: &[String]) -> ! {
     }
 
     let metrics = if managed {
-        send::run_managed(p, &url, seconds, json_out.as_deref(), no_klv_digest)
+        send::run_managed(
+            p,
+            &url,
+            seconds,
+            json_out.as_deref(),
+            no_klv_digest,
+            au_sizes,
+        )
     } else {
-        send::run(p, &url, seconds, json_out.as_deref(), no_klv_digest)
+        send::run(
+            p,
+            &url,
+            seconds,
+            json_out.as_deref(),
+            no_klv_digest,
+            au_sizes,
+        )
     }
     .unwrap_or_else(|e| {
         eprintln!("send: {e}");
@@ -480,8 +516,12 @@ fn run_verify(args: &[String]) -> ! {
 }
 
 /// `proxy --listen ADDR --forward ADDR [--loss PCT] [--dup PCT]
-/// [--reorder PCT,HOLD_MS] [--jitter MS] [--seed N]
+/// [--reorder PCT,HOLD_MS] [--jitter MS] [--delay MS] [--seed N]
 /// [--outage period=DUR,dur=DUR] [--stats-json PATH] [--run-seconds N]`
+///
+/// `--delay` is a constant base delay applied to every non-dropped
+/// packet (a link's one-way WAN latency), on top of which `--jitter`
+/// varies — see `ImpairConfig::base_delay_ms`.
 ///
 /// Binds a UDP impairment relay at `--listen` (an ephemeral `:0` port is
 /// printed as `{"listening": "..."}` on stdout as soon as it's bound —
@@ -500,6 +540,7 @@ fn run_proxy(args: &[String]) -> ! {
     let mut reorder_pct = 0.0f64;
     let mut reorder_hold = 0u32;
     let mut jitter_ms_max = 0u32;
+    let mut base_delay_ms = 0u32;
     let mut seed = 0u64;
     let mut outage_period_s: Option<u64> = None;
     let mut outage_dur_s = 0u64;
@@ -560,6 +601,13 @@ fn run_proxy(args: &[String]) -> ! {
                     .unwrap_or_else(|| bad_arg("jitter", "a non-negative integer (milliseconds)"));
                 i += 2;
             }
+            "--delay" => {
+                base_delay_ms = args
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| bad_arg("delay", "a non-negative integer (milliseconds)"));
+                i += 2;
+            }
             "--seed" => {
                 seed = args
                     .get(i + 1)
@@ -616,6 +664,7 @@ fn run_proxy(args: &[String]) -> ! {
         reorder_pct,
         reorder_hold,
         jitter_ms_max,
+        base_delay_ms,
         seed,
         outage_period_s,
         outage_dur_s,

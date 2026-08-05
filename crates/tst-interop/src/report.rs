@@ -1539,6 +1539,7 @@ pub mod soak {
                     reorder_pct: 0.0,
                     reorder_hold: 0,
                     jitter_ms_max: 0,
+                    base_delay_ms: 0,
                     outage_period_s,
                     outage_dur_s,
                 },

@@ -502,12 +502,20 @@ until [[ $(date +%s) -ge $((DEADLINE - SUPERVISOR_GRACE_S)) || -n "$PREMATURE_DE
 done
 
 if [[ -n "$PREMATURE_DEATH" ]]; then
+  # The sampler is an in-script background loop with no log file of its
+  # own — pointing at logs/sampler.log would send the operator to a
+  # file that never existed; its evidence trail is rss.csv itself.
+  if [[ "$PREMATURE_DEATH" == "sampler" ]]; then
+    DEATH_EVIDENCE="rss.csv (sampler is the in-script RSS loop; it has no log file)"
+  else
+    DEATH_EVIDENCE="logs/$PREMATURE_DEATH.log"
+  fi
   event "PREMATURE-DEATH role=$PREMATURE_DEATH pid=${PIDS[$PREMATURE_DEATH]} — failing fast, killing every worker"
-  echo "soak: $PREMATURE_DEATH (pid ${PIDS[$PREMATURE_DEATH]}) died mid-run — failing the whole run NOW rather than idling to the deadline; see logs/$PREMATURE_DEATH.log" >&2
+  echo "soak: $PREMATURE_DEATH (pid ${PIDS[$PREMATURE_DEATH]}) died mid-run — failing the whole run NOW rather than idling to the deadline; see $DEATH_EVIDENCE" >&2
   {
     echo "role=$PREMATURE_DEATH"
     echo "detected_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "log=logs/$PREMATURE_DEATH.log"
+    echo "log=$DEATH_EVIDENCE"
   } >"$OUTDIR/soak-FAILED"
   for role in "${ALL_ROLES[@]}"; do
     kill "${PIDS[$role]}" 2>/dev/null || true

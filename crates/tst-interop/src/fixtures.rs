@@ -263,12 +263,13 @@ pub fn klv_record(seq: u32) -> Vec<u8> {
         timestamp_us: Some(1_700_000_000_000_000 + (seq as u64) * 1_000_000),
         // Tag 5: Platform Heading Angle — encode range [0, 360] deg.
         platform_heading_deg: Some((seq % 360) as f64),
-        // Tag 13/14: Sensor Latitude/Longitude — oscillate a bounded
-        // ±1° triangle wave around a fixed point so records differ
-        // without EVER leaving the encode ranges. The original
-        // unbounded `38.0 + seq * 0.0001` walk crossed Tag 13's +90
-        // max at seq 520_001 (14h27m into a 10 Hz soak) and panicked
-        // both senders of the first 72h soak run — see
+        // Tag 13/14: Sensor Latitude/Longitude — oscillate a bounded,
+        // 1°-wide triangle wave off a fixed point (lat climbs
+        // 38.0→39.0 and back; lon mirrors it, -121.5→-122.5 and back)
+        // so records differ without EVER leaving the encode ranges.
+        // The original unbounded `38.0 + seq * 0.0001` walk crossed
+        // Tag 13's +90 max at seq 520_001 (14h27m into a 10 Hz soak)
+        // and panicked both senders of the first 72h soak run — see
         // `klv_record_encodes_across_a_full_72h_soak_seq_range`.
         sensor_lat_deg: Some(38.0 + triangle_wave(seq) * 0.0001),
         sensor_lon_deg: Some(-121.5 - triangle_wave(seq) * 0.0001),
@@ -279,10 +280,13 @@ pub fn klv_record(seq: u32) -> Vec<u8> {
 
 /// Triangle wave over `seq` with period 20_000 and amplitude
 /// `0..=10_000`: ramps 0→10_000 then back down to 0, forever. Scaled by
-/// 0.0001° per step in [`klv_record`], this bounds the lat/lon walk to
-/// a ±1° window while consecutive `seq` values still map to different
-/// coordinates (the direction reverses at the peaks, it never repeats a
-/// value two steps in a row).
+/// 0.0001° per step in [`klv_record`], this bounds each coordinate's
+/// walk to a 1°-wide window on one side of its base point (the offset
+/// is `0..=+1.0°`, added to the latitude base and subtracted from the
+/// longitude base — not symmetric about either) while consecutive
+/// `seq` values still map to different coordinates (the direction
+/// reverses at the peaks, it never repeats a value two steps in a
+/// row).
 fn triangle_wave(seq: u32) -> f64 {
     const HALF_PERIOD: u32 = 10_000;
     let phase = seq % (2 * HALF_PERIOD);

@@ -7730,6 +7730,19 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::builder::RtspClientBuilder::read_timeout"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# transport_preference: new typed SETUP-transport-preference builder
+# setter, from an integrator field report; dedicated unit test in
+# builder.rs plus a builder-driven forced-TCP integration test in
+# tests/h264/rtsp_session.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::builder::RtspClientBuilder::transport_preference"
+owning_tests = ["crates/tst-rtp/src/builder.rs", "crates/tst-rtp/tests/h264/rtsp_session.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::builder::RtspClientBuilder::user_agent"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

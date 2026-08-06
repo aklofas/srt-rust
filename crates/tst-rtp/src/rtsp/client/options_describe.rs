@@ -139,7 +139,7 @@ impl RtspClient {
         // a qop=auth server rejects a repeated `nc` as a replay
         // (RFC 7616 §3.4).
         let nc = {
-            let mut auth = self.auth.lock().expect("auth state mutex poisoned");
+            let mut auth = crate::rtsp::client::lock_unpoisoned(&self.auth);
             auth.nc += 1;
             auth.nc
         };
@@ -168,7 +168,7 @@ impl RtspClient {
         // lock acquisition, so the pair can never mix a stale challenge
         // with a post-rotation count (see `AuthState`).
         let (www, nc) = {
-            let mut auth = self.auth.lock().expect("auth state mutex poisoned");
+            let mut auth = crate::rtsp::client::lock_unpoisoned(&self.auth);
             match auth.challenge.clone() {
                 Some(www) => {
                     auth.nc += 1;
@@ -188,10 +188,7 @@ impl RtspClient {
     /// updated under the same lock the keepalive thread reads them with, so
     /// the rotation is atomic (see `AuthState`).
     pub(crate) fn cache_auth_challenge(&mut self, www_auth: String) {
-        self.auth
-            .lock()
-            .expect("auth state mutex poisoned")
-            .cache_challenge(www_auth);
+        crate::rtsp::client::lock_unpoisoned(&self.auth).cache_challenge(www_auth);
     }
 
     /// Send `method` at `uri` with `extra_headers`, attaching cached
@@ -274,7 +271,7 @@ impl RtspClient {
         if self.pump_state.is_some() {
             return self.send_and_read_via_pump(request_bytes);
         }
-        let mut s = self.stream.lock().expect("stream mutex poisoned");
+        let mut s = crate::rtsp::client::lock_unpoisoned(&self.stream);
         s.write_all(request_bytes)
             .map_err(|e| RtspError::Io(e.kind()))?;
         let mut buf = Vec::with_capacity(4096);
@@ -395,7 +392,7 @@ impl RtspClient {
         // pump would skip reads forever with the gate stuck nonzero.
         let write_result = {
             let _gate = crate::rtsp::client::WriteGateGuard::enter(&write_gate);
-            let mut s = self.stream.lock().expect("stream mutex poisoned");
+            let mut s = crate::rtsp::client::lock_unpoisoned(&self.stream);
             let r = s
                 .write_all(request_bytes)
                 .map_err(|e| RtspError::Io(e.kind()));

@@ -213,10 +213,12 @@ impl AuthState {
 /// RAII participant in [`RtspClient::write_gate`]: increments the
 /// waiting-writers count on construction, decrements on drop — INCLUDING
 /// panic unwind. A writer that panics between increment and decrement
-/// (e.g. `.expect()` on a poisoned stream mutex) would otherwise leave
-/// the gate stuck nonzero, and the pump — which skips its read while the
-/// gate is nonzero — would spin forever without ever touching the mutex,
-/// wedging the session instead of failing it.
+/// would otherwise leave the gate stuck nonzero, and the pump — which
+/// skips its read while the gate is nonzero — would spin forever without
+/// ever touching the mutex, wedging the session instead of failing it.
+/// (Locking itself can no longer panic on a poisoned mutex — see
+/// [`lock_unpoisoned`] — but the guard still protects any other panic
+/// that might occur while the gate is held, e.g. inside `write_all`.)
 pub(crate) struct WriteGateGuard<'a>(&'a AtomicUsize);
 
 impl<'a> WriteGateGuard<'a> {
@@ -230,6 +232,20 @@ impl Drop for WriteGateGuard<'_> {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::Relaxed);
     }
+}
+
+/// Poison-recovering lock for the RTSP client's internal mutexes.
+///
+/// Crate policy (mirrors the tst-pipeline shells): these mutexes guard an
+/// I/O stream and plain state cells with no torn-state invariants — a
+/// panic in a peer thread (e.g. the keepalive pinger) must not cascade
+/// into a panic here. Recovering keeps every path panic-free, including
+/// the best-effort TEARDOWN inside `Drop` (a panic there during an unwind
+/// would be a process abort no consumer `catch_unwind` can contain). A
+/// half-written request left by the panicked thread surfaces as a normal
+/// protocol/timeout error on the next exchange.
+pub(crate) fn lock_unpoisoned<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Millisecond count of `d`, saturating at `u64::MAX`. A plain
@@ -718,10 +734,9 @@ mod tests {
     }
 
     /// The gate decrement must survive a panic between enter and the end
-    /// of the write scope (e.g. `.expect()` on a poisoned stream mutex) —
-    /// a stuck-nonzero gate makes the pump skip reads forever without
-    /// ever observing the poison itself, wedging the session instead of
-    /// failing it.
+    /// of the write scope — a stuck-nonzero gate makes the pump skip
+    /// reads forever without ever observing the panic itself, wedging the
+    /// session instead of failing it.
     #[test]
     fn write_gate_guard_decrements_on_panic() {
         let gate = AtomicUsize::new(0);
@@ -780,5 +795,66 @@ mod tests {
         assert!(!h.is_cancelled());
         h.cancel();
         assert!(h.is_cancelled());
+    }
+}
+
+#[cfg(test)]
+mod poison_policy {
+    use super::*;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::time::{Duration, Instant};
+
+    /// Fake peer: accepts one TCP connection, holds it open briefly, never
+    /// replies, then closes. Enough for `connect()`; TEARDOWN writes land
+    /// in the kernel buffer. The client has no active SETUP/pump here, so
+    /// `teardown_with_deadline`'s non-pump branch calls the deadline-
+    /// agnostic `send_and_read` — the caller's `deadline` argument is inert
+    /// on that path (only the pump-active branch honors it). The 200 ms
+    /// close below, not the deadline, is what bounds this test: once the
+    /// peer drops the socket, the client's next 100 ms-timeout read poll
+    /// observes EOF.
+    fn client_against_silent_peer() -> RtspClient {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (sock, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            drop(sock);
+        });
+        RtspClient::connect(&format!("rtsp://{addr}/s")).unwrap()
+    }
+
+    fn poison_stream_mutex(client: &RtspClient) {
+        let stream = client.stream.clone();
+        let _ = std::thread::spawn(move || {
+            let _g = stream.lock().unwrap();
+            panic!("deliberate poison");
+        })
+        .join(); // joins the Err — the mutex is now poisoned
+    }
+
+    #[test]
+    fn drop_does_not_panic_on_poisoned_stream_mutex() {
+        let mut client = client_against_silent_peer();
+        // Make Drop take the best-effort TEARDOWN path (the `mod.rs`
+        // Drop impl gates on `session_id.is_some()`).
+        client.session_id = Some("12345".into());
+        poison_stream_mutex(&client);
+        let r = catch_unwind(AssertUnwindSafe(move || drop(client)));
+        assert!(r.is_ok(), "Drop panicked on a poisoned stream mutex");
+    }
+
+    #[test]
+    fn request_path_survives_poisoned_stream_mutex() {
+        let mut client = client_against_silent_peer();
+        client.session_id = Some("12345".into());
+        poison_stream_mutex(&client);
+        let deadline = Instant::now() + Duration::from_millis(300);
+        let r = catch_unwind(AssertUnwindSafe(|| {
+            client.teardown_with_deadline(Some(deadline))
+        }));
+        let inner = r.expect("request path panicked on a poisoned mutex");
+        // The silent peer never replies — an Err is expected; a panic is the bug.
+        assert!(inner.is_err());
     }
 }

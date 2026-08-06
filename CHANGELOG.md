@@ -41,9 +41,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   non-ascending pair, companion overflow, or token count (target
   `tst_rtp::rtsp::transport_negotiation`, `debug!` level). Wire-supplied
   values are Debug-escaped before logging.
+- **`TransportError::is_connection_refused()`** — portable refused-
+  classification without hard-coding platform errnos (111 Linux / 61 BSD /
+  10061 Windows); classifies via the std `io::ErrorKind` mapping over
+  `Backpressure`/`Broken`'s `errno_code`. `std`-gated (the type stays
+  no_std-buildable).
 
 ### Changed
 
+- **`UdpTransport` now sends on an unconnected socket (`send_to`)**, from
+  an integrator field report reproduced against a live media server: a
+  transient ICMP port-unreachable from a restarting or idle receiver no
+  longer kills the sender with a fatal `Broken`/ECONNREFUSED. Fire-and-
+  forget datagram semantics, matching every TS-over-UDP sender (ffmpeg,
+  VLC, mediamtx). No knob — this is the only mode.
+- **`udp://` hostname resolution now prefers IPv4 among reachable-family
+  candidates.** A UDP connect-probe can reject an unconfigured/unroutable
+  address family but cannot detect an absent listener, so `localhost`
+  resolving `[::1, 127.0.0.1]` on a dual-stack host previously picked
+  `::1` by resolver order and died against an IPv4-only listener.
 - **Breaking (Rust, pre-1.0): `UdpUrlError::BadHost` is removed**, superseded
   by the hostname-resolution work above. Unresolvable or junk hosts now
   surface as `UdpUrlError::HostResolve { host, detail }`, and passing an

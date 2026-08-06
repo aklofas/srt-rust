@@ -6265,6 +6265,78 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::dyn_aliases::BoxedSender"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::create"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::bytes_sent"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::send_bytes"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::max_payload"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::is_alive"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::close"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::socket_stats"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_pipeline::ext::pairing::KlvSample"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -6437,9 +6509,17 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::mux_sender::BoxedMuxSender"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# Graduated from the bulk bootstrap exempt: close()'s drain-before-cancel
+# ordering fix and the new into_inner() both landed with dedicated tests
+# colocated in mux_sender.rs (cancel_tests module).
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::mux_sender::MuxSender"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/src/mux_sender.rs", "crates/tst-pipeline/tests/mux_sender_golden.rs"]
+bindings = ["java:org.tstrans.srt.MuxSender", "java:org.tstrans.rtp.MuxSender"]
+scenario_ids = ["video-roundtrip"]
+tier = "A"
 
 [[exempt]]
 item = "tst_pipeline::mux_sender::MuxSenderError::errno_code"

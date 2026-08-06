@@ -991,40 +991,92 @@ impl<T: Transport> MuxSender<T> {
     /// bytes buffered during a prior back-pressure event, then marks
     /// the sender closed and closes the underlying transport.
     ///
-    /// Wakes any thread parked inside `send_video` / `send_klv` / `send_*_to`
-    /// by cancelling the underlying transport BEFORE acquiring the inner
-    /// lock — so a peer thread waiting on libsrt's `srt_sendmsg` returns
-    /// promptly with `TransportError::Broken`. Without this cancel-first
-    /// step the close would deadlock against the parked send for the
-    /// duration of `SRTO_SNDTIMEO` (or forever, on the libsrt default).
+    /// Two paths, chosen by a non-blocking lock attempt:
     ///
-    /// Pending-bytes drain is best-effort; if the transport rejects on
-    /// drain (typically because it's already broken), the bytes are
-    /// silently abandoned. This matches Drop semantics.
+    /// - **Uncontended** (the common case: no other thread is inside
+    ///   `send_video` / `send_klv` / `send_*_to`): drain `pending_bytes`
+    ///   and close the transport directly, with **no cancel**. Cancelling
+    ///   first would be actively harmful here — on SRT/RIST it kills the
+    ///   transport's ability to accept the drain sends, forfeiting the
+    ///   tail that `Drop` would otherwise have delivered. An uncontended
+    ///   explicit `close()` is now exactly as lossless as `Drop`.
+    /// - **Contended** (a peer thread is parked inside `send_bytes`,
+    ///   e.g. libsrt's `srt_sendmsg` blocked on a full send buffer):
+    ///   cancel the transport FIRST to wake the parked peer (it returns
+    ///   `TransportError::Broken` and releases the lock), then acquire
+    ///   the lock and best-effort drain/close. Without cancel-first here
+    ///   the close would deadlock against the parked send for the
+    ///   duration of `SRTO_SNDTIMEO` (or forever, on the libsrt default).
+    ///   The drain in this path typically finds the transport already
+    ///   broken by the cancel and abandons the pending bytes — parity
+    ///   with the pre-fix behavior on this path.
     ///
     /// Poisoned-lock handling: if a prior panic poisoned the inner mutex,
-    /// `close` silently returns rather than panic — parity with Drop.
+    /// `close` cancels (to wake any peer that might still be parked) and
+    /// silently returns rather than panic — parity with Drop.
     pub fn close(&self) {
-        // Cancel-first: wake any peer thread parked inside
-        // transport.send_bytes so they return TransportError::Broken and
-        // release the inner Mutex. Otherwise we'd deadlock here waiting
-        // for the lock. Must happen BEFORE the lock acquisition.
-        if let Some(c) = &self.cancel {
-            c.cancel();
+        match crate::mutex::try_lock(&self.inner) {
+            crate::mutex::TryLockOutcome::Acquired(mut inner) => {
+                let _ = inner.drain_pending();
+                inner.closed = true;
+                inner.transport.close();
+            }
+            crate::mutex::TryLockOutcome::WouldBlock => {
+                if let Some(c) = &self.cancel {
+                    c.cancel();
+                }
+                if let Ok(mut inner) = self.inner.lock() {
+                    let _ = inner.drain_pending();
+                    inner.closed = true;
+                    inner.transport.close();
+                }
+            }
+            crate::mutex::TryLockOutcome::Poisoned(_) => {
+                if let Some(c) = &self.cancel {
+                    c.cancel();
+                }
+            }
         }
-        // Graceful poisoned-lock handling — mirrors Drop's `if let Ok`.
-        // If the lock is poisoned, the underlying transport may already
-        // have closed itself via the cancel above; abandon pending.
-        if let Ok(mut inner) = self.inner.lock() {
-            // Best-effort drain BEFORE marking closed; otherwise drain_pending
-            // bails on the `self.closed` guard inside its helpers (the
-            // Inner::send_* methods short-circuit on closed; drain_pending
-            // does not currently check `closed`, but matching the order
-            // keeps the future-proof contract obvious).
-            let _ = inner.drain_pending();
-            inner.closed = true;
-            inner.transport.close();
-        }
+    }
+
+    /// Consume the sender and hand back the owned transport.
+    ///
+    /// Best-effort: `pending_bytes` retained from a prior transient
+    /// transport error are drained first (drain failures abandon them,
+    /// matching `close`/`Drop`). The transport is **not** closed — the
+    /// caller owns it live and is responsible for shutdown. Un-drained
+    /// muxer state is discarded. If the inner lock was poisoned the
+    /// transport is still returned (poison recovered — mirrors
+    /// [`MuxPublisher::finish`](crate::mux_publisher::MuxPublisher::finish)).
+    ///
+    /// `std` only — the sibling std-only shells (`MuxPublisher`) share
+    /// this same shape; the `no_std` sender path has no analogous need
+    /// to reclaim a live transport mid-mission.
+    #[cfg(feature = "std")]
+    pub fn into_inner(self) -> T {
+        // MuxSender has a Drop impl, so a plain destructuring move out of
+        // `self` is rejected by the compiler (E0509) — go through
+        // ManuallyDrop + ptr::read instead. COMPLETENESS: every field of
+        // MuxSender must be read exactly once below — re-check against the
+        // struct definition when editing (a missed field leaks; a double
+        // read double-drops).
+        let this = std::mem::ManuallyDrop::new(self);
+        // SAFETY: `this` is ManuallyDrop so Drop::drop never runs; each
+        // field is moved out exactly once via ptr::read and `this` is
+        // never touched afterwards (not even implicitly — it falls out of
+        // scope with no destructor to run).
+        let (inner, cancel, span) = unsafe {
+            (
+                std::ptr::read(&this.inner),
+                std::ptr::read(&this.cancel),
+                std::ptr::read(&this._span),
+            )
+        };
+        drop(cancel);
+        drop(span);
+        let mut inner = inner.into_inner().unwrap_or_else(|e| e.into_inner());
+        let _ = inner.drain_pending();
+        inner.transport
     }
 
     /// Snapshot of the underlying transport's cancel handle, if it
@@ -2489,5 +2541,124 @@ mod cancel_tests {
 
         // reset_stats → must not panic (call and proceed)
         sender.reset_stats();
+    }
+
+    fn video_only_config() -> MuxerConfig {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        prog.pcr_pid(0x1011);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    }
+
+    /// Interop-arc regression: explicit close() must be as lossless as Drop.
+    /// Models SRT/RIST semantics where cancel() kills in-flight/subsequent
+    /// sends: if close() cancels before draining pending_bytes, the tail is
+    /// forfeited.
+    #[derive(Default)]
+    struct TailLossState {
+        sent: Vec<Vec<u8>>,
+        reject_sends: bool, // one-shot Backpressure window to seed pending_bytes
+        cancelled: bool,    // set by the cancel handle; sends fail afterwards
+    }
+    struct TailLossTransport(Arc<std::sync::Mutex<TailLossState>>);
+    struct TailLossCancel(Arc<std::sync::Mutex<TailLossState>>);
+    impl TransportCancel for TailLossCancel {
+        fn cancel(&self) {
+            self.0.lock().unwrap().cancelled = true;
+        }
+    }
+    impl Transport for TailLossTransport {
+        fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+            let mut s = self.0.lock().unwrap();
+            if s.cancelled {
+                return Err(TransportError::Broken {
+                    msg: "cancelled".into(),
+                    errno_code: None,
+                });
+            }
+            if s.reject_sends {
+                return Err(TransportError::Backpressure {
+                    msg: "full".into(),
+                    errno_code: None,
+                });
+            }
+            s.sent.push(msg.to_vec());
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn is_alive(&self) -> bool {
+            !self.0.lock().unwrap().cancelled
+        }
+        fn close(&mut self) {}
+        fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+            None
+        }
+        fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+            Some(Arc::new(TailLossCancel(self.0.clone())))
+        }
+    }
+
+    #[test]
+    fn explicit_close_drains_pending_before_cancel() {
+        let state = Arc::new(std::sync::Mutex::new(TailLossState {
+            reject_sends: true,
+            ..Default::default()
+        }));
+        let sender = MuxSender::new(TailLossTransport(state.clone()), video_only_config()).unwrap();
+        // Seed pending_bytes: transport rejects with Backpressure.
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        let _ = sender.send_video(&nal, Pts90khz::new(0), true);
+        state.lock().unwrap().reject_sends = false; // transport healthy again
+        sender.close();
+        let s = state.lock().unwrap();
+        let total: usize = s.sent.iter().map(|c| c.len()).sum();
+        assert!(
+            total > 0,
+            "pending tail lost: close() cancelled before draining"
+        );
+        assert!(total % 188 == 0);
+    }
+
+    #[test]
+    fn into_inner_returns_transport_with_all_bytes() {
+        let state = Arc::new(std::sync::Mutex::new(TailLossState::default()));
+        let sender = MuxSender::new(TailLossTransport(state.clone()), video_only_config()).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        sender.send_video(&nal, Pts90khz::new(0), true).unwrap();
+        let _t: TailLossTransport = sender.into_inner();
+        let s = state.lock().unwrap();
+        let total: usize = s.sent.iter().map(|c| c.len()).sum();
+        assert!(total > 0 && total % 188 == 0);
+        assert!(
+            !s.cancelled,
+            "into_inner must not cancel/close the transport"
+        );
+    }
+
+    #[test]
+    fn into_inner_drains_pending_bytes() {
+        let state = Arc::new(std::sync::Mutex::new(TailLossState {
+            reject_sends: true,
+            ..Default::default()
+        }));
+        let sender = MuxSender::new(TailLossTransport(state.clone()), video_only_config()).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        let _ = sender.send_video(&nal, Pts90khz::new(0), true); // pending seeded
+        state.lock().unwrap().reject_sends = false;
+        let _t = sender.into_inner();
+        assert!(
+            state
+                .lock()
+                .unwrap()
+                .sent
+                .iter()
+                .map(|c| c.len())
+                .sum::<usize>()
+                > 0
+        );
     }
 }

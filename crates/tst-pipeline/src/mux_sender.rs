@@ -999,7 +999,15 @@ impl<T: Transport> MuxSender<T> {
     ///   first would be actively harmful here — on SRT/RIST it kills the
     ///   transport's ability to accept the drain sends, forfeiting the
     ///   tail that `Drop` would otherwise have delivered. An uncontended
-    ///   explicit `close()` is now exactly as lossless as `Drop`.
+    ///   explicit `close()` is now exactly as lossless as `Drop` — the
+    ///   flip side is that it can now also **block**: the drain sends go
+    ///   to a still-live transport with no cancel backing it, so this call
+    ///   can take as long as the transport's send timeout per pending
+    ///   chunk (unbounded for a blocking transport with no send timeout —
+    ///   reachable e.g. via a `ManagedTransport` reconnect after
+    ///   `pending_bytes` was seeded during an outage). Previously an
+    ///   explicit `close()` always returned promptly because it cancelled
+    ///   unconditionally before draining.
     /// - **Contended** (a peer thread is parked inside `send_bytes`,
     ///   e.g. libsrt's `srt_sendmsg` blocked on a full send buffer):
     ///   cancel the transport FIRST to wake the parked peer (it returns
@@ -2621,8 +2629,15 @@ mod cancel_tests {
             "pending tail lost: close() cancelled before draining"
         );
         assert!(total % 188 == 0);
+        // Uncontended close() must not cancel at all (the fix's whole
+        // point: cancel-before-drain is what forfeited the tail).
+        assert!(!s.cancelled);
     }
 
+    // into_inner() is std-only (see its rustdoc); gate its tests to match
+    // rather than relying on the module's other std-only code (e.g.
+    // std::thread::spawn above) to carry them.
+    #[cfg(feature = "std")]
     #[test]
     fn into_inner_returns_transport_with_all_bytes() {
         let state = Arc::new(std::sync::Mutex::new(TailLossState::default()));
@@ -2639,6 +2654,7 @@ mod cancel_tests {
         );
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn into_inner_drains_pending_bytes() {
         let state = Arc::new(std::sync::Mutex::new(TailLossState {

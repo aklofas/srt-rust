@@ -88,7 +88,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drains and closes with no cancel at all; only a contended lock (a peer
   thread possibly parked in `send_bytes`) takes the cancel-first path, to
   avoid deadlocking against it. The "drop, don't close" workaround from the
-  interop-evidence arc is no longer needed. No public API changes.
+  interop-evidence arc is no longer needed. Flip side: an uncontended
+  `close()` can now block draining pending bytes against a still-live
+  transport where it previously returned immediately (it cancelled first,
+  unconditionally) — the price of the losslessness fix. No public API
+  changes.
 - **`tst-srt`: a connection accepted via `Listener::accept_timeout` could
   permanently inherit non-blocking mode and die on its first read with
   zero delivery.** `accept_timeout`'s readiness probe briefly toggles the

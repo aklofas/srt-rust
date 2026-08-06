@@ -9,7 +9,11 @@ use std::path::Path;
 use tst_core::transport::{SocketStats, Transport, TransportError};
 
 /// Appends every chunk verbatim to a file. `close` flushes; post-close
-/// sends return [`TransportError::Closed`] per the trait contract.
+/// sends return [`TransportError::Closed`] per the trait contract. A fatal
+/// write error also marks the transport dead: that call returns
+/// [`TransportError::Broken`], `is_alive()` becomes `false`, and any
+/// subsequent send returns [`TransportError::Closed`] — the same
+/// mark-dead-on-write-error contract `tst-tcp`'s `TcpTransport` follows.
 pub struct FileTransport {
     writer: Option<BufWriter<File>>,
     bytes_sent: u64,
@@ -36,10 +40,20 @@ impl Transport for FileTransport {
         let Some(w) = self.writer.as_mut() else {
             return Err(TransportError::Closed);
         };
-        w.write_all(msg).map_err(|e| TransportError::Broken {
-            msg: format!("file write failed: {e}"),
-            errno_code: e.raw_os_error(),
-        })?;
+        if let Err(e) = w.write_all(msg) {
+            // Fatal: drop the writer so is_alive() reports dead and any
+            // later send takes the closed-writer branch above (returning
+            // Closed), matching tst-tcp's mark-dead-on-write-error
+            // pattern. Without this, a write failure (ENOSPC/EIO/a
+            // removed device) would leave is_alive() reporting true
+            // forever, violating the trait's "closed or previously
+            // broken" contract.
+            self.writer = None;
+            return Err(TransportError::Broken {
+                msg: format!("file write failed: {e}"),
+                errno_code: e.raw_os_error(),
+            });
+        }
         self.bytes_sent = self.bytes_sent.saturating_add(msg.len() as u64);
         Ok(())
     }
@@ -89,6 +103,8 @@ mod tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         sender.send_video(&nal, Pts90khz::new(0), true).unwrap();
         let mut t = sender.into_inner();
+        // into_inner leaves the transport open (not closed) — pin that.
+        assert!(t.is_alive());
         t.close();
         let bytes = std::fs::read(&path).unwrap();
         assert!(!bytes.is_empty() && bytes.len() % 188 == 0 && bytes[0] == 0x47);
@@ -97,6 +113,49 @@ mod tests {
             t.send_bytes(&[0u8; 188]),
             Err(TransportError::Closed)
         ));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A fatal write error must mark the transport dead: `is_alive()` goes
+    /// `false` and every later send returns `Closed` (not a repeated
+    /// `Broken`, and not `Ok` — the ENOSPC/EIO/removed-device bug this
+    /// guards against was `is_alive()` reporting `true` forever).
+    ///
+    /// Deterministic, portable failure injection: no disk-full or
+    /// permission-race trick is both simple and reliable across
+    /// Linux/macOS/Windows, so this constructs the transport normally via
+    /// `create()` (proving the path/file really exists and is otherwise
+    /// healthy) and then swaps in a `BufWriter` over a file handle opened
+    /// **read-only** — a write through a read-only handle fails at the OS
+    /// level identically on all three platforms. The swap uses ordinary
+    /// same-module private-field access (this test module is a descendant
+    /// of `file_transport`, not a new public seam).
+    ///
+    /// The swapped-in `BufWriter` uses a tiny explicit capacity: a write
+    /// bigger than the buffer bypasses buffering and goes straight to the
+    /// inner file, so the read-only failure actually surfaces here rather
+    /// than being silently absorbed into the buffer (as it would be
+    /// against `BufWriter`'s much larger default capacity for a 188-byte
+    /// TS-packet-sized write).
+    #[test]
+    fn write_failure_marks_transport_dead() {
+        let path = std::env::temp_dir().join(format!(
+            "tst-file-transport-write-fail-{}.ts",
+            std::process::id()
+        ));
+        let mut t = FileTransport::create(&path).unwrap();
+        assert!(t.is_alive());
+        let read_only = std::fs::OpenOptions::new().read(true).open(&path).unwrap();
+        t.writer = Some(BufWriter::with_capacity(8, read_only));
+
+        let err = t.send_bytes(&[0u8; 188]).unwrap_err();
+        assert!(matches!(err, TransportError::Broken { .. }));
+        assert!(!t.is_alive(), "write failure must mark the transport dead");
+        assert!(matches!(
+            t.send_bytes(&[0u8; 188]),
+            Err(TransportError::Closed)
+        ));
+
         let _ = std::fs::remove_file(&path);
     }
 }

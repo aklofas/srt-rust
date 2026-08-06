@@ -65,9 +65,7 @@ pub(crate) fn handle_keepalive_response(
                     target: "tst_rtp::client::keepalive",
                     "keepalive ping got 401; refreshing cached auth challenge"
                 );
-                auth.lock()
-                    .expect("auth state mutex poisoned")
-                    .cache_challenge(www.clone());
+                crate::rtsp::client::lock_unpoisoned(auth).cache_challenge(www.clone());
             }
         }
         454 => {
@@ -165,11 +163,7 @@ pub(crate) fn spawn(
                 let mut req = RtspRequest::new(RtspMethod::Options, url.clone(), version)
                     .header("cseq", cseq.to_string())
                     .header("user-agent", user_agent.as_str());
-                if let Some(sid) = session_id
-                    .lock()
-                    .expect("session id mutex poisoned")
-                    .clone()
-                {
+                if let Some(sid) = crate::rtsp::client::lock_unpoisoned(&session_id).clone() {
                     req = req.header("session", sid);
                 }
                 // Attach cached credentials pre-emptively so servers that
@@ -182,7 +176,7 @@ pub(crate) fn spawn(
                     // (or repeat an `nc` for a reused nonce — RFC 7616
                     // §3.4 replay protection). See `AuthState`.
                     let snapshot = {
-                        let mut g = auth.lock().expect("auth state mutex poisoned");
+                        let mut g = crate::rtsp::client::lock_unpoisoned(&auth);
                         match g.challenge.clone() {
                             Some(www) => {
                                 g.nc += 1;
@@ -219,15 +213,17 @@ pub(crate) fn spawn(
                 // read, and without the gate a hot data stream can
                 // starve keepalive writes for many read cycles (see
                 // `RtspClient::write_gate`). RAII guard: the decrement
-                // must survive the poisoned-mutex panic below, or the
+                // must survive a panic while the lock is held, or the
                 // pump would skip reads forever.
                 //
-                // If the stream mutex is poisoned the main thread
-                // panicked mid-request — propagate by panicking the
-                // keepalive thread too (per T21 policy).
+                // The stream lock recovers from poison (`lock_unpoisoned`)
+                // rather than propagating it — if the main thread panicked
+                // mid-request, this thread's write just proceeds against
+                // the (possibly half-written) stream state; a genuine wire
+                // failure still surfaces below via `write_result`.
                 let write_result = {
                     let _gate = crate::rtsp::client::WriteGateGuard::enter(&write_gate);
-                    let mut g = write_half.lock().expect("stream mutex poisoned");
+                    let mut g = crate::rtsp::client::lock_unpoisoned(&write_half);
                     g.write_all(&bytes)
                 };
                 if write_result.is_err() {

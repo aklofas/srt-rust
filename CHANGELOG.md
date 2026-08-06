@@ -93,6 +93,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cap, so the gauge can never exceed `max_sessions`, even transiently. Cap
   *enforcement* was never affected: accepted sessions never exceeded the
   configured limit, and refused connections were always dropped.
+- **RTSP client: teardown, `Drop`, and request paths no longer panic when a
+  background thread poisoned an internal mutex** (poison is recovered; a
+  prior keepalive-thread panic can no longer abort the process via
+  panic-in-panic during `Drop`), from an integrator field report.
 
 ---
 

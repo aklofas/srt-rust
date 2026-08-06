@@ -158,7 +158,7 @@ impl RtspClient {
         //   guards against a degenerate `timeout=0` advertisement
         //   turning the pinger into a busy loop.
         if let Some(cell) = &self.session_id_shared {
-            *cell.lock().expect("session id mutex poisoned") = Some(sid.clone());
+            *crate::rtsp::client::lock_unpoisoned(cell) = Some(sid.clone());
         }
         if !self.keepalive_interval_overridden {
             if let Some(iv) = &self.keepalive_interval_shared {

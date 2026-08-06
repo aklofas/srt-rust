@@ -171,10 +171,7 @@ impl<W: Write> InterleavedWriter<W> {
     /// Write a full RTSP message (already serialized by
     /// `RtspRequest::encode`).
     pub fn write_rtsp(&self, bytes: &[u8]) -> Result<(), RtspError> {
-        let mut g = self
-            .inner
-            .lock()
-            .expect("interleaved writer mutex poisoned");
+        let mut g = crate::rtsp::client::lock_unpoisoned(&self.inner);
         g.write_all(bytes).map_err(|e| RtspError::Io(e.kind()))?;
         g.flush().map_err(|e| RtspError::Io(e.kind()))?;
         Ok(())
@@ -187,10 +184,7 @@ impl<W: Write> InterleavedWriter<W> {
                 detail: "outgoing payload exceeds 65535",
             });
         }
-        let mut g = self
-            .inner
-            .lock()
-            .expect("interleaved writer mutex poisoned");
+        let mut g = crate::rtsp::client::lock_unpoisoned(&self.inner);
         let mut header = [b'$', channel, 0, 0];
         header[2..4].copy_from_slice(&(payload.len() as u16).to_be_bytes());
         g.write_all(&header).map_err(|e| RtspError::Io(e.kind()))?;

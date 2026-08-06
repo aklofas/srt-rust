@@ -43,15 +43,20 @@ fn unicast_loopback_sends_via_hostname_url() {
     // is a resolvable hostname, not an IP literal. `UdpUrl::parse`
     // deterministically prefers IPv4 among probe-clean candidates (the
     // dual-stack `localhost` tiebreak — see `resolve_host`'s doc comment),
-    // so bind the receiver on the resolved IPv4 loopback address to match,
-    // regardless of which family the system resolver lists first.
+    // so bind the receiver the same way: prefer IPv4, but fall back to the
+    // first resolved candidate on an IPv6-only host (production doesn't
+    // require IPv4, only prefer it).
     use std::net::ToSocketAddrs;
-    let ipv4 = ("localhost", 0u16)
+    let candidates: Vec<_> = ("localhost", 0u16)
         .to_socket_addrs()
         .expect("resolve localhost")
+        .collect();
+    let addr = candidates
+        .iter()
         .find(|a| a.is_ipv4())
-        .expect("localhost resolved no IPv4 address");
-    let recv = UdpSocket::bind(ipv4).expect("bind recv");
+        .copied()
+        .unwrap_or(candidates[0]);
+    let recv = UdpSocket::bind(addr).expect("bind recv");
     recv.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let port = recv.local_addr().unwrap().port();
 

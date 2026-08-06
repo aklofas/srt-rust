@@ -363,6 +363,20 @@ mod tests {
     /// among probe-clean candidates.
     #[test]
     fn hostname_resolution_prefers_ipv4() {
+        // IPv6-only hosts have no IPv4 localhost record to prefer — the
+        // contract is "IPv4 first when present", not "IPv4 required".
+        use std::net::ToSocketAddrs;
+        let has_ipv4 = ("localhost", 5004u16)
+            .to_socket_addrs()
+            .map(|mut addrs| addrs.any(|a| a.is_ipv4()))
+            .unwrap_or(false);
+        if !has_ipv4 {
+            eprintln!(
+                "skipping hostname_resolution_prefers_ipv4: host has no IPv4 localhost record"
+            );
+            return;
+        }
+
         let u = UdpUrl::parse("udp://localhost:5004").unwrap();
         assert!(
             u.addr.is_ipv4(),

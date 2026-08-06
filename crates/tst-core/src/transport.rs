@@ -201,7 +201,7 @@ impl TransportError {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod error_tests {
     use super::*;
 

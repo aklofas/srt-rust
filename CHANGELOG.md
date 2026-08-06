@@ -67,6 +67,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`ext::file_transport::FileTransport`** — write-to-file `Transport` for
   capture/debug sinks. Both binding consumers and integration ports had
   independently rebuilt this ad hoc; shipping one canonical version.
+- **`tst_rtp::SecretString` re-export**, from an integrator field report.
+  Consumers building `RtspClientBuilder` credentials no longer need a
+  direct dependency on the `secrecy` crate just to name the type.
+- **`RtspClientBuilder::transport_preference(RtspTransportPref)`**, same
+  field report — a typed alternative to the `?transport=tcp|udp` URL query
+  for forcing the SETUP transport. The builder value wins over the URL
+  query when both are present.
 
 ### Changed
 
@@ -150,6 +157,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   background thread poisoned an internal mutex** (poison is recovered; a
   prior keepalive-thread panic can no longer abort the process via
   panic-in-panic during `Drop`), from an integrator field report.
+
+### Documented
+
+- **SETUP → PLAY → `into_h264_receiver` call order**, from an integrator
+  field report. `RtspSession::into_h264_receiver` and `RtspClient::play`
+  now spell out that PLAY must be issued before converting the session to
+  a receiver, and what happens if it isn't — `H264Receiver::recv_au` just
+  blocks waiting for AUs the server hasn't started sending yet. Previously
+  discoverable only by reading the integration tests.
+- **`Send` guarantee on `RtspClient` / `RtspSession` / `H264Receiver`**,
+  same field report. Moving one of these to a dedicated receive/watchdog
+  thread is now a documented, supported use — pinned with a compile-time
+  regression test, not just an implementation accident.
 
 ---
 

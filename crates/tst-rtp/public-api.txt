@@ -1,4 +1,5 @@
 pub mod tst_rtp
+pub use tst_rtp::SecretString
 pub mod tst_rtp::builder
 pub struct tst_rtp::builder::RtpRecvSocketBuilder
 impl tst_rtp::builder::RtpRecvSocketBuilder
@@ -50,6 +51,7 @@ pub fn tst_rtp::builder::RtspClientBuilder::keepalive_interval(self, core::time:
 pub fn tst_rtp::builder::RtspClientBuilder::new(&str) -> core::result::Result<Self, tst_rtp::error::RtspError>
 pub fn tst_rtp::builder::RtspClientBuilder::no_auto_keepalive(self, bool) -> Self
 pub fn tst_rtp::builder::RtspClientBuilder::read_timeout(self, core::time::Duration) -> Self
+pub fn tst_rtp::builder::RtspClientBuilder::transport_preference(self, tst_rtp::url::RtspTransportPref) -> Self
 pub fn tst_rtp::builder::RtspClientBuilder::user_agent(self, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::marker::Freeze for tst_rtp::builder::RtspClientBuilder
 impl core::marker::Send for tst_rtp::builder::RtspClientBuilder
@@ -2714,6 +2716,7 @@ pub fn tst_rtp::builder::RtspClientBuilder::keepalive_interval(self, core::time:
 pub fn tst_rtp::builder::RtspClientBuilder::new(&str) -> core::result::Result<Self, tst_rtp::error::RtspError>
 pub fn tst_rtp::builder::RtspClientBuilder::no_auto_keepalive(self, bool) -> Self
 pub fn tst_rtp::builder::RtspClientBuilder::read_timeout(self, core::time::Duration) -> Self
+pub fn tst_rtp::builder::RtspClientBuilder::transport_preference(self, tst_rtp::url::RtspTransportPref) -> Self
 pub fn tst_rtp::builder::RtspClientBuilder::user_agent(self, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::marker::Freeze for tst_rtp::builder::RtspClientBuilder
 impl core::marker::Send for tst_rtp::builder::RtspClientBuilder

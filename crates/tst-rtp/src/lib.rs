@@ -67,6 +67,11 @@ pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BIN
 pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
 pub use sdp::pick::{H264Media, pick_h264, pick_mp2t};
 pub use sdp::{Sdp, SdpMedia};
+/// Re-export: the credential type accepted by
+/// [`RtspClientBuilder::auth`](crate::RtspClientBuilder::auth) — consumers
+/// need not depend on the `secrecy` crate directly (`password.into()`
+/// worked before but was non-obvious).
+pub use secrecy::SecretString;
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};
 
 // H.264 RTP payload format (RFC 6184).
@@ -82,3 +87,18 @@ pub use error::{MountError, RtspServerError};
 pub use rtsp::server::mount::{MountHandle, MountKind, MountStats};
 pub use rtsp::server::{RtspServer, ServerStats};
 pub use url::MulticastGroup;
+
+#[cfg(test)]
+mod tests {
+    /// `RtspClient` / `RtspSession` / `H264Receiver` are documented as
+    /// `Send` (see each type's rustdoc) — this is the compile-time guard:
+    /// a change that drops `Send` here fails to compile, so the guarantee
+    /// can't regress silently.
+    #[test]
+    fn send_bound_is_a_public_guarantee() {
+        fn assert_send<T: Send>() {}
+        assert_send::<crate::RtspClient>();
+        assert_send::<crate::RtspSession>();
+        assert_send::<crate::H264Receiver>();
+    }
+}

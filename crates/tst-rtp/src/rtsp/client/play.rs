@@ -18,6 +18,15 @@ impl RtspClient {
     /// Send PLAY. Returns parsed `RTP-Info:` header (if present) so
     /// caller can align demuxer.
     ///
+    /// # Call order
+    ///
+    /// Issue PLAY after SETUP (`setup_h264_auto` / `setup_mp2t_auto`) and
+    /// before consuming the returned `RtspSession` via
+    /// [`RtspSession::into_h264_receiver`](crate::RtspSession::into_h264_receiver)
+    /// — the server does not start streaming until it sees PLAY, so
+    /// converting the session first just leaves the receiver blocked
+    /// waiting for data that only starts arriving once this call runs.
+    ///
     /// # Errors
     ///
     /// - `RtspError::BadResponse` with `detail: "PLAY before SETUP"` if

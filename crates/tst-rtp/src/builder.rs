@@ -22,7 +22,7 @@ use crate::error::{RtspError, RtspServerError};
 use crate::rtsp::client::{ConnectParams, RtspClient};
 use crate::rtsp::message::validate_header_field;
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
-use crate::url::{RtpUrl, RtspUrl, UrlError as RtpUrlError};
+use crate::url::{RtpUrl, RtspTransportPref, RtspUrl, UrlError as RtpUrlError};
 
 /// Fluent builder for send-side [`RtpTransport`].
 #[must_use]
@@ -255,9 +255,29 @@ impl RtspClientBuilder {
 
     /// Provide explicit credentials. Overrides anything parsed from
     /// the URL's userinfo component.
+    ///
+    /// # Example
+    /// ```
+    /// use tst_rtp::{RtspClientBuilder, SecretString};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let builder = RtspClientBuilder::new("rtsp://127.0.0.1:8554/live")?
+    ///     .auth("admin", SecretString::new("hunter2".into()));
+    /// # let _ = builder;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn auth(mut self, username: impl Into<String>, password: SecretString) -> Self {
         self.username = Some(username.into());
         self.password = Some(password);
+        self
+    }
+
+    /// Force the SETUP transport, overriding the URL's `?transport=` query
+    /// when both are present. Equivalent to `?transport=tcp|udp` but
+    /// self-documenting — no URL string editing required.
+    pub fn transport_preference(mut self, pref: RtspTransportPref) -> Self {
+        self.url.transport_preference = pref;
         self
     }
 
@@ -632,6 +652,14 @@ mod tests {
             b.connect().unwrap_err(),
             RtspError::InvalidHeader { .. }
         ));
+    }
+
+    #[test]
+    fn transport_preference_overrides_url_query() {
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:8554/s?transport=udp")
+            .unwrap()
+            .transport_preference(RtspTransportPref::ForceTcp);
+        assert_eq!(b.url.transport_preference, RtspTransportPref::ForceTcp);
     }
 }
 

@@ -273,9 +273,12 @@ impl RtspClientBuilder {
         self
     }
 
-    /// Force the SETUP transport, overriding the URL's `?transport=` query
-    /// when both are present. Equivalent to `?transport=tcp|udp` but
-    /// self-documenting — no URL string editing required.
+    /// Set the SETUP transport preference, overriding the URL's
+    /// `?transport=` query when both are present. Equivalent to
+    /// `?transport=tcp|udp` but self-documenting — no URL string editing
+    /// required. This isn't only a "force": passing
+    /// [`RtspTransportPref::PreferUdp`] here overrides a URL query back to
+    /// the default try-UDP-then-fall-back-to-TCP behavior too.
     pub fn transport_preference(mut self, pref: RtspTransportPref) -> Self {
         self.url.transport_preference = pref;
         self

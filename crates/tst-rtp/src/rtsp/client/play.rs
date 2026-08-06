@@ -21,11 +21,14 @@ impl RtspClient {
     /// # Call order
     ///
     /// Issue PLAY after SETUP (`setup_h264_auto` / `setup_mp2t_auto`) and
-    /// before consuming the returned `RtspSession` via
+    /// before consuming the returned `RtspSession` — via
     /// [`RtspSession::into_h264_receiver`](crate::RtspSession::into_h264_receiver)
-    /// — the server does not start streaming until it sees PLAY, so
-    /// converting the session first just leaves the receiver blocked
-    /// waiting for data that only starts arriving once this call runs.
+    /// on the H.264 path, or
+    /// [`RtspSession::into_recv_transport`](crate::RtspSession::into_recv_transport)
+    /// on the MPEG-TS-over-RTP path — the server does not start streaming
+    /// until it sees PLAY, so converting the session first just leaves
+    /// the receiver blocked waiting for data that only starts arriving
+    /// once this call runs.
     ///
     /// # Errors
     ///

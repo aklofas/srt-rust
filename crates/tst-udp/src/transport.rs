@@ -18,8 +18,14 @@ use crate::url::UdpUrl;
 /// [`crate::builder::UdpTransportBuilder`] (added in a later phase) for full
 /// control over knobs.
 ///
-/// Always represents a single peer (set via `connect()` on the underlying
-/// std socket). To send to a different peer, build a new transport.
+/// Always sends to a single fixed peer via `send_to` on an
+/// **unconnected** socket — fire-and-forget datagram semantics, matching
+/// what TS-over-UDP receivers (ffmpeg, VLC, mediamtx) expect of a
+/// sender. Deliberately NOT a connected socket: on Linux a connected UDP
+/// socket surfaces ICMP port-unreachable as a fatal `ECONNREFUSED` on a
+/// later `send`, which turns a receiver's restart/idle-rebind window
+/// into a dead sender. To send to a different peer, build a new
+/// transport.
 pub struct UdpTransport {
     socket: UdpSocket,
     pkt_size: usize,
@@ -66,7 +72,6 @@ impl UdpTransport {
         apply_socket2_knobs(&socket, cfg).map_err(UdpError::Io)?;
 
         let peer = SocketAddr::new(url.addr, url.port);
-        socket.connect(peer).map_err(UdpError::Io)?;
 
         Ok(Self {
             socket,
@@ -110,7 +115,7 @@ impl Transport for UdpTransport {
                 max: self.pkt_size,
             });
         }
-        match self.socket.send(msg) {
+        match self.socket.send_to(msg, self.peer) {
             Ok(_n) => {
                 self.stats.datagrams_sent = self.stats.datagrams_sent.saturating_add(1);
                 self.stats.bytes_sent = self.stats.bytes_sent.saturating_add(msg.len() as u64);

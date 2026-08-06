@@ -75,8 +75,9 @@ impl UdpUrl {
     ///
     /// The host may be an IP literal or a DNS hostname. Non-literal
     /// hosts are resolved here via the system resolver
-    /// ([`std::net::ToSocketAddrs`]) and the first returned address is
-    /// used — on dual-stack hosts that may be the IPv6 address. The
+    /// ([`std::net::ToSocketAddrs`]); among multiple results, IPv4 is
+    /// preferred among the candidates that probe clean (see the internal
+    /// `resolve_host` doc comment for the full tiebreak rationale). The
     /// `?localaddr=` and IPv4 `?iface=` values stay literal-only
     /// (resolving a local NIC selector through DNS is meaningless).
     pub fn parse(s: &str) -> Result<Self, UdpUrlError> {
@@ -170,10 +171,14 @@ impl UdpUrl {
 /// `bind` + `connect` (no packets are sent; a UDP `connect` only sets the
 /// default destination), which fails fast for an address family that is
 /// unconfigured or unroutable on this host (e.g. an AAAA record arriving
-/// first while IPv6 is disabled). The first candidate that probes clean
-/// wins; if every probe fails, fall back to the first resolved address so
-/// the real send path surfaces the OS error — never worse than not
-/// probing at all.
+/// first while IPv6 is disabled). The probe only rejects unconfigured or
+/// unroutable families though — it cannot detect an absent listener — so
+/// among probe-clean candidates IPv4 is preferred (the dual-stack
+/// `localhost` trap: `[::1, 127.0.0.1]` both probe clean, but picking
+/// `::1` dies against an IPv4-only listener; this matches the dominant
+/// TS-over-UDP tooling). If every probe fails, fall back to the first
+/// resolved address so the real send path surfaces the OS error — never
+/// worse than not probing at all.
 fn resolve_host(host: &str, port: u16) -> Result<IpAddr, UdpUrlError> {
     use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 
@@ -191,17 +196,25 @@ fn resolve_host(host: &str, port: u16) -> Result<IpAddr, UdpUrlError> {
             host: host.to_string(),
             detail: "resolved to no addresses".to_string(),
         })?;
+    let mut first_clean: Option<SocketAddr> = None;
     for sa in &candidates {
         let unspec: SocketAddr = if sa.is_ipv4() {
             (std::net::Ipv4Addr::UNSPECIFIED, 0).into()
         } else {
             (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
         };
-        if let Ok(probe) = UdpSocket::bind(unspec) {
-            if probe.connect(sa).is_ok() {
-                return Ok(sa.ip());
+        let Ok(probe) = UdpSocket::bind(unspec) else {
+            continue;
+        };
+        if probe.connect(sa).is_ok() {
+            if sa.is_ipv4() {
+                return Ok(sa.ip()); // documented preference: first clean IPv4
             }
+            first_clean.get_or_insert(*sa);
         }
+    }
+    if let Some(sa) = first_clean {
+        return Ok(sa.ip());
     }
     Ok(first.ip())
 }
@@ -341,6 +354,21 @@ mod tests {
         );
         assert_eq!(u.port, 5004);
         assert!(!u.recv_bind);
+    }
+
+    /// P3 residual: `localhost` resolves `[::1, 127.0.0.1]` on dual-stack
+    /// hosts and a UDP connect-probe cannot detect an absent listener, so
+    /// without an explicit preference the sender picks `::1` and dies
+    /// against an IPv4-only listener. Documented preference: IPv4 first
+    /// among probe-clean candidates.
+    #[test]
+    fn hostname_resolution_prefers_ipv4() {
+        let u = UdpUrl::parse("udp://localhost:5004").unwrap();
+        assert!(
+            u.addr.is_ipv4(),
+            "expected IPv4-first for localhost, got {}",
+            u.addr
+        );
     }
 
     #[test]

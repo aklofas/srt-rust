@@ -40,17 +40,18 @@ fn unicast_loopback_sends_payload_to_std_recv() {
 #[test]
 fn unicast_loopback_sends_via_hostname_url() {
     // The containerized-consumer path: `udp://<name>:<port>` where <name>
-    // is a resolvable hostname, not an IP literal. Bind the receiver on
-    // whatever address the system resolver returns FIRST for localhost —
-    // the same selection UdpUrl::parse uses — so the test holds whether
-    // the resolver prefers ::1 or 127.0.0.1.
+    // is a resolvable hostname, not an IP literal. `UdpUrl::parse`
+    // deterministically prefers IPv4 among probe-clean candidates (the
+    // dual-stack `localhost` tiebreak — see `resolve_host`'s doc comment),
+    // so bind the receiver on the resolved IPv4 loopback address to match,
+    // regardless of which family the system resolver lists first.
     use std::net::ToSocketAddrs;
-    let first = ("localhost", 0u16)
+    let ipv4 = ("localhost", 0u16)
         .to_socket_addrs()
         .expect("resolve localhost")
-        .next()
-        .expect("localhost resolved to no addresses");
-    let recv = UdpSocket::bind(first).expect("bind recv");
+        .find(|a| a.is_ipv4())
+        .expect("localhost resolved no IPv4 address");
+    let recv = UdpSocket::bind(ipv4).expect("bind recv");
     recv.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let port = recv.local_addr().unwrap().port();
 
@@ -72,6 +73,27 @@ fn unicast_loopback_sends_via_hostname_url() {
         .recv_timeout(Duration::from_secs(2))
         .expect("recv timed out");
     assert_eq!(got.as_slice(), &payload[..]);
+}
+
+/// P1 regression (integrator field report): a transient ICMP
+/// port-unreachable must never kill the sender. With the old connected
+/// socket, Linux surfaced it as a fatal ECONNREFUSED on the next send.
+#[test]
+fn send_to_absent_peer_never_errors() {
+    // Bind + drop to obtain a loopback port with nothing behind it.
+    let probe = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let mut t = UdpTransport::connect(&format!("udp://127.0.0.1:{port}")).unwrap();
+    let payload = vec![0x47u8; 188];
+    for i in 0..8 {
+        // The sleep gives the kernel's ICMP reply time to arrive between
+        // sends — with a connected socket that made send #2+ fail.
+        t.send_bytes(&payload)
+            .unwrap_or_else(|e| panic!("send {i} failed: {e}"));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(t.stats().datagrams_sent, 8);
 }
 
 #[test]

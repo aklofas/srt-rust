@@ -6851,6 +6851,8 @@ pub tst_core::transport::TransportError::ExplicitClose
 pub tst_core::transport::TransportError::TooLarge
 pub tst_core::transport::TransportError::TooLarge::len: usize
 pub tst_core::transport::TransportError::TooLarge::max: usize
+impl tst_core::transport::TransportError
+pub fn tst_core::transport::TransportError::is_connection_refused(&self) -> bool
 impl core::clone::Clone for tst_core::transport::TransportError
 pub fn tst_core::transport::TransportError::clone(&self) -> tst_core::transport::TransportError
 impl core::cmp::Eq for tst_core::transport::TransportError
@@ -7407,6 +7409,8 @@ pub tst_core::TransportError::ExplicitClose
 pub tst_core::TransportError::TooLarge
 pub tst_core::TransportError::TooLarge::len: usize
 pub tst_core::TransportError::TooLarge::max: usize
+impl tst_core::transport::TransportError
+pub fn tst_core::transport::TransportError::is_connection_refused(&self) -> bool
 impl core::clone::Clone for tst_core::transport::TransportError
 pub fn tst_core::transport::TransportError::clone(&self) -> tst_core::transport::TransportError
 impl core::cmp::Eq for tst_core::transport::TransportError

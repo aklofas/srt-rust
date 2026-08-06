@@ -5839,6 +5839,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::transport::TransportCancel::cancel"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::transport::TransportError::is_connection_refused"
+owning_tests = ["crates/tst-core/src/transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::transport::TransportError::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

@@ -73,7 +73,7 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
 
     // TLS config was pre-loaded by start() (synchronously — so bad
     // cert/key paths failed start() itself). Plaintext binds carry None.
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "rtsp-server-tls")]
     let tls_config = state.tls_config.lock().unwrap().take();
 
     loop {
@@ -120,7 +120,7 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                         }
                         let st = state.clone();
                         let slot = crate::rtsp::server::session::SessionSlot::new(state.clone());
-                        #[cfg(feature = "tls")]
+                        #[cfg(feature = "rtsp-server-tls")]
                         {
                             let cfg = tls_config.clone();
                             if let Some(cfg) = cfg {
@@ -152,7 +152,7 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                                 continue;
                             }
                         }
-                        // Plain TCP path (always available regardless of `tls` feature):
+                        // Plain TCP path (always available regardless of `rtsp-server-tls` feature):
                         tokio::spawn(async move {
                             if let Err(e) = crate::rtsp::server::session::handle_connection(st, tcp, peer, slot).await {
                                 tracing::warn!(

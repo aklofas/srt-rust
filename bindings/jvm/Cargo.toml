@@ -44,8 +44,11 @@ tst-srt      = { path = "../../crates/tst-srt" }
 # rtsps:// server (cert/key paths) ship in the JAR — parity with tst-py's
 # post-#111 wheels. The direct rustls + rustls-pemfile deps below parse
 # RtspClientConfig.tlsRootCertsPem into the rustls::RootCertStore that
-# RtspClientBuilder::tls_root_certs takes (same shape as tst-py).
-tst-rtp = { path = "../../crates/tst-rtp", default-features = false, features = ["tls"] }
+# RtspClientBuilder::tls_root_certs takes (same shape as tst-py). Server
+# support (RtspServer + mounts) is on by default in tst-rtp, so
+# `rtsp-server-tls` (which implies `rtsp-server`) is what actually gates the
+# server's TLS acceptor since the `feat/rtsp-server-feature-gate` split.
+tst-rtp = { path = "../../crates/tst-rtp", default-features = false, features = ["tls", "rtsp-server-tls"] }
 
 # secrecy wraps RTSP auth passwords at the RtspClientBuilder::auth boundary
 # (mirrors tst-py's rtp feature: dep:secrecy). Workspace-pinned (0.10).

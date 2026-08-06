@@ -66,11 +66,16 @@ impl TransportCancel for RtpCancelHandle {
 ///
 /// The handle is `Clone + Send + Sync`; multiple holders can race the
 /// cancel call (idempotent — repeated `cancel()` calls are a no-op).
+///
+/// Requires the `rtsp-server` feature — this handle only exists paired
+/// with a real `RtspServer`.
+#[cfg(feature = "rtsp-server")]
 #[derive(Clone, Debug)]
 pub struct RtspServerCancelHandle {
     pub(crate) cancel: Arc<AtomicBool>,
 }
 
+#[cfg(feature = "rtsp-server")]
 impl RtspServerCancelHandle {
     /// Construct a fresh handle. Internal — `RtspServer::from_builder`
     /// (Task 7) creates one and exposes it via `cancel_handle()`.
@@ -93,6 +98,7 @@ impl RtspServerCancelHandle {
     }
 }
 
+#[cfg(feature = "rtsp-server")]
 impl Default for RtspServerCancelHandle {
     fn default() -> Self {
         Self::new()
@@ -154,7 +160,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rtsp-server"))]
 mod phase3_server_cancel_tests {
     use super::*;
 

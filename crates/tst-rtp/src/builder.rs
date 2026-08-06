@@ -12,13 +12,15 @@
 //! [`RtpRecvTransport::listen_with`]; the builder is sugar, not a
 //! parallel implementation.
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "rtsp-server-tls")]
 use std::path::PathBuf;
 use std::time::Duration;
 
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::error::{RtspError, RtspServerError};
+use crate::error::RtspError;
+#[cfg(feature = "rtsp-server")]
+use crate::error::RtspServerError;
 use crate::rtsp::client::{ConnectParams, RtspClient};
 use crate::rtsp::message::validate_header_field;
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
@@ -374,11 +376,14 @@ impl RtspClientBuilder {
 }
 
 // ----------------------------------------------------------------------
-// Phase 3 — server-side builder.
+// Phase 3 — server-side builder. Requires the `rtsp-server` feature: it
+// builds a `crate::rtsp::server::RtspServer`, which doesn't exist without
+// the feature's tokio Runtime.
 // ----------------------------------------------------------------------
 
 /// Server-side auth scheme. Internal — consumed by Task 7's
 /// `RtspServer::from_builder`.
+#[cfg(feature = "rtsp-server")]
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ServerAuthScheme {
     Basic,
@@ -388,6 +393,7 @@ pub(crate) enum ServerAuthScheme {
 
 /// Server-side auth configuration carrier. Internal — consumed by
 /// Task 7's `RtspServer::from_builder`.
+#[cfg(feature = "rtsp-server")]
 #[derive(Clone)]
 #[allow(dead_code)] // `password` is held for Task 7's auth handler; read at challenge time.
 pub(crate) struct ServerAuthConfig {
@@ -397,6 +403,7 @@ pub(crate) struct ServerAuthConfig {
     pub(crate) password: secrecy::SecretString,
 }
 
+#[cfg(feature = "rtsp-server")]
 impl std::fmt::Debug for ServerAuthConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerAuthConfig")
@@ -421,6 +428,7 @@ impl std::fmt::Debug for ServerAuthConfig {
 ///   drop oldest beyond this)
 /// - `graceful_shutdown_drain`: 100 ms
 /// - No auth, no TLS — caller adds via `auth_*()` / `tls_cert()`.
+#[cfg(feature = "rtsp-server")]
 pub struct RtspServerBuilder {
     pub(crate) bind_url: RtspUrl,
     pub(crate) auth: Option<ServerAuthConfig>,
@@ -428,12 +436,13 @@ pub struct RtspServerBuilder {
     pub(crate) session_timeout: Duration,
     pub(crate) fanout_capacity: usize,
     pub(crate) graceful_shutdown_drain: Duration,
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "rtsp-server-tls")]
     pub(crate) tls_cert_path: Option<PathBuf>,
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "rtsp-server-tls")]
     pub(crate) tls_key_path: Option<PathBuf>,
 }
 
+#[cfg(feature = "rtsp-server")]
 impl RtspServerBuilder {
     /// Start building a server bound to `url`. The URL must use scheme
     /// `rtsp://` or `rtsps://` and a host that parses as an IP literal
@@ -461,9 +470,9 @@ impl RtspServerBuilder {
             session_timeout: Duration::from_secs(60),
             fanout_capacity: 256,
             graceful_shutdown_drain: Duration::from_millis(100),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "rtsp-server-tls")]
             tls_cert_path: None,
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "rtsp-server-tls")]
             tls_key_path: None,
         }
     }
@@ -555,7 +564,7 @@ impl RtspServerBuilder {
     /// A plaintext `rtsp://` bind with TLS paths configured is likewise
     /// refused by `start()`: configured-but-ignored TLS material would
     /// silently serve unencrypted.
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "rtsp-server-tls")]
     pub fn tls_cert(&mut self, cert_chain_pem: PathBuf, key_pem: PathBuf) -> &mut Self {
         self.tls_cert_path = Some(cert_chain_pem);
         self.tls_key_path = Some(key_pem);
@@ -666,7 +675,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rtsp-server"))]
 mod phase3_server_builder_tests {
     use super::*;
     use secrecy::SecretString;

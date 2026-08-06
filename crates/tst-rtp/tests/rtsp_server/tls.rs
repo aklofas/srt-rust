@@ -8,7 +8,7 @@
 //! `connect_with_roots`), and the server serves the request over the
 //! encrypted channel via the `serve_requests` TLS session loop.
 
-#![cfg(feature = "tls")]
+#![cfg(feature = "rtsp-server-tls")]
 
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_rtp::{RtspServerBuilder, RtspServerError};

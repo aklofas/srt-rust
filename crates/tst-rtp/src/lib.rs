@@ -26,6 +26,13 @@
 //! [`RecvTransport`](tst_core::transport::RecvTransport) traits themselves
 //! live in [`tst_core`]; the transport-agnostic Sender/Receiver shells
 //! live in `tst_pipeline`.
+//!
+//! Everything above is a sync facade — no async runtime, no tokio. The one
+//! exception is `RtspServer` (only present when the `rtsp-server` feature
+//! is on, which is the default), which runs an internal tokio Runtime
+//! behind its own sync facade; tokio only enters this crate's dependency
+//! tree through that feature. See the README's "Feature flags" section for
+//! the tokio-free client-only build.
 
 #![warn(rustdoc::broken_intra_doc_links)]
 
@@ -80,11 +87,17 @@ pub use h264::{
     ParameterSetInjection, parse_rtpmap_h264,
 };
 
-// RTSP server.
+// RTSP server (requires the `rtsp-server` feature, default-on). The error
+// enums stay unconditional — they have no tokio dependency, so gating them
+// would only fragment the error surface for no benefit.
+#[cfg(feature = "rtsp-server")]
 pub use builder::RtspServerBuilder;
+#[cfg(feature = "rtsp-server")]
 pub use cancel::RtspServerCancelHandle;
 pub use error::{MountError, RtspServerError};
+#[cfg(feature = "rtsp-server")]
 pub use rtsp::server::mount::{MountHandle, MountKind, MountStats};
+#[cfg(feature = "rtsp-server")]
 pub use rtsp::server::{RtspServer, ServerStats};
 pub use url::MulticastGroup;
 

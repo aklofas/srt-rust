@@ -4,6 +4,12 @@
 //! Each `mod` below is one former top-level integration-test file, now
 //! compiled into this single binary. Test bodies are unchanged; only the
 //! module path gained a `rtsp_server::<file>::` prefix.
+//!
+//! Every member here tests `tst_rtp::RtspServer` directly, so the whole
+//! binary is gated on the `rtsp-server` feature (default-on) — under
+//! `--no-default-features` this binary is empty (0 tests), which is the
+//! client-only build's expected shape.
+#![cfg(feature = "rtsp-server")]
 
 // Shared fixtures (loopback RTSP server, self-signed TLS certs), declared
 // once at the binary root so `crate::fixtures::*` resolves for every member.

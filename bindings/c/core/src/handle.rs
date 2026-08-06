@@ -348,12 +348,13 @@ impl TstRtspServerBuilder {
             self.graceful_shutdown_drain_ms as u64,
         ));
 
-        // TLS bytes: tst-c has no `tls` cargo feature, so tst-rtp's
-        // `RtspServerBuilder::tls_cert` is compiled out of this graph and
-        // stored PEM bytes can never take effect. Refuse to start rather
-        // than come up PLAINTEXT while the caller believes TLS is armed.
-        // (The setter still stores the bytes so a future tst-c `tls`
-        // feature can light this up without an ABI change.)
+        // TLS bytes: tst-c has no `rtsp-server-tls` cargo feature, so
+        // tst-rtp's `RtspServerBuilder::tls_cert` is compiled out of this
+        // graph and stored PEM bytes can never take effect. Refuse to start
+        // rather than come up PLAINTEXT while the caller believes TLS is
+        // armed. (The setter still stores the bytes so a future tst-c
+        // `rtsp-server-tls` feature can light this up without an ABI
+        // change.)
         if self.tls_cert_pem.is_some() || self.tls_key_pem.is_some() {
             return Err(tst_rtp::RtspServerError::Tls(
                 "tst_rtsp_server_builder_tls_cert_pem was called, but TLS is \

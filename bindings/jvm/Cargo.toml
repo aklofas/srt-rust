@@ -47,7 +47,8 @@ tst-srt      = { path = "../../crates/tst-srt" }
 # RtspClientBuilder::tls_root_certs takes (same shape as tst-py). Server
 # support (RtspServer + mounts) is on by default in tst-rtp, so
 # `rtsp-server-tls` (which implies `rtsp-server`) is what actually gates the
-# server's TLS acceptor since the `feat/rtsp-server-feature-gate` split.
+# server's TLS acceptor, now that the rtsp-server feature split separates
+# the server's TLS acceptor from the client's `tls` feature.
 tst-rtp = { path = "../../crates/tst-rtp", default-features = false, features = ["tls", "rtsp-server-tls"] }
 
 # secrecy wraps RTSP auth passwords at the RtspClientBuilder::auth boundary

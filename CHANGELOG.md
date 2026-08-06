@@ -46,6 +46,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   10061 Windows); classifies via the std `io::ErrorKind` mapping over
   `Backpressure`/`Broken`'s `errno_code`. `std`-gated (the type stays
   no_std-buildable).
+- **`MuxSender::into_inner()`** — recover the owned transport (best-effort
+  pending drain, transport left open). Requested by an integrator so a
+  `MuxSender` used for capture/setup can later hand its live transport off
+  to different code without a full teardown/rebuild.
+- **`ext::file_transport::FileTransport`** — write-to-file `Transport` for
+  capture/debug sinks. Both binding consumers and integration ports had
+  independently rebuilt this ad hoc; shipping one canonical version.
 
 ### Changed
 
@@ -70,6 +77,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`MuxSender::close()` no longer cancels the transport before draining
+  pending bytes: an explicit close is now as lossless as `Drop` when no
+  send is in flight** (interop-arc finding). `close()` cancelled the
+  transport unconditionally before acquiring the inner lock, so on SRT/RIST
+  the cancel made the pending-bytes drain sends fail — the tail of a stream
+  was lost on an explicit close even though `Drop` (which drains first)
+  delivered it. `close()` now takes a non-blocking lock attempt first:
+  uncontended (the common case — nobody is parked inside a `send_*` call)
+  drains and closes with no cancel at all; only a contended lock (a peer
+  thread possibly parked in `send_bytes`) takes the cancel-first path, to
+  avoid deadlocking against it. The "drop, don't close" workaround from the
+  interop-evidence arc is no longer needed. No public API changes.
 - **`tst-srt`: a connection accepted via `Listener::accept_timeout` could
   permanently inherit non-blocking mode and die on its first read with
   zero delivery.** `accept_timeout`'s readiness probe briefly toggles the

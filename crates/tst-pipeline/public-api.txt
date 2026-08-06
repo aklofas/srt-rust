@@ -111,6 +111,24 @@ pub type tst_pipeline::dyn_aliases::BoxedRawSender = tst_pipeline::raw_sender::R
 pub type tst_pipeline::dyn_aliases::BoxedReceiver = tst_pipeline::receiver::Receiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
 pub type tst_pipeline::dyn_aliases::BoxedSender = tst_pipeline::sender::Sender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::ext
+pub mod tst_pipeline::ext::file_transport
+pub struct tst_pipeline::ext::file_transport::FileTransport
+impl tst_pipeline::ext::file_transport::FileTransport
+pub fn tst_pipeline::ext::file_transport::FileTransport::bytes_sent(&self) -> u64
+pub fn tst_pipeline::ext::file_transport::FileTransport::create(impl core::convert::AsRef<std::path::Path>) -> core::io::error::Result<Self>
+impl tst_core::transport::Transport for tst_pipeline::ext::file_transport::FileTransport
+pub fn tst_pipeline::ext::file_transport::FileTransport::close(&mut self)
+pub fn tst_pipeline::ext::file_transport::FileTransport::is_alive(&self) -> bool
+pub fn tst_pipeline::ext::file_transport::FileTransport::max_payload(&self) -> usize
+pub fn tst_pipeline::ext::file_transport::FileTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_pipeline::ext::file_transport::FileTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl core::marker::Freeze for tst_pipeline::ext::file_transport::FileTransport
+impl core::marker::Send for tst_pipeline::ext::file_transport::FileTransport
+impl core::marker::Sync for tst_pipeline::ext::file_transport::FileTransport
+impl core::marker::Unpin for tst_pipeline::ext::file_transport::FileTransport
+impl core::marker::UnsafeUnpin for tst_pipeline::ext::file_transport::FileTransport
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::file_transport::FileTransport
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::file_transport::FileTransport
 pub mod tst_pipeline::ext::pairing
 #[non_exhaustive] pub enum tst_pipeline::ext::pairing::PairerMode
 pub tst_pipeline::ext::pairing::PairerMode::Buffered
@@ -439,6 +457,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, 
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::DataStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::into_inner(self) -> T
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::new(T, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
@@ -1606,6 +1625,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, 
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::DataStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::into_inner(self) -> T
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::new(T, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>

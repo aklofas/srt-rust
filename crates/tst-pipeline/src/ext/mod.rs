@@ -17,5 +17,8 @@
 //!   Opt-in by design — `DemuxReceiver` does not reach for it
 //!   automatically, preserving the demux module's decoupled-pairing
 //!   posture.
+//! - [`file_transport`] — [`file_transport::FileTransport`], a
+//!   write-to-file `Transport` for capture / debug sinks.
 
+pub mod file_transport;
 pub mod pairing;

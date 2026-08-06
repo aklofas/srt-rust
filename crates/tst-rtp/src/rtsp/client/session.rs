@@ -20,6 +20,10 @@ use crate::rtsp::client::transport_negotiation::{RtspTransportKind, TransportRes
 use crate::transport::RtpRecvTransport;
 
 /// State held between SETUP and PLAY / TEARDOWN.
+///
+/// This type is `Send`: moving it to a dedicated receive/watchdog thread
+/// is a supported, documented use — a regression here is a breaking
+/// change.
 //
 // `dead_code` allowed on legacy fields that the SETUP code path may not
 // touch on all flow combinations (peer_addr for TcpInterleaved, etc.).
@@ -158,6 +162,19 @@ impl RtspSession {
     /// [`RtspClient::setup_h264_auto`](crate::rtsp::client::RtspClient::setup_h264_auto)
     /// to carry the negotiated payload type and out-of-band SPS/PPS NALUs
     /// into the receiver.
+    ///
+    /// # Call order
+    ///
+    /// The full sequence is `connect` → `describe` → `setup_h264_auto` →
+    /// [`RtspClient::play`](crate::rtsp::client::RtspClient::play) →
+    /// `into_h264_receiver`. Issue PLAY (on the still-live `RtspClient`)
+    /// before converting the session: the server does not start pushing
+    /// RTP data until it sees PLAY, so calling this first just leaves the
+    /// returned [`H264Receiver::recv_au`] blocked waiting for AUs that
+    /// never arrive until PLAY runs elsewhere. `RtspClient` and
+    /// `RtspSession` are independent values — nothing here enforces the
+    /// order at compile time or runtime, so this is a documented usage
+    /// contract, not a checked one.
     pub fn into_h264_receiver(mut self, config: H264DepayConfig) -> H264Receiver {
         match self.kind {
             RtspTransportKind::Udp => {

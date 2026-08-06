@@ -11,7 +11,10 @@
 //!     `UnsupportedPacketizationMode(2)` BEFORE any SETUP request.
 
 use base64::Engine as _;
-use tst_rtp::{ParameterSetInjection, RtspClient, RtspError};
+use tst_rtp::{
+    ParameterSetInjection, RtspClient, RtspClientBuilder, RtspError, RtspTransportKind,
+    RtspTransportPref,
+};
 
 use crate::common::packetize;
 use crate::fixtures::rtsp_loopback_server::{FixtureConfig, FixtureHandle};
@@ -156,6 +159,36 @@ fn setup_h264_auto_mode1_roundtrip() {
     );
     assert!(au.key_frame, "IDR AU must have key_frame=true");
     rx.close();
+}
+
+/// `RtspClientBuilder::transport_preference(ForceTcp)` must land the same
+/// TCP-interleaved transport as the `?transport=tcp` URL query used by the
+/// test above — the builder setter is a typed alternative to the query
+/// string, not a separate code path, so it should negotiate identically.
+#[test]
+fn setup_h264_auto_builder_transport_preference_forces_tcp() {
+    let sps = sps_nalu();
+    let pps = pps_nalu();
+    let sps_b64 = base64::engine::general_purpose::STANDARD.encode(&sps);
+    let pps_b64 = base64::engine::general_purpose::STANDARD.encode(&pps);
+    let sdp_body = h264_sdp(1, &sps_b64, &pps_b64);
+
+    let fixture = FixtureHandle::spawn(FixtureConfig {
+        sdp_body,
+        ..FixtureConfig::default()
+    });
+
+    // No `?transport=` query on the URL — `transport_preference` is the
+    // only source of the preference, and it must still win TCP.
+    let url = format!("rtsp://127.0.0.1:{}/", fixture.port);
+    let mut client = RtspClientBuilder::new(&url)
+        .unwrap()
+        .transport_preference(RtspTransportPref::ForceTcp)
+        .connect()
+        .unwrap();
+    let sdp = client.describe().unwrap();
+    let (session, _config) = client.setup_h264_auto(&sdp).unwrap();
+    assert_eq!(session.transport_kind(), RtspTransportKind::TcpInterleaved);
 }
 
 /// Mode-2 rejection: `setup_h264_auto` must return

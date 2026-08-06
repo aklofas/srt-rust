@@ -82,6 +82,10 @@ impl Write for Stream {
 /// Methods (options, describe, setup, play, pause, teardown,
 /// keepalive_now) are added by later tasks; this task ships only the
 /// struct definition + `connect` / `connect_with`.
+///
+/// This type is `Send`: moving it to a dedicated receive/watchdog thread
+/// is a supported, documented use — a regression here is a breaking
+/// change.
 //
 // `dead_code` allowed because several fields here are populated /
 // consumed by later tasks in this plan (session lifecycle, keepalive,

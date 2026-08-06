@@ -103,6 +103,12 @@ use crate::url::RtpUrl;
 ///
 /// RTCP is not implemented on this path (v1 decision). No RTCP companion
 /// socket is bound. See `docs/project/deferred-features.md`.
+///
+/// # Send
+///
+/// This type is `Send`: moving it to a dedicated receive/watchdog thread
+/// is a supported, documented use — a regression here is a breaking
+/// change.
 pub struct H264Receiver {
     source: Option<Source>,
     scratch: Vec<u8>,

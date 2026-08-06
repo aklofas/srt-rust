@@ -388,8 +388,11 @@ impl RtspClient {
             .write_gate
             .clone();
         // RAII guard (not a manual increment/decrement pair): the
-        // decrement must survive the poisoned-mutex panic below, or the
-        // pump would skip reads forever with the gate stuck nonzero.
+        // decrement must survive any panic while the gate is held (the
+        // stream lock below recovers from poison rather than panicking —
+        // see `lock_unpoisoned` — but e.g. a panic inside `write_all`
+        // would otherwise leave the gate stuck nonzero and the pump would
+        // skip reads forever).
         let write_result = {
             let _gate = crate::rtsp::client::WriteGateGuard::enter(&write_gate);
             let mut s = crate::rtsp::client::lock_unpoisoned(&self.stream);

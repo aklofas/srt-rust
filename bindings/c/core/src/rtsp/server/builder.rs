@@ -26,15 +26,15 @@
 //!
 //! # TLS certificate + key
 //!
-//! `RtspServerBuilder::tls_cert` (only present when tst-rtp's `tls` feature
-//! is compiled in) takes `PathBuf` arguments pointing at files on disk. The
-//! C ABI instead stores the raw PEM bytes in `TstRtspServerBuilder`, both
-//! the cert chain and the private key together, via a single
-//! `tls_cert_pem` call. TLS is not available in this build of tst-c (there
-//! is no `tls` cargo feature yet): `tst_rtsp_server_builder_start` FAILS
-//! (`TST_E_RTSP_SERVER`) whenever these bytes are set — the alternative
-//! would be a server that silently starts PLAINTEXT with the supplied
-//! certs ignored.
+//! `RtspServerBuilder::tls_cert` (only present when tst-rtp's
+//! `rtsp-server-tls` feature is compiled in) takes `PathBuf` arguments
+//! pointing at files on disk. The C ABI instead stores the raw PEM bytes in
+//! `TstRtspServerBuilder`, both the cert chain and the private key
+//! together, via a single `tls_cert_pem` call. TLS is not available in this
+//! build of tst-c (there is no `tls` or `rtsp-server-tls` cargo feature
+//! yet): `tst_rtsp_server_builder_start` FAILS (`TST_E_RTSP_SERVER`)
+//! whenever these bytes are set — the alternative would be a server that
+//! silently starts PLAINTEXT with the supplied certs ignored.
 //!
 //! # C ABI cross-reference
 //!

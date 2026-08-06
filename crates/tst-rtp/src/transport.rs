@@ -11,6 +11,7 @@
 use std::io;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use tst_core::net::udp_socket::{
     CANCEL_POLL_INTERVAL, apply_multicast_recv_join, apply_multicast_send_knobs,
@@ -484,6 +485,13 @@ impl Source {
     /// - **Returns `Err(TransportError::ExplicitClose)`** when `cancel` is
     ///   set.
     ///
+    /// - **Returns `Err(TransportError::Backpressure)`** when `deadline` is
+    ///   `Some` and has passed. Checked at the top of each poll iteration
+    ///   (after the cancel check), so the granularity is one
+    ///   [`CANCEL_POLL_INTERVAL`] (~100 ms) — a deadline can expire up to
+    ///   that long after its instant before the caller observes it. The
+    ///   source is left usable; callers may call `recv_raw` again.
+    ///
     /// - **Returns `Err(TransportError::Broken)`** when the underlying
     ///   source reports a hard error:
     ///   - UDP: any `io::Error` that is not `WouldBlock`/`TimedOut` —
@@ -512,11 +520,20 @@ impl Source {
         &self,
         scratch: &mut [u8],
         cancel: &RtpCancelHandle,
+        deadline: Option<Instant>,
     ) -> Result<usize, TransportError> {
         match self {
             Source::Udp(socket) => loop {
                 if cancel.is_cancelled() {
                     return Err(TransportError::ExplicitClose);
+                }
+                if let Some(d) = deadline {
+                    if Instant::now() >= d {
+                        return Err(TransportError::Backpressure {
+                            msg: "recv deadline elapsed".to_string(),
+                            errno_code: None,
+                        });
+                    }
                 }
                 match socket.recv(scratch) {
                     Ok(0) => continue, // Zero-byte recv is meaningless on UDP; loop.
@@ -538,6 +555,14 @@ impl Source {
             Source::Mpsc(rx) => loop {
                 if cancel.is_cancelled() {
                     return Err(TransportError::ExplicitClose);
+                }
+                if let Some(d) = deadline {
+                    if Instant::now() >= d {
+                        return Err(TransportError::Backpressure {
+                            msg: "recv deadline elapsed".to_string(),
+                            errno_code: None,
+                        });
+                    }
                 }
                 // Same cancel-poll cadence as the UDP path. recv_timeout
                 // wakes on either a value arriving or the timeout
@@ -972,28 +997,40 @@ impl RtpRecvTransport {
             .map(|g| g.clone())
             .unwrap_or_default()
     }
-}
 
-impl RecvTransport for RtpRecvTransport {
-    /// Receive the next valid MP2T bundle from the RTP stream.
+    /// [`RecvTransport::recv_bytes`] with a deadline. Returns `Ok(None)` if
+    /// no valid MP2T bundle arrives within `deadline` — the transport
+    /// stays alive and callers may call this again to keep waiting.
+    /// Mirrors `UdpRecvTransport::recv_timeout`'s `Ok(None)` shape
+    /// (`crates/tst-udp/src/recv.rs`); `recv_bytes`'s infinite-block
+    /// behavior is unchanged.
     ///
-    /// # MP2T shape enforcement (DA-RTP-5)
-    ///
-    /// After stripping and validating the RTP header (V=2, PT=33), the payload
-    /// is checked against RFC 2250 shape requirements before being returned:
-    ///
-    /// - Non-empty
-    /// - `len % 188 == 0` — integral number of 188-byte TS packets
-    /// - First byte is `0x47` — the TS sync byte of the leading packet
-    ///
-    /// Payloads that fail any of these checks are **silently dropped**
-    /// (the `malformed_packets` counter in [`RtpStats`] is incremented, and the
-    /// recv loop continues to the next datagram). The same check applies to the
-    /// TCP-interleaved mpsc path.
-    ///
-    /// The demuxer's own resync logic remains defense-in-depth and is
-    /// unchanged.
-    fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+    /// Deadline granularity is the internal cancel-poll interval
+    /// (~100 ms): RTP-header-decode failures and PT mismatches keep
+    /// retrying inside the receive loop, but each retry re-checks the
+    /// same absolute deadline rather than extending it.
+    pub fn recv_timeout(
+        &mut self,
+        buf: &mut [u8],
+        deadline: Duration,
+    ) -> Result<Option<usize>, TransportError> {
+        match self.recv_bytes_inner(buf, Some(Instant::now() + deadline)) {
+            Ok(n) => Ok(Some(n)),
+            Err(TransportError::Backpressure { .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Shared body for [`RecvTransport::recv_bytes`] and
+    /// [`Self::recv_timeout`]. `deadline` is `None` for the trait's
+    /// infinite-block `recv_bytes`; `Some` threads an absolute instant
+    /// down to [`Source::recv_raw`] so a stalled source (no packets, no
+    /// disconnect) can surface `Backpressure` instead of blocking forever.
+    fn recv_bytes_inner(
+        &mut self,
+        buf: &mut [u8],
+        deadline: Option<Instant>,
+    ) -> Result<usize, TransportError> {
         if self.source.is_none() {
             return Err(TransportError::Closed);
         }
@@ -1005,7 +1042,7 @@ impl RecvTransport for RtpRecvTransport {
                 .source
                 .as_ref()
                 .expect("source checked above; cannot be None here")
-                .recv_raw(&mut self.scratch, &self.cancel);
+                .recv_raw(&mut self.scratch, &self.cancel, deadline);
             let n = match raw_result {
                 Ok(n) => n,
                 Err(e @ TransportError::Broken { .. }) => {
@@ -1071,6 +1108,30 @@ impl RecvTransport for RtpRecvTransport {
             buf[..payload.len()].copy_from_slice(payload);
             return Ok(payload.len());
         }
+    }
+}
+
+impl RecvTransport for RtpRecvTransport {
+    /// Receive the next valid MP2T bundle from the RTP stream.
+    ///
+    /// # MP2T shape enforcement (DA-RTP-5)
+    ///
+    /// After stripping and validating the RTP header (V=2, PT=33), the payload
+    /// is checked against RFC 2250 shape requirements before being returned:
+    ///
+    /// - Non-empty
+    /// - `len % 188 == 0` — integral number of 188-byte TS packets
+    /// - First byte is `0x47` — the TS sync byte of the leading packet
+    ///
+    /// Payloads that fail any of these checks are **silently dropped**
+    /// (the `malformed_packets` counter in [`RtpStats`] is incremented, and the
+    /// recv loop continues to the next datagram). The same check applies to the
+    /// TCP-interleaved mpsc path.
+    ///
+    /// The demuxer's own resync logic remains defense-in-depth and is
+    /// unchanged.
+    fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        self.recv_bytes_inner(buf, None)
     }
 
     fn max_payload(&self) -> usize {
@@ -1207,6 +1268,7 @@ fn spawn_rtcp_ingest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builder::RtpRecvSocketBuilder;
 
     /// Build a minimal valid RTP packet (V=2, P=0, X=0, CC=0, PT=33)
     /// wrapping `payload`. Used by mpsc-path tests that feed whole RTP
@@ -1233,6 +1295,27 @@ mod tests {
         // RTCP-derived fields should stay zero in Phase 1.
         assert_eq!(stats.rtt_us, 0);
         assert_eq!(stats.packets_lost_send, 0);
+    }
+
+    /// A quiet socket (no sender) must not block `recv_timeout` past its
+    /// deadline — the RTP-side counterpart of the field report's stall
+    /// case. Mirrors `tst-udp`'s `close_unblocks_recv_bytes_after_recv_timeout`
+    /// shape: `Ok(None)` on expiry, transport still alive.
+    #[test]
+    fn rtp_recv_timeout_returns_none_on_quiet_socket() {
+        let mut t = RtpRecvSocketBuilder::new("127.0.0.1", 0).build().unwrap();
+        let mut buf = vec![0u8; 2048];
+        let start = std::time::Instant::now();
+        let res = t
+            .recv_timeout(&mut buf, std::time::Duration::from_millis(300))
+            .unwrap();
+        assert!(res.is_none());
+        let dt = start.elapsed();
+        assert!(
+            dt >= Duration::from_millis(250) && dt < Duration::from_secs(5),
+            "elapsed {dt:?}"
+        );
+        assert!(t.is_alive(), "transport must stay usable after a timeout");
     }
 
     /// Compile-time check: RtpTransport satisfies Transport (so

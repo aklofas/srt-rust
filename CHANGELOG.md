@@ -11,6 +11,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`H264Receiver::recv_au_timeout(Duration)`** (from an integrator field
+  report). Deadline-bounded AU receive for stall watchdogs — a stalled-but-
+  healthy session (server stops sending, no error, no EOS) previously
+  blocked `recv_au` forever with no way for the caller to regain control.
+  Returns `Err(TransportError::Backpressure)` on deadline expiry (the
+  session stays valid; call again to keep waiting); deadline granularity is
+  the internal cancel-poll interval (~100 ms).
+- **`RtpRecvTransport::recv_timeout(&mut self, buf, deadline: Duration)`**
+  (same field report). Deadline-bounded raw receive, aligning RTP with the
+  UDP transport's periodic-return convention: `Ok(None)` on expiry,
+  transport still alive. `recv_bytes`'s infinite-block behavior is
+  unchanged. Bindings parity (Python/JVM/C) is deferred — see the "RTP
+  receive-deadline bindings parity" entry in
+  `docs/project/deferred-features.md`.
 - **DTS-capable video push on RTSP server mounts** (PR #138, from an
   integrator field report). `MountHandle::push_video_to_with_dts(handle, nal,
   pts, dts, key_frame)` mirrors `MuxSender::send_video_to_with_dts` —

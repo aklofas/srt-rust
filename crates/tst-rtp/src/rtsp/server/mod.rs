@@ -13,7 +13,7 @@ pub mod mount;
 pub mod multicast;
 pub mod runtime;
 pub mod session;
-#[cfg(feature = "tls")]
+#[cfg(feature = "rtsp-server-tls")]
 pub mod tls;
 
 use std::net::SocketAddr;
@@ -81,7 +81,7 @@ pub(crate) struct ServerState {
     /// itself instead of killing the listener task after `start()` has
     /// returned (the old silent-death wart). Taken by the listener task;
     /// `None` for plaintext binds.
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "rtsp-server-tls")]
     pub(crate) tls_config: std::sync::Mutex<Option<crate::rtsp::server::tls::TlsServerConfig>>,
     /// One-shot startup-result channel. `start()` installs the sender and
     /// blocks on the receiver; the listener task takes the sender and
@@ -285,7 +285,7 @@ impl RtspServer {
             local_addr: std::sync::Mutex::new(None),
             sessions: std::sync::Mutex::new(Vec::new()),
             notice_cseq: AtomicU64::new(1_000_000),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "rtsp-server-tls")]
             tls_config: std::sync::Mutex::new(None),
             startup_tx: std::sync::Mutex::new(None),
         });
@@ -478,9 +478,9 @@ impl RtspServer {
     /// - [`RtspServerError::AlreadyStarted`] if called twice.
     /// - [`RtspServerError::Shutdown`] if called after `stop()`.
     /// - [`RtspServerError::Tls`] on a missing/malformed cert or key path
-    ///   for an `rtsps://` bind, if the `tls` feature isn't enabled, or if
-    ///   TLS paths are configured on a plaintext `rtsp://` bind (refusing
-    ///   to start an accidentally-unencrypted server).
+    ///   for an `rtsps://` bind, if the `rtsp-server-tls` feature isn't
+    ///   enabled, or if TLS paths are configured on a plaintext `rtsp://`
+    ///   bind (refusing to start an accidentally-unencrypted server).
     /// - [`RtspServerError::BindAddrInUse`] / [`RtspServerError::Io`] on
     ///   listener bind failure.
     pub fn start(&self) -> Result<(), RtspServerError> {
@@ -499,11 +499,11 @@ impl RtspServer {
         // PLAINTEXT — the caller believed TLS was armed. Python feeds this
         // same builder, so erroring here closes both surfaces at once; the
         // JVM fails fast earlier at build(), and the C ABI — which cannot
-        // reach this guard (tst-c builds without the `tls` feature) —
-        // carries its own equivalent refusal in build_server. The fields
-        // only exist under the `tls` feature, so no cfg(not(tls)) twin is
-        // needed.
-        #[cfg(feature = "tls")]
+        // reach this guard (tst-c builds without the `rtsp-server-tls`
+        // feature) — carries its own equivalent refusal in build_server. The
+        // fields only exist under the `rtsp-server-tls` feature, so no
+        // cfg(not(rtsp-server-tls)) twin is needed.
+        #[cfg(feature = "rtsp-server-tls")]
         if !is_tls
             && (self.state.builder.tls_cert_path.is_some()
                 || self.state.builder.tls_key_path.is_some())
@@ -519,7 +519,7 @@ impl RtspServer {
                     .into(),
             ));
         }
-        #[cfg(feature = "tls")]
+        #[cfg(feature = "rtsp-server-tls")]
         if is_tls {
             let loaded = (|| {
                 let cert = self.state.builder.tls_cert_path.as_ref().ok_or_else(|| {
@@ -540,11 +540,11 @@ impl RtspServer {
                 }
             }
         }
-        #[cfg(not(feature = "tls"))]
+        #[cfg(not(feature = "rtsp-server-tls"))]
         if is_tls {
             self.state.started.store(false, Ordering::Release);
             return Err(RtspServerError::Tls(
-                "rtsps:// bind requires the 'tls' cargo feature".into(),
+                "rtsps:// bind requires the 'rtsp-server-tls' cargo feature".into(),
             ));
         }
         let (tx, rx) = std::sync::mpsc::channel();

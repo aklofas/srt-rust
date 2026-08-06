@@ -3,6 +3,11 @@
 //! Stage 3 T29 (2026-05-26) after the bounded teardown deadline in
 //! [`RtspClient::Drop`] resolved the post-PLAY hang caused by the
 //! server's lingering write-half references after `RtspServer::stop`.
+//!
+//! Drives a real in-process `tst_rtp::RtspServer` as the client's peer —
+//! requires the `rtsp-server` feature.
+
+#![cfg(feature = "rtsp-server")]
 
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_rtp::{RtspClient, RtspServer};

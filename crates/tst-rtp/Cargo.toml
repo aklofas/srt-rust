@@ -32,9 +32,11 @@ sha2       = { version = "0.10", default-features = false }
 subtle     = "2"
 # Phase 3: tokio drives the RtspServer Runtime (internal-only sync facade).
 # Same feature set Phase 2 used as a dev-dep — features carry over.
-tokio      = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }
+# Optional: gated behind the `rtsp-server` feature so client-only consumers
+# (e.g. tst-uniffi mobile) build a tokio-free dependency tree.
+tokio      = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"], optional = true }
 # CancellationToken for graceful-shutdown coordination across per-session tasks.
-tokio-util = { version = "0.7" }
+tokio-util = { version = "0.7", optional = true }
 # Single facade for diagnostics workspace-wide.
 tracing    = { version = "0.1", default-features = false, features = ["std"] }
 
@@ -46,26 +48,37 @@ libc       = { workspace = true }
 
 # IP_MULTICAST_IF on Windows for the RTSP multicast-mount send socket. std/tokio
 # expose no setter; socket2's SockRef borrows the tokio UdpSocket and issues the
-# cross-platform setsockopt. Unix uses the libc path above.
+# cross-platform setsockopt. Unix uses the libc path above. Kept unconditional
+# (not gated on `rtsp-server`, even though only the server's multicast mount
+# uses it) — it's a tiny dep and gating it buys nothing.
 [target.'cfg(windows)'.dependencies]
 socket2    = { workspace = true }
 
 [features]
-# tls is deliberately default-OFF: RTSP commonly runs plaintext (rtsps:// is
-# the exception, not the rule). Consumers opt in with --features tls.
-default = []
-# Enable `rtsps://` support. The Phase 2 client uses sync rustls 0.23 directly
-# (no tokio-rustls) because the client is a sync facade per master spec; the
-# Phase 3 server adds `tokio-rustls` on top because the server is async (tokio
-# Runtime), and native async TLS is much cleaner than wiring sync rustls into
-# tokio via spawn_blocking.
+# rtsp-server is default-ON: most consumers want the push server available.
+# It pulls tokio + tokio-util — the ONLY thing that puts tokio in the tree.
+# Client-only consumers (e.g. tst-uniffi mobile: RTP/RTSP client only) build
+# with `default-features = false` (+ "tls" for rtsps://) for a tokio-free
+# dependency tree.
+default = ["rtsp-server"]
+# RTSP push server (RtspServer + mounts). Runs an internal tokio Runtime
+# behind the sync facade.
+rtsp-server = ["dep:tokio", "dep:tokio-util"]
+# Enable client `rtsps://` support — sync rustls 0.23 directly (no
+# tokio-rustls), since the client is a sync facade per master spec. Tokio-free
+# even with this feature on; pair with `rtsp-server-tls` for the server's TLS
+# acceptor.
 tls = [
     "dep:rustls",
     "dep:rustls-pemfile",
     "dep:rustls-pki-types",
     "dep:rustls-native-certs",
-    "dep:tokio-rustls",
 ]
+# Server-side TLS acceptor. The server is async (tokio Runtime), so this adds
+# `tokio-rustls` on top of `tls` — native async TLS is much cleaner than
+# wiring sync rustls into tokio via spawn_blocking. Implies both parent
+# features (Cargo can't express "tls AND rtsp-server" any other way).
+rtsp-server-tls = ["rtsp-server", "tls", "dep:tokio-rustls"]
 
 [dependencies.rustls]
 version          = "0.23"
@@ -109,5 +122,13 @@ tempfile         = "3"
 # version verified against Rust 1.85 (workspace MSRV); 0.14 was released
 # 2025-09 and might also work but 0.13 is sufficient for our needs.
 rcgen            = "0.13"
-# tokio + tokio-util were dev-only in Phase 2 (loopback fixture); promoted
-# to production [dependencies] in Phase 3 for the RtspServer Runtime.
+# tokio was dev-only in Phase 2 (loopback fixture); promoted to production
+# [dependencies] in Phase 3 for the RtspServer Runtime, then made optional
+# there (behind `rtsp-server`) so client-only builds get a tokio-free tree.
+# Declared again here, unconditionally: `tests/fixtures/rtsp_loopback_server.rs`
+# is a hand-rolled tokio TCP fixture (NOT `tst_rtp::RtspServer` — it exists so
+# client tests don't test the client against our own server) used by several
+# rtsp_client/ and h264/ tests that must keep passing under
+# `--no-default-features`. Dev-dependencies never ship in the built library —
+# `cargo tree -e normal` (the client-only tokio-free check) ignores this edge.
+tokio            = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "macros"] }

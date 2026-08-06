@@ -15,6 +15,9 @@ mod auth;
 mod builder_timeouts;
 #[path = "rtsp_client/fallback.rs"]
 mod fallback;
+// Gate lives inside the file itself (`#![cfg(feature = "rtsp-server")]`) —
+// it drives a real in-process `tst_rtp::RtspServer` as its peer (not the
+// hand-rolled `fixtures::rtsp_loopback_server`).
 #[path = "rtsp_client/interleaved_e2e.rs"]
 mod interleaved_e2e;
 #[path = "rtsp_client/keepalive.rs"]
@@ -29,5 +32,7 @@ mod setup_play;
 mod teardown;
 #[path = "rtsp_client/tls.rs"]
 mod tls;
+// Gate lives inside the file itself (`#![cfg(feature = "rtsp-server-tls")]`)
+// — it drives a real in-process `rtsps://` server via `RtspServerBuilder`.
 #[path = "rtsp_client/tls_keepalive.rs"]
 mod tls_keepalive;

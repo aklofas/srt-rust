@@ -28,7 +28,10 @@ default = ["rtp", "srt", "udp", "tcp", "rist", "pipeline", "hls", "tls"]
 # `MuxSender<RtpTransport>` / `DemuxReceiver<RtpRecvTransport>`
 # convenience wrappers added by Wave B Task 23) + secrecy (for
 # RtspClientBuilder::auth + server-side auth password wrapping).
-rtp     = ["dep:tst-rtp", "dep:tst-pipeline", "dep:secrecy"]
+# `tst-rtp?/rtsp-server` — tst-py ships the RTSP push server (mounts), so
+# this forwards tst-rtp's default-on server feature explicitly (tst-py
+# itself sets `default-features = false` on tst-rtp below).
+rtp     = ["dep:tst-rtp", "dep:tst-pipeline", "dep:secrecy", "tst-rtp?/rtsp-server"]
 # `srt` pulls tst-srt + tst-pipeline (shared with rtp) + secrecy
 # (for passphrase wrapping in SocketBuilder; matches the rtp pattern of
 # wrapping user-passed passwords in `SecretString` before handing them
@@ -54,8 +57,11 @@ pipeline = ["dep:tst-pipeline"]
 # `RtspClientConfig.tls_root_certs_pem` into the RootCertStore that
 # `RtspClientBuilder::tls_root_certs` takes (private-CA `rtsps://`
 # cameras). Omit the feature (`--no-default-features --features tcp,...`)
-# for a plaintext-only build.
-tls = ["tst-rtp?/tls", "tst-tcp?/tls", "tst-hls?/tls", "dep:rustls", "dep:rustls-pemfile"]
+# for a plaintext-only build. `tst-rtp?/rtsp-server-tls` ships the RTSP
+# server's TLS acceptor too (tst-py ships server TLS — PRs #110/#114);
+# `tst-rtp?/tls` stays alongside it for the client-only `rtp` + `tls`
+# combination (no server TLS acceptor without `rtsp-server` too).
+tls = ["tst-rtp?/tls", "tst-rtp?/rtsp-server-tls", "tst-tcp?/tls", "tst-hls?/tls", "dep:rustls", "dep:rustls-pemfile"]
 
 [dependencies]
 tst-core     = { path = "../../crates/tst-core" }

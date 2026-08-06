@@ -7,7 +7,7 @@
 //! disconnect). State lives in [`ServerSessionState`] with fan-out
 //! subscription handle and transport choice (Udp/TcpInterleaved).
 //!
-//! A TLS variant `handle_connection_tls` is gated on `feature = "tls"`.
+//! A TLS variant `handle_connection_tls` is gated on `feature = "rtsp-server-tls"`.
 //! Without `tokio-rustls`, the TLS path is not implemented.
 
 use std::net::SocketAddr;
@@ -444,7 +444,7 @@ fn dispatch(
 /// (so the slot is released even when the handshake fails before this
 /// function runs). By the time control reaches here the slot is already
 /// accounted for; this function does not touch the counter.
-#[cfg(feature = "tls")]
+#[cfg(feature = "rtsp-server-tls")]
 pub(crate) async fn handle_connection_tls(
     state: Arc<ServerState>,
     tls: crate::rtsp::server::tls::TokioTlsServerStream,
@@ -456,7 +456,7 @@ pub(crate) async fn handle_connection_tls(
     res
 }
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "rtsp-server-tls")]
 async fn handle_connection_tls_inner(
     state: Arc<ServerState>,
     tls: crate::rtsp::server::tls::TokioTlsServerStream,
@@ -508,7 +508,7 @@ mod session_tests {
                 local_addr: std::sync::Mutex::new(None),
                 sessions: std::sync::Mutex::new(Vec::new()),
                 notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
-                #[cfg(feature = "tls")]
+                #[cfg(feature = "rtsp-server-tls")]
                 tls_config: std::sync::Mutex::new(None),
                 startup_tx: std::sync::Mutex::new(None),
             });
@@ -575,7 +575,7 @@ mod session_tests {
                 local_addr: std::sync::Mutex::new(None),
                 sessions: std::sync::Mutex::new(Vec::new()),
                 notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
-                #[cfg(feature = "tls")]
+                #[cfg(feature = "rtsp-server-tls")]
                 tls_config: std::sync::Mutex::new(None),
                 startup_tx: std::sync::Mutex::new(None),
             });
@@ -638,7 +638,7 @@ mod session_tests {
             local_addr: std::sync::Mutex::new(None),
             sessions: std::sync::Mutex::new(Vec::new()),
             notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "rtsp-server-tls")]
             tls_config: std::sync::Mutex::new(None),
             startup_tx: std::sync::Mutex::new(None),
         })

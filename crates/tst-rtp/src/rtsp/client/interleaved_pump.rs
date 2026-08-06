@@ -20,9 +20,10 @@
 //!   between main-thread requests, so queuing them would overflow the
 //!   bounded queue on any long receive-only session and fail it.
 //!
-//! Mirror of the server-side pump
-//! ([`crate::rtsp::server::interleaved_pump`]). Closes Phase 2 deferred
-//! fix 1 (client side) — see
+//! Mirror of the server-side pump (`crate::rtsp::server::interleaved_pump`,
+//! only present under the `rtsp-server` feature — plain text, not an
+//! intra-doc link, so this compiles in the client-only build too). Closes
+//! Phase 2 deferred fix 1 (client side) — see
 //! `[[feedback-wire-primitives-at-call-site-as-explicit-task]]`.
 //!
 //! # Wire-up status

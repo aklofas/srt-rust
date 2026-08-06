@@ -32,4 +32,25 @@ the still-evolving server surface (`RtspServer`). See the [API
 stability
 reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 
+## Feature flags
+
+The crate is a sync facade throughout — the RTSP client never spawns an
+async runtime. `RtspServer` is the one exception: it runs an internal tokio
+Runtime behind its own sync facade, and that Runtime is what the
+`rtsp-server` feature gates.
+
+| Feature | Default | Pulls in | Enables |
+| --- | --- | --- | --- |
+| `rtsp-server` | **on** | `tokio`, `tokio-util` | `RtspServer` + mounts (the RTSP push server) |
+| `tls` | off | sync `rustls` | Client `rtsps://` (`RtspClient`) — no tokio |
+| `rtsp-server-tls` | off | `rtsp-server` + `tls` + `tokio-rustls` | The server's `rtsps://` TLS acceptor |
+
+Client-only consumers (e.g. a mobile UniFFI binding shipping just RTP/RTSP
+client + SRT) build with `default-features = false` (add `tls` for
+`rtsps://`) for a tokio-free dependency tree — `cargo tree -p tst-rtp
+--no-default-features --features tls -e normal` has no `tokio` entry.
+`rtsp-server-tls` implies both `rtsp-server` and `tls`; Cargo has no way to
+express "`tls` AND `rtsp-server`" other than a third feature that requires
+both.
+
 **License:** MIT OR Apache-2.0.

@@ -33,7 +33,7 @@ rist    = ["std", "dep:tst-rist"]
 
 [dependencies]
 tst-srt      = { path = "../../../crates/tst-srt", default-features = false, optional = true }
-tst-rtp      = { path = "../../../crates/tst-rtp", default-features = false, optional = true }
+tst-rtp      = { path = "../../../crates/tst-rtp", default-features = false, features = ["rtsp-server"], optional = true }
 tst-udp      = { path = "../../../crates/tst-udp", default-features = false, optional = true }
 tst-tcp      = { path = "../../../crates/tst-tcp", default-features = false, optional = true }
 tst-hls      = { path = "../../../crates/tst-hls", default-features = false, optional = true }

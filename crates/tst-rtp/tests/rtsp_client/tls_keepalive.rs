@@ -17,7 +17,9 @@
 //! both the client's TLS keepalive (T21 `Arc<Mutex<Stream>>` share) and
 //! the server's TLS session loop handle periodic GET_PARAMETER pings.
 
-#![cfg(feature = "tls")]
+// Drives a real in-process `rtsps://` server via `RtspServerBuilder::tls_cert`
+// — requires the server's TLS acceptor, not just the client's `tls` feature.
+#![cfg(feature = "rtsp-server-tls")]
 
 use std::time::Duration;
 

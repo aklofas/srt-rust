@@ -151,6 +151,24 @@ and must not be confused:
   tst-py's default-on `tls` feature. The two feature names are deliberately
   distinct; no alias links them.
 
+**`tst-rtp`'s `rtsp-server` / `rtsp-server-tls` features — client vs. server,
+tokio or not.** `tst-rtp` is a sync facade throughout, with one exception:
+`RtspServer` runs an internal tokio Runtime. That Runtime is gated behind
+its own feature so client-only consumers (e.g. a mobile UniFFI build
+shipping RTP/RTSP client + SRT) get a tokio-free dependency tree.
+
+| Feature | Default | Enables |
+| --- | --- | --- |
+| `rtsp-server` | ✅ on | `RtspServer` + mounts (the RTSP push server); pulls `tokio` + `tokio-util`. |
+| `tls` | ❌ off | Client `rtsps://` (`RtspClient`) via sync rustls — no tokio either way. |
+| `rtsp-server-tls` | ❌ off | The server's `rtsps://` TLS acceptor (`tokio-rustls`); implies both `rtsp-server` and `tls` — Cargo has no other way to express "`tls` AND `rtsp-server`". |
+
+`cargo build -p tst-rtp --no-default-features --features tls` is the
+tokio-free client-only build (`cargo tree -e normal` has no `tokio` entry).
+The C ABI (`tst-c`) always enables `rtsp-server` (no TLS surface at all);
+the JVM and Python bindings enable `rtsp-server-tls` (they ship the server's
+TLS acceptor).
+
 ### Tunables (`SocketConfig` / `ListenerConfig`)
 
 Each row maps a libsrt option to its safe-Rust accessor. Accessors that

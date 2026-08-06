@@ -3,8 +3,8 @@
 //! Uses tokio-rustls 0.26 (built on rustls 0.23) for the async handshake.
 //! Server-side analog to `crate::rtsp::client::tls` from Phase 2.
 //!
-//! Feature-gated behind `tls` — entire module compiles to nothing when
-//! the feature is off.
+//! Feature-gated behind `rtsp-server-tls` — entire module compiles to
+//! nothing when the feature is off.
 //!
 //! Why tokio-rustls (server) vs sync rustls (client): the client is a
 //! sync facade per master spec, so it drives the rustls state machine

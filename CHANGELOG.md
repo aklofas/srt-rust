@@ -88,6 +88,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   misreported through `BadHost` — gets the purpose-specific
   `UdpUrlError::SendRecvMismatch`. The C ABI and error-kind mappings are
   unchanged (URL errors ride the existing `Url` kind); C ABI minor stays 19.
+- **`tst-rtp`: new default-on `rtsp-server` feature gates `RtspServer`
+  (and tokio)**. `tst-rtp` was already a sync facade everywhere except
+  `RtspServer`, which runs an internal tokio Runtime; that Runtime is now
+  the only thing that pulls tokio into the crate's dependency tree, and it's
+  behind this feature. Client-only consumers (e.g. an upcoming UniFFI
+  mobile binding shipping RTP/RTSP client + SRT) build with
+  `default-features = false` (`+ "tls"` for `rtsps://`) for a tokio-free
+  dependency tree. **Breaking:** the `tls` feature no longer enables the
+  server's TLS acceptor — server-TLS consumers enable the new
+  `rtsp-server-tls` feature (implies both `rtsp-server` and `tls`) instead.
+  An `rtsps://` server bind built with `rtsp-server` but not
+  `rtsp-server-tls` fails `RtspServer::start` with the existing
+  `RtspServerError::Tls` variant (message updated, no new variant). No C ABI
+  change (`tst-c` always enables `rtsp-server`); the JVM and Python bindings
+  now enable `rtsp-server-tls` explicitly (they ship the server's TLS
+  acceptor already).
 
 ### Fixed
 

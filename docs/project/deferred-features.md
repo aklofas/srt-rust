@@ -1715,6 +1715,20 @@ the trigger that would unblock it.
   reconstruction, or RTCP RR feedback to the sender is needed for
   adaptive bitrate control.
 
+## RTP receive-deadline bindings parity
+
+- **Status:** Deferred. `H264Receiver::recv_au_timeout` and
+  `RtpRecvTransport::recv_timeout` (deadline-bounded receive, for stall
+  watchdogs) are Rust-only; no Python, JVM, or C ABI mirror exists.
+- **Why deferred:** shipped Rust-first from an integrator field report
+  (a healthy-but-stalled RTSP session — no error, no EOS — previously
+  required a ~150-line reader-thread + `sync_channel` + cancel-handle
+  watchdog around the blocking `recv_au`). No binding consumer has asked
+  for the deadline variant yet.
+- **Trigger to revisit:** the first Python, JVM, or C consumer asking for
+  a stall watchdog — the Python wheel consumers currently wrap
+  `recv_au` with a reader thread for this purpose.
+
 ## `ManagedRecvTransport::max_payload` during reconnect
 
 - **Status:** Resolved 2026-07-11 (recv API pass). `ManagedRecvTransport::max_payload`

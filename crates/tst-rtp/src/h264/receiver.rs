@@ -44,6 +44,7 @@
 
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tst_core::net::udp_socket::CANCEL_POLL_INTERVAL;
 use tst_core::transport::{SocketStats, TransportError};
@@ -240,6 +241,24 @@ impl H264Receiver {
     /// Blocks the calling thread. See the [struct-level doc](Self) for the
     /// full loop contract.
     pub fn recv_au(&mut self) -> Result<Option<H264Au>, TransportError> {
+        self.recv_au_inner(None)
+    }
+
+    /// [`Self::recv_au`] with a deadline. Returns
+    /// `Err(TransportError::Backpressure)` if no complete AU arrives within
+    /// `timeout` — the session stays valid, call again to keep waiting.
+    /// Deadline granularity is the internal cancel-poll interval (~100 ms).
+    /// This is the intended primitive for stall watchdogs (a healthy RTSP
+    /// session whose server stops sending produces no error and no EOS —
+    /// without a deadline the caller blocks forever).
+    pub fn recv_au_timeout(&mut self, timeout: Duration) -> Result<Option<H264Au>, TransportError> {
+        self.recv_au_inner(Some(Instant::now() + timeout))
+    }
+
+    fn recv_au_inner(
+        &mut self,
+        deadline: Option<Instant>,
+    ) -> Result<Option<H264Au>, TransportError> {
         loop {
             // ── RTCP drain (TCP-interleaved sessions only) ─────────────────
             // Keep the pump's RTCP sender alive by non-blocking-draining the
@@ -270,7 +289,7 @@ impl H264Receiver {
                 Some(s) => s,
                 None => return Err(TransportError::Closed),
             };
-            let raw_result = source.recv_raw(&mut self.scratch, &self.cancel);
+            let raw_result = source.recv_raw(&mut self.scratch, &self.cancel, deadline);
             let n = match raw_result {
                 Ok(n) => n,
                 Err(TransportError::ExplicitClose) => {
@@ -285,6 +304,12 @@ impl H264Receiver {
                 }
                 Err(e @ TransportError::Broken { .. }) => {
                     self.source = None;
+                    return Err(e);
+                }
+                Err(e @ TransportError::Backpressure { .. }) => {
+                    // Deadline elapsed with no complete AU. Session stays
+                    // valid — no eos, no depacketizer flush — so the caller
+                    // can call recv_au_timeout again to keep waiting.
                     return Err(e);
                 }
                 Err(e) => return Err(e),
@@ -507,5 +532,36 @@ mod tests {
         drop(tx); // causes Disconnected on recv_raw
         let result = receiver.recv_au().unwrap();
         assert!(result.is_none(), "expected Ok(None) at EOS, got {result:?}");
+    }
+
+    /// A stalled source (no packets, no disconnect) must not block
+    /// `recv_au_timeout` past its deadline — this is the field report's
+    /// stall-watchdog case. The session must stay usable afterward: a
+    /// second timed wait still works, and a subsequent disconnect still
+    /// surfaces as clean EOS (not swallowed by the deadline path).
+    #[test]
+    fn recv_au_timeout_returns_backpressure_on_stalled_source() {
+        use std::time::{Duration, Instant};
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        let start = Instant::now();
+        let res = r.recv_au_timeout(Duration::from_millis(300));
+        assert!(
+            matches!(res, Err(TransportError::Backpressure { .. })),
+            "got {res:?}"
+        );
+        let dt = start.elapsed();
+        assert!(
+            dt >= Duration::from_millis(250) && dt < Duration::from_secs(5),
+            "elapsed {dt:?}"
+        );
+        // Session stays valid: a second wait works, and EOS still surfaces.
+        let res2 = r.recv_au_timeout(Duration::from_millis(100));
+        assert!(matches!(res2, Err(TransportError::Backpressure { .. })));
+        drop(tx);
+        assert!(matches!(
+            r.recv_au_timeout(Duration::from_secs(2)),
+            Ok(None)
+        ));
     }
 }

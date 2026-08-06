@@ -118,9 +118,14 @@ pub enum TransportError {
     /// the code space:
     /// - `SrtTransport` uses the libsrt major-category error code (see
     ///   `tst-srt` docs for the full code table).
-    /// - `RtpTransport` does not produce `Backpressure` at all (UDP either
-    ///   accepts the datagram or surfaces an error); its OS-`errno` codes
-    ///   ride [`Self::Broken`].
+    /// - `RtpTransport`'s send side never produces `Backpressure` (UDP
+    ///   either accepts the datagram or surfaces an error); its OS-`errno`
+    ///   codes ride [`Self::Broken`]. On the recv side, `tst-rtp`'s
+    ///   deadline-bounded methods surface deadline expiry with
+    ///   `errno_code: None`: `H264Receiver::recv_au_timeout` returns
+    ///   `Err(Backpressure)` directly, while `RtpRecvTransport::recv_timeout`
+    ///   maps the same internal signal to `Ok(None)` instead, mirroring
+    ///   `UdpRecvTransport::recv_timeout`'s shape.
     /// - Test mocks and in-memory channels pass `None`.
     ///
     /// Surfaced as a typed-source aid for binding-crate consumers

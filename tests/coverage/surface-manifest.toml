@@ -8774,6 +8774,18 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::transport::RtpRecvTransport::recv_bytes"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# recv_timeout: new deadline-bounded raw receive, aligning RTP with the
+# UDP transport's periodic-return convention; dedicated test colocated
+# in transport.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::transport::RtpRecvTransport::recv_timeout"
+owning_tests = ["crates/tst-rtp/src/transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::transport::RtpRecvTransport::rtcp_stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -9137,6 +9149,17 @@ reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when
 [[exempt]]
 item = "tst_rtp::h264::receiver::H264Receiver::recv_au"
 reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+# recv_au_timeout: new deadline-bounded stall-watchdog primitive, from an
+# integrator field report; dedicated test colocated in receiver.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::h264::receiver::H264Receiver::recv_au_timeout"
+owning_tests = ["crates/tst-rtp/src/h264/receiver.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_rtp::h264::receiver::H264Receiver::rtp_stats"

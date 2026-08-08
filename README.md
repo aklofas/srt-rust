@@ -135,8 +135,8 @@ The wire format is standards-conformant, and outputs are checked against **FFmpe
 encoder, decoder, validator, or viewer on either side of a ts-transformer pipeline.
 
 A continuously-refreshed public evidence run exchanges real traffic with those same tools over
-live SRT / RIST / UDP / TCP / HLS / RTSP sessions, plus a seeded impairment-soak harness (1-hour
-smoke published, 72-hour run staged) — see
+live SRT / RIST / UDP / TCP / HLS / RTSP sessions, plus a seeded impairment-soak harness (72-hour
+run published: zero crashes, 12/12 outage reconnects, flat memory) — see
 [`docs/project/validation-evidence.md`](docs/project/validation-evidence.md) for the current
 census, methodology, and every documented gap.
 

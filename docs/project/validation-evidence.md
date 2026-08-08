@@ -22,7 +22,7 @@ SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo build --release -p tst-interop
 # full cell/tier/profile vocabulary and per-axis `--cells` filtering):
 bash scripts/interop/run-matrix.sh --outdir /tmp/interop-run --seconds 8
 
-# One-hour soak smoke (the same shape as the pending 72-hour run, at
+# One-hour soak smoke (the same shape as the 72-hour run below, at
 # 1/72nd the duration and the same fixed seed):
 bash scripts/interop/soak.sh --outdir /tmp/interop-soak-smoke --hours 1 --seed 1
 ```
@@ -219,19 +219,77 @@ accounts for its entire prior growth. The RIST leg's `send`/`recv` still
 show measurable growth (1485.1 / 349.3 KiB/hour respectively) — an order
 of magnitude down from the pre-fix ~5.8 / ~4.0 MiB/hour, confirming digest
 accumulation was the dominant cause there too, but not zero: an
-unexplained RIST-specific residual remains an open watch item (plausibly
-librist's own recovery-buffer growth, per the earlier round's own
-unresolved note), to compare against the real 72-hour run's own numbers
-before pinning an `--rss-slope-threshold-kb-per-hour` value.
+unexplained RIST-specific residual remained an open watch item at the
+time (plausibly librist's own recovery-buffer growth, per the earlier
+round's own unresolved note) — since resolved by the 72-hour run below,
+which measured that same sender at 0.1 KiB/hour over its final 24 hours:
+the residual was warm-up convergence toward a steady-state plateau, not
+growth.
 
-**The first real 72-hour soak run is pending, on dedicated hardware** (a
-multi-hour unattended run doesn't fit this environment's execution model).
-The exact reproduction recipe — including the fixed seed that makes the
-impairment engine's decision sequence deterministic — lives in
-[`scripts/interop/soak.sh`](/scripts/interop/soak.sh)'s own header comment;
-running it is a `nohup bash scripts/interop/soak.sh --outdir <dir> --seed 1 &`
-away. This section will be replaced with the real 72-hour numbers once that
-run completes.
+### The 72-hour run (2026-08-05 → 2026-08-08, seed 1)
+
+**Overall PASS — zero process exits, all twelve scheduled outage windows
+survived with exactly twelve reconnects and zero unscheduled ones, no
+memory growth on any of the six processes.** The run executed the full
+72-hour window (259,152 seconds) on a dedicated cloud VM (AWS EC2
+t3.medium, 2 vCPU / 4 GiB, x86_64), both legs concurrently, sustaining
+~1.9 Mb/s of GOP-structured video + 10 Hz KLV per leg — about 60.8 GB
+of received wire traffic per leg.
+
+| Leg | Sent (video AUs) | Received | KLV records (sent → received) | Drop rate (observed vs. expected) | Reconnects | Verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| SRT (managed send + managed recv, 90 s outage every 6 h) | 7,776,000 | 7,773,537 (99.968%) | 2,592,000 → 2,591,182 | 2.0152% vs. 2.00% | 12 (of 12 scheduled windows) | PASS |
+| RIST (continuous impairment, no outage) | 7,776,000 | 7,775,971 (99.9996%) | 2,592,000 → 2,591,991 | 2.0009% vs. 2.00% | n/a | PASS |
+
+The reconnect story is the headline: the proxy injected a 90-second
+full-drop outage every 6 hours, twelve in all, and
+`ManagedRecvTransport`'s rebuild counter finished at exactly 12 — one
+successful receive-side transport rebuild per scheduled window, with no
+spurious rebuilds anywhere in between. (That check still reports itself
+as provisional: the rebuild counter counts factory rebuilds, not outage
+windows, and a single window *can* drive more than one rebuild — see
+`report.rs`'s module doc — but this run's observed ratio at the
+production 90-second outage duration was exactly 1:1.)
+
+The two legs' drop rates validate each other. The RIST leg, which ran
+continuous impairment with no outage windows, is the clean statistical
+control: its observed 2.0009% sits +0.0009 percentage points above the
+configured 2% — about half a standard deviation of a pure binomial at
+its 59.9-million-packet volume. The SRT leg's +0.0152pp excess is the
+documented outage-window model artifact (reconnect handshake packets
+sent while an outage is still active are counted as proxy drops — see
+the limitations note in `report.rs`), landing just under that
+artifact's predicted 0.02–0.2pp range at 72-hour scale; both legs sit
+well inside the 0.10pp verdict tolerance. The SRT leg's 2,463
+undelivered AUs (0.032%) are similarly outage-attributable — roughly
+seven seconds of video lost per 90-second outage, the in-flight data
+from the moment of each cut, with the continuous 2% packet loss fully
+absorbed by retransmission in between.
+
+Memory closed out the smoke run's open question. The worst
+post-warmup RSS slope across all six processes was 68.8 KiB/hour (the
+SRT sender) — and even that is warm-up convergence, not growth: both
+senders climb to a ~176 MiB working-set plateau over the first ~7
+hours and hold byte-flat after, so every process's slope over the
+run's **final 24 hours** was at or below 18 KiB/hour, with the RIST
+sender (the smoke run's watch item) at 0.1 KiB/hour. On the strength
+of these numbers the RSS gate is no longer provisional:
+[`scripts/interop/soak.sh`](/scripts/interop/soak.sh) now defaults
+`--rss-slope-threshold-kb-per-hour` to 200 for full-length runs (its
+header comment carries the derivation), a threshold this run passes
+retroactively with ~3× margin and the pre-fix digest-accumulation
+leaks would have tripped.
+
+The supervisor fail-fast machinery (added after an earlier attempt
+lost both senders to a fixture bug 14.5 hours in — a synthetic-KLV
+latitude walk crossing ST 0601's encode range, not a library bug —
+and idled undetected) was armed throughout and never fired: the run's
+event log holds exactly seven launch lines. The reproduction recipe is
+unchanged — `scripts/interop/soak.sh --seed 1` with the fixed seed
+making the impairment engine's decision sequence deterministic — and
+the full artifact set (30-second-cadence RSS samples, per-leg
+send/recv/proxy reports, per-process logs, `soak-results.json`) is
+retained offline by the maintainer.
 
 ## Reading `expectations.toml`
 

@@ -128,9 +128,10 @@
 # into `docs/.../validation-evidence.md`.
 #
 # The RSS-slope gate defaults ON for full-length (>= 72h) runs at
-# 200 KiB/hour, pinned from the first completed 72h run (2026-08-05,
-# seed 1, realistic AU sizes): worst library-attributable post-warmup
-# slope observed was 68.8 KiB/h (srt send), and even that is warm-up
+# 200 KiB/hour, pinned from the first completed 72h run (launched
+# 2026-08-05, completed 2026-08-08, seed 1, realistic AU sizes): the
+# worst library-attributable post-warmup slope observed was 68.8
+# KiB/h (srt send), and even that is warm-up
 # convergence to the sender's ~176 MiB steady-state plateau, not
 # growth — every process's slope over the run's final 24h was
 # <= 18 KiB/h. 200 gives ~3x headroom over the worst legitimate

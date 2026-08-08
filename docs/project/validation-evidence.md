@@ -230,8 +230,12 @@ growth.
 
 **Overall PASS — zero process exits, all twelve scheduled outage windows
 survived with exactly twelve reconnects and zero unscheduled ones, no
-memory growth on any of the six processes.** The run executed the full
-72-hour window (259,152 seconds) on a dedicated cloud VM (AWS EC2
+memory growth on any of the six processes.** The run ran to its full
+72-hour deadline — the verdict document's measured sampling window
+spans 259,152 of the nominal 259,200 seconds, the 48-second difference
+being ordinary launch/shutdown process staggering, and the senders
+pushed the complete 72 hours of media (7,776,000 AUs at 30 fps) — on a
+dedicated cloud VM (AWS EC2
 t3.medium, 2 vCPU / 4 GiB, x86_64), both legs concurrently, sustaining
 ~1.9 Mb/s of GOP-structured video + 10 Hz KLV per leg — about 60.8 GB
 of received wire traffic per leg.

@@ -125,10 +125,22 @@
 #
 # Harvest steps once it completes: read `summary.txt` for the headline
 # (overall_pass, per-leg drop rates, RSS slopes), then feed the numbers
-# into `docs/.../validation-evidence.md` and, the first time this ever
-# runs to completion, pin `--rss-slope-threshold-kb-per-hour` from the
-# observed flat-run slopes (see report.rs's `soak` module doc — the
-# check is `provisional` until a threshold is set).
+# into `docs/.../validation-evidence.md`.
+#
+# The RSS-slope gate defaults ON for full-length (>= 72h) runs at
+# 200 KiB/hour, pinned from the first completed 72h run (2026-08-05,
+# seed 1, realistic AU sizes): worst library-attributable post-warmup
+# slope observed was 68.8 KiB/h (srt send), and even that is warm-up
+# convergence to the sender's ~176 MiB steady-state plateau, not
+# growth — every process's slope over the run's final 24h was
+# <= 18 KiB/h. 200 gives ~3x headroom over the worst legitimate
+# whole-run slope while still catching the digest-accumulation class
+# of harness leak this check was built for (349 and 1485 KiB/h in the
+# pre-fix smoke runs) and any real leak >= ~0.2 MiB/h. Shorter runs
+# stay provisional (no threshold) unless one is passed explicitly:
+# under realistic AU sizes the senders take ~7h to reach that plateau,
+# so a short run's post-warmup regression window is dominated by
+# convergence and would trip any honest threshold spuriously.
 #
 # `--hours 1` is the smoke mode this task's own acceptance gate runs
 # locally: short enough to finish in about an hour, long enough for the
@@ -226,6 +238,14 @@ done
   exit 2
 }
 [[ -n "$OUTDIR" ]] || OUTDIR="$HOME/interop-soak-$(date -u +%Y%m%dT%H%M%SZ)"
+
+# Default the RSS-slope gate ON for full-length runs only — see the
+# header's "RSS-slope gate" paragraph for the 200 KiB/h derivation and
+# why short runs stay provisional (plateau convergence dominates their
+# post-warmup window).
+if [[ -z "$RSS_SLOPE_THRESHOLD" && $((10#$HOURS)) -ge 72 ]]; then
+  RSS_SLOPE_THRESHOLD=200
+fi
 
 # Same hard-dependency rationale as run-matrix.sh's own check (this
 # script cannot run at all without these — see that script's comment

@@ -673,6 +673,71 @@ jobs:
       - name: cargo test (tst-core + tst-pipeline, musl)
         run: cargo test -p tst-core -p tst-pipeline --target x86_64-unknown-linux-musl
 
+  tst-rtp-client-only:
+    name: test (tst-rtp client-only plane, linux-x86_64)
+    runs-on: ubuntu-latest
+    # The tokio-free client-only feature plane (`--no-default-features
+    # --features tls`) is what the planned tst-uniffi mobile binding
+    # consumes (the PR #151 `rtsp-server` gate). No other CI job compiles
+    # these targets — every other leg builds tst-rtp with default
+    # features (rtsp-server on) — so without this leg a client-only
+    # compile break or a tokio leak into the client plane would ship
+    # unnoticed.
+    #
+    # Deliberately checks out WITHOUT submodules: tst-rtp's dependency
+    # graph (tst-core + tst-pipeline) contains no native -sys crates, so
+    # nothing here needs the vendored libsrt/librist/mbedTLS trees — and
+    # the leg stays immune to vendored-submodule host outages (the
+    # 2026-08-08 code.videolan.org outage failed every submodule-cloning
+    # job in checkout).
+    env:
+      RUSTUP_TOOLCHAIN: "1.85"
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+          key: cargo-rtp-client-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rtp-client-${{ runner.os }}-
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      # The invariant PR #151 established: a client-only build ships no
+      # tokio (the server's runtime). Scoped to `-e normal` — tokio IS
+      # present as a dev-dependency (the RTSP loopback test fixture runs
+      # a tokio runtime), but dev-deps never reach consumers; the leak
+      # this guards against is tokio re-entering the NORMAL tree.
+      - name: Client-only dependency tree is tokio-free
+        run: |
+          if cargo tree -p tst-rtp --no-default-features --features tls -e normal -i tokio 2>/dev/null | grep -q "^tokio"; then
+            echo "::error::tokio leaked into the client-only tst-rtp dependency tree"
+            cargo tree -p tst-rtp --no-default-features --features tls -e normal -i tokio
+            exit 1
+          fi
+          echo "client-only plane is tokio-free"
+
+      - name: cargo nextest (tst-rtp, --no-default-features --features tls)
+        run: cargo nextest run -p tst-rtp --no-default-features --features tls --no-fail-fast
+
+      - name: cargo test --doc (tst-rtp, client-only)
+        run: cargo test --doc -p tst-rtp --no-default-features --features tls
+
   no-std-baremetal:
     name: no_std bare-metal (compile + QEMU runtime)
     runs-on: ubuntu-latest

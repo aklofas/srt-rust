@@ -484,8 +484,17 @@ fn set_rcvbuf_checked(
 ) -> Result<(), OptionError> {
     let bytes = buf_bytes_to_i32("recv_buf_bytes", requested)?;
     set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, bytes)?;
-    let effective = get_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF)?;
-    let payload_per_pkt = i64::from(mss.unwrap_or(1500)) - 28;
+    // Everything below is diagnostics: a readback failure must not fail
+    // a config apply whose set already succeeded — skip the warn instead.
+    let Ok(effective) = get_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF) else {
+        return Ok(());
+    };
+    // Rounding allowance from the MSS actually in effect on the socket
+    // (libsrt may adjust the requested MSS); fall back to the configured
+    // value / libsrt default only if that readback fails too.
+    let mss_effective = get_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS)
+        .unwrap_or_else(|_| i32::from(mss.unwrap_or(1500)));
+    let payload_per_pkt = i64::from(mss_effective) - 28;
     if i64::from(effective) + payload_per_pkt < i64::from(bytes) {
         tracing::warn!(
             requested_bytes = bytes,

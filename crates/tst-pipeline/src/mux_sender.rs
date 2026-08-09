@@ -108,18 +108,25 @@ pub struct MuxSenderStats {
 /// # Closing
 ///
 /// `MuxSender` is `Send + Sync` (when `T: Transport + Send + Sync`) and
-/// supports three shutdown patterns:
+/// supports four shutdown patterns:
 ///
 /// 1. **Drop** — the [`Drop`] impl best-effort drains `pending_bytes` and
 ///    closes the underlying transport. Synchronous; bounded by
 ///    `SRTO_LINGER` (libsrt default 30 s, configurable via
 ///    `SocketBuilder::linger`).
-/// 2. **Explicit close** — call [`Self::close`]. Cancels the transport
-///    *before* taking the inner lock, so a peer thread parked in
-///    `send_video` / `send_klv` returns
+/// 2. **Explicit prompt close** — call [`Self::close`]. Cancels the
+///    transport *before* taking the inner lock, so a peer thread parked
+///    in `send_video` / `send_klv` returns
 ///    [`MuxSenderErrorSource::Transport`]`(`[`TransportError::Broken`]`)` within
-///    one libsrt I/O cycle (~3-10 ms). Idempotent.
-/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    one libsrt I/O cycle (~3-10 ms). Idempotent. Prompt by
+///    construction — the price is that `pending_bytes` retained from a
+///    prior transient send error are abandoned.
+/// 3. **Graceful finish** — call [`Self::finish`]. Drains
+///    `pending_bytes` to the still-live transport FIRST (fallible — the
+///    caller learns whether the tail was delivered), then closes. May
+///    block like `Drop`; a watchdog with [`Self::cancel_handle`] can
+///    unblock it.
+/// 4. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
 ///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
 ///    then `cancel()` from any thread. Wakes a parked send without
 ///    closing the `MuxSender` itself; equivalent to what `close()`
@@ -987,75 +994,68 @@ impl<T: Transport> MuxSender<T> {
         }
     }
 
-    /// Close the sender. Idempotent. Best-effort drains any pending
-    /// bytes buffered during a prior back-pressure event, then marks
-    /// the sender closed and closes the underlying transport.
+    /// Close the sender promptly. Idempotent.
     ///
-    /// Two paths, chosen by a non-blocking lock attempt:
+    /// Cancels the underlying transport BEFORE acquiring the inner lock,
+    /// so a peer thread parked inside `send_video` / `send_klv` /
+    /// `send_*_to` (e.g. libsrt's `srt_sendmsg` blocked on a full send
+    /// buffer) returns [`TransportError::Broken`] within one transport
+    /// I/O cycle (~3-10 ms on SRT) — `close()` never deadlocks against a
+    /// parked send and never waits on a slow network. This is the
+    /// emergency/prompt shutdown primitive; its price is that
+    /// `pending_bytes` retained from a prior transient send error are
+    /// ABANDONED (the post-cancel drain attempt finds the transport
+    /// already cancelled and gives up fast). Use [`Self::finish`] when
+    /// the buffered tail must be delivered — it drains first, reports
+    /// failure, and only then closes.
     ///
-    /// - **Uncontended** (the common case: no other thread is inside
-    ///   `send_video` / `send_klv` / `send_*_to`): drain `pending_bytes`
-    ///   and close the transport directly, with **no cancel**. Cancelling
-    ///   first would be actively harmful here — on SRT/RIST it kills the
-    ///   transport's ability to accept the drain sends, forfeiting the
-    ///   tail that `Drop` would otherwise have delivered. An uncontended
-    ///   explicit `close()` is now exactly as lossless as `Drop` — the
-    ///   flip side is that it can now also **block**: the drain sends go
-    ///   to a still-live transport with no cancel backing it, so this call
-    ///   can take as long as the transport's send timeout per pending
-    ///   chunk (unbounded for a blocking transport with no send timeout —
-    ///   reachable e.g. via a `ManagedTransport` reconnect after
-    ///   `pending_bytes` was seeded during an outage). Previously an
-    ///   explicit `close()` always returned promptly because it cancelled
-    ///   unconditionally before draining.
-    /// - **Contended** (a peer thread is parked inside `send_bytes`,
-    ///   e.g. libsrt's `srt_sendmsg` blocked on a full send buffer):
-    ///   cancel the transport FIRST to wake the parked peer (it returns
-    ///   `TransportError::Broken` and releases the lock), then acquire
-    ///   the lock and best-effort drain/close. Without cancel-first here
-    ///   the close would deadlock against the parked send for the
-    ///   duration of `SRTO_SNDTIMEO` (or forever, on the libsrt default).
-    ///   The drain in this path typically finds the transport already
-    ///   broken by the cancel and abandons the pending bytes — parity
-    ///   with the pre-fix behavior on this path.
-    ///
-    /// Poisoned-lock handling: if a prior panic poisoned the inner mutex,
-    /// `close` cancels (to wake any peer that might still be parked) and
-    /// silently returns rather than panic — parity with Drop.
+    /// Poisoned-lock handling: if a prior panic poisoned the inner
+    /// mutex, `close` still cancels (waking any parked peer) and skips
+    /// the drain/close bookkeeping rather than panicking — parity with
+    /// `Drop`.
     pub fn close(&self) {
-        match crate::mutex::try_lock(&self.inner) {
-            crate::mutex::TryLockOutcome::Acquired(mut inner) => {
-                // Fast-path soundness: drain + close happen entirely under
-                // the inner lock, and every send routes through
-                // `push_then_drain`, whose FIRST action under that same
-                // lock is the `inner.closed` check — so a send that loses
-                // the lock race observes `closed` and refuses, and no
-                // bytes can ever be pushed at an already-closed transport.
-                let _ = inner.drain_pending();
-                inner.closed = true;
-                inner.transport.close();
-            }
-            crate::mutex::TryLockOutcome::WouldBlock => {
-                if let Some(c) = &self.cancel {
-                    c.cancel();
-                }
-                if let Ok(mut inner) = self.inner.lock() {
-                    let _ = inner.drain_pending();
-                    inner.closed = true;
-                    inner.transport.close();
-                }
-            }
-            crate::mutex::TryLockOutcome::Poisoned(guard) => {
-                // Release the poisoned guard BEFORE cancelling — cancel
-                // handles can wake threads that immediately retry this
-                // same lock, and there is no reason to hold it across
-                // the (potentially side-effectful) cancel call.
-                drop(guard);
-                if let Some(c) = &self.cancel {
-                    c.cancel();
-                }
-            }
+        if let Some(c) = &self.cancel {
+            c.cancel();
         }
+        if let Ok(mut inner) = self.inner.lock() {
+            let _ = inner.drain_pending();
+            inner.closed = true;
+            inner.transport.close();
+        }
+    }
+
+    /// Drain any `pending_bytes`, then close: the fallible, lossless
+    /// counterpart to [`Self::close`]. Nothing is cancelled first, so
+    /// the drain sends go to the still-live transport and a tail
+    /// retained from a prior transient send error is delivered rather
+    /// than abandoned. Idempotent: returns `Ok(())` on an
+    /// already-closed sender.
+    ///
+    /// **May block.** Each drain send can take as long as the
+    /// transport's send timeout — unbounded for a blocking transport
+    /// with no send timeout (the same bound `Drop`'s best-effort drain
+    /// has always had). A watchdog holding [`Self::cancel_handle`] can
+    /// unblock a stuck `finish` from another thread: the parked drain
+    /// send returns [`TransportError::Broken`], which `finish` surfaces
+    /// as its error.
+    ///
+    /// # Errors
+    ///
+    /// The first drain error, after which the remaining pending bytes
+    /// are abandoned; the sender is marked closed and the transport
+    /// closed regardless of the drain outcome (`finish` never leaves
+    /// the sender half-open). A poisoned inner lock surfaces as
+    /// [`MuxSenderErrorSource::Transport`] with a `finish`-site message,
+    /// matching the send-path poisoning policy.
+    pub fn finish(&self) -> Result<(), MuxSenderError> {
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("finish"))?;
+        if inner.closed {
+            return Ok(());
+        }
+        let drained = inner.drain_pending();
+        inner.closed = true;
+        inner.transport.close();
+        drained
     }
 
     /// Consume the sender and hand back the owned transport.
@@ -2061,10 +2061,11 @@ mod multi_stream_tests {
     }
 
     #[test]
-    fn close_drains_pending_bytes() {
-        // Reproduces PIPE-02: MuxSender::close must drain pending_bytes
-        // before marking closed; otherwise queued back-pressure-buffered
-        // chunks are silently abandoned on explicit close.
+    fn finish_drains_pending_bytes() {
+        // The lossless explicit-shutdown path (PIPE-02's ask, reshaped at
+        // the 0.5.0 release gate): finish() must drain pending_bytes
+        // before marking closed — close() is the prompt/lossy primitive
+        // and deliberately does not make this guarantee.
         let cfg = {
             let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
             prog.add_video(0x100, VideoCodec::H264);
@@ -2086,15 +2087,131 @@ mod multi_stream_tests {
         // the relevant assertion is about close's post-condition.
         let _ = sender.send_video(&nal, Pts90khz::new(0), true);
 
-        sender.close();
+        sender
+            .finish()
+            .expect("drain succeeds on the healed transport");
 
-        // Pre-fix: 0 bytes captured (pending abandoned by close).
-        // Post-fix: > 0 bytes captured (close drained pending; transport's
-        // 2nd send_bytes call succeeded with prev=0).
         let captured = snoop.lock().unwrap().len();
         assert!(
             captured > 0,
-            "MuxSender::close must drain pending_bytes (parity with Drop); captured = {captured}"
+            "MuxSender::finish must drain pending_bytes; captured = {captured}"
+        );
+    }
+
+    /// finish() on a transport that never heals surfaces the drain error
+    /// and still leaves the sender closed (never half-open).
+    #[test]
+    fn finish_surfaces_drain_failure_and_closes() {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let snoop = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        // Fails every send: the seeded pending bytes can never drain.
+        let transport = BackpressureOnce::new(usize::MAX, snoop.clone());
+        let sender = MuxSender::new(transport, cfg).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        let _ = sender.send_video(&nal, Pts90khz::new(0), true);
+
+        let res = sender.finish();
+        assert!(res.is_err(), "drain failure must surface, got {res:?}");
+        assert!(
+            !sender.is_alive(),
+            "finish must close even on drain failure"
+        );
+        assert!(snoop.lock().unwrap().is_empty());
+        // Idempotent second call on the now-closed sender.
+        assert!(sender.finish().is_ok());
+    }
+
+    /// Transport whose sends BLOCK until its cancel handle fires — the
+    /// blocking-transport-with-pending shape from the release-gate audit
+    /// (a ManagedTransport mid-reconnect after pending_bytes was seeded).
+    /// close() must return promptly by cancelling first; the 0.5.0-rc1
+    /// drain-first close() hung here indefinitely.
+    struct BlocksUntilCancelled {
+        cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        fail_first: std::sync::atomic::AtomicUsize,
+        blocked_too_long: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+    struct FlagCancel(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl tst_core::transport::TransportCancel for FlagCancel {
+        fn cancel(&self) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    impl Transport for BlocksUntilCancelled {
+        fn send_bytes(&mut self, _b: &[u8]) -> Result<(), TransportError> {
+            use std::sync::atomic::Ordering;
+            if self.fail_first.fetch_sub(1, Ordering::SeqCst) > 0 {
+                return Err(TransportError::Backpressure {
+                    msg: "seed pending".into(),
+                    errno_code: None,
+                });
+            }
+            // Block until cancelled; bail after 10 s so a regression fails
+            // the test instead of hanging the runner.
+            let start = std::time::Instant::now();
+            while !self.cancelled.load(Ordering::SeqCst) {
+                if start.elapsed() > std::time::Duration::from_secs(10) {
+                    self.blocked_too_long.store(true, Ordering::SeqCst);
+                    return Ok(());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(TransportError::Broken {
+                msg: "cancelled".into(),
+                errno_code: None,
+            })
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool {
+            true
+        }
+        fn cancel_handle(
+            &self,
+        ) -> Option<std::sync::Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>
+        {
+            Some(std::sync::Arc::new(FlagCancel(self.cancelled.clone())))
+        }
+    }
+
+    #[test]
+    fn close_returns_promptly_on_blocking_transport_with_pending() {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let blocked_too_long = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let transport = BlocksUntilCancelled {
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            fail_first: std::sync::atomic::AtomicUsize::new(1),
+            blocked_too_long: blocked_too_long.clone(),
+        };
+        let sender = MuxSender::new(transport, cfg).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        // Seed pending_bytes via the transient failure.
+        let _ = sender.send_video(&nal, Pts90khz::new(0), true);
+
+        let t0 = std::time::Instant::now();
+        sender.close();
+        let elapsed = t0.elapsed();
+        assert!(
+            !blocked_too_long.load(std::sync::atomic::Ordering::SeqCst),
+            "close() drained against an un-cancelled blocking transport"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "close() must be prompt, took {elapsed:?}"
         );
     }
 }
@@ -2629,7 +2746,11 @@ mod cancel_tests {
     }
 
     #[test]
-    fn explicit_close_drains_pending_before_cancel() {
+    fn explicit_finish_drains_pending_without_cancel() {
+        // Reshaped at the 0.5.0 release gate: the lossless explicit
+        // shutdown is finish(), which drains WITHOUT cancelling (cancel
+        // is what forfeited the tail); close() is the prompt/lossy
+        // primitive and cancels first by contract.
         let state = Arc::new(std::sync::Mutex::new(TailLossState {
             reject_sends: true,
             ..Default::default()
@@ -2639,16 +2760,15 @@ mod cancel_tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         let _ = sender.send_video(&nal, Pts90khz::new(0), true);
         state.lock().unwrap().reject_sends = false; // transport healthy again
-        sender.close();
+        sender.finish().expect("drain on the healed transport");
         let s = state.lock().unwrap();
         let total: usize = s.sent.iter().map(|c| c.len()).sum();
         assert!(
             total > 0,
-            "pending tail lost: close() cancelled before draining"
+            "pending tail lost: finish() failed to drain before closing"
         );
         assert!(total % 188 == 0);
-        // Uncontended close() must not cancel at all (the fix's whole
-        // point: cancel-before-drain is what forfeited the tail).
+        // finish() must not cancel — the drain needs the live transport.
         assert!(!s.cancelled);
     }
 

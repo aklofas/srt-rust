@@ -116,6 +116,7 @@ pub struct tst_pipeline::ext::file_transport::FileTransport
 impl tst_pipeline::ext::file_transport::FileTransport
 pub fn tst_pipeline::ext::file_transport::FileTransport::bytes_sent(&self) -> u64
 pub fn tst_pipeline::ext::file_transport::FileTransport::create(impl core::convert::AsRef<std::path::Path>) -> core::io::error::Result<Self>
+pub fn tst_pipeline::ext::file_transport::FileTransport::finish(self) -> core::io::error::Result<core::option::Option<std::fs::File>>
 impl tst_core::transport::Transport for tst_pipeline::ext::file_transport::FileTransport
 pub fn tst_pipeline::ext::file_transport::FileTransport::close(&mut self)
 pub fn tst_pipeline::ext::file_transport::FileTransport::is_alive(&self) -> bool
@@ -456,6 +457,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, 
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::DataStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::finish(&self) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::into_inner(self) -> T
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
@@ -1624,6 +1626,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, 
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::DataStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::finish(&self) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::into_inner(self) -> T
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>

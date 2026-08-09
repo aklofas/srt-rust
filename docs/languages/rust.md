@@ -20,9 +20,9 @@ the three top-level crates in:
 
 ```toml
 [dependencies]
-tst-core     = "0.4"  # MPEG-TS mux/demux + KLV + codec parsers
-tst-pipeline = "0.4"  # Sender / Receiver / MuxSender / DemuxReceiver shells
-tst-srt      = "0.4"  # SRT transport
+tst-core     = "0.5"  # MPEG-TS mux/demux + KLV + codec parsers
+tst-pipeline = "0.5"  # Sender / Receiver / MuxSender / DemuxReceiver shells
+tst-srt      = "0.5"  # SRT transport
 ```
 
 When you only need to inspect or build `.ts` bytes (no live transport),
@@ -111,7 +111,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // send_klv(klv, pts, metadata_service_id) — 0x00 is the ST 1402.2 default.
     sender.send_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::new(0), 0x00)?;
 
-    sender.close()?;
+    // finish(): fallible graceful shutdown — drains any buffered tail
+    // and reports whether it was delivered (close() is the prompt,
+    // best-effort primitive and returns ()).
+    sender.finish()?;
     Ok(())
 }
 ```

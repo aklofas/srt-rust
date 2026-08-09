@@ -422,7 +422,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
-| `MuxSender<T>` | ✅ Full | Composes `Muxer` + `Transport` for the canonical NAL+KLV → TS → SRT path. Internally synchronized; lossless across transient transport failures via in-flight buffer. |
+| `MuxSender<T>` | ✅ Full | Composes `Muxer` + `Transport` for the canonical NAL+KLV → TS → SRT path. Internally synchronized; transient transport failures buffer in-flight bytes, delivered by the next successful send or a fallible `finish()` (prompt `close()` and final `Drop` drains are best-effort). |
 | `Sender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
 | `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
 | `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; single-thread receiver. |
@@ -649,7 +649,7 @@ covers.
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.6. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
 | `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.19** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
-| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.3.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for the core MISB sets (ST 0601 / 0102 / 0605 / 0903) plus ST 0806 / 1010 / 1204 and the ST 0805 KLV→CoT conversion layer; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; TLS variants ship in the wheels (`tcps://` caller + listener, `rtsps://` client + server, HTTPS HLS) as does RIST PSK encryption; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
+| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.5.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for the core MISB sets (ST 0601 / 0102 / 0605 / 0903) plus ST 0806 / 1010 / 1204 and the ST 0805 KLV→CoT conversion layer; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; TLS variants ship in the wheels (`tcps://` caller + listener, `rtsps://` client + server, HTTPS HLS) as does RIST PSK encryption; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
 | `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); RTP (incl. RTSP client + server) + SRT transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 

@@ -49,10 +49,28 @@ pub enum UdpUrlError {
     MissingPort,
     #[error("could not resolve host '{host}': {detail}")]
     HostResolve { host: String, detail: String },
+    /// Superseded by [`Self::HostResolve`], which carries the resolver's
+    /// failure detail and covers hostname resolution (0.5.0 accepts
+    /// hostnames, not just IP literals). Never constructed since 0.5.0;
+    /// retained for one deprecation cycle per the Stable-tier policy in
+    /// `docs/reference/api-stability.md` — removal no earlier than 0.6.0.
+    #[deprecated(
+        since = "0.5.0",
+        note = "never constructed since 0.5.0 — match `HostResolve` instead; \
+                removal no earlier than 0.6.0"
+    )]
+    #[error("host '{0}' is not a literal IPv4/IPv6 address")]
+    BadHost(String),
     /// A recv-bind (`@`-prefixed) URL was passed to a send-side entry
     /// point, or vice versa. The message names the right entry point.
     #[error("{0}")]
     SendRecvMismatch(String),
+    /// The peer address and `?localaddr=` are different IP families. A
+    /// socket bound to one family cannot send to the other — the failure
+    /// would otherwise surface only at the first send as an opaque OS
+    /// error, so it is rejected at parse time.
+    #[error("peer address {peer} and ?localaddr={local} are different IP families")]
+    FamilyMismatch { peer: IpAddr, local: IpAddr },
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
     BadQueryValue {
         key: String,
@@ -96,17 +114,6 @@ impl UdpUrl {
         let recv_bind = parsed.username.is_some();
         let host_str = parsed.host;
 
-        // IP literals stay a pure parse; anything else is treated as a
-        // hostname and resolved via the system resolver — matching
-        // tst-srt and tst-tcp, which both accept hostnames (containerized
-        // consumers address peers by service name). Multicast
-        // classification runs on the resolved address either way; group
-        // addresses are conventionally written as literals.
-        let addr: IpAddr = match host_str.parse() {
-            Ok(a) => a,
-            Err(_) => resolve_host(host_str, port)?,
-        };
-
         let mut iface = None;
         let mut ttl = None;
         let mut tos = None;
@@ -138,6 +145,30 @@ impl UdpUrl {
                 _ => { /* unknown params silently ignored — matches ffmpeg behavior */ }
             }
         }
+
+        // IP literals stay a pure parse; anything else is treated as a
+        // hostname and resolved via the system resolver — matching
+        // tst-srt and tst-tcp, which both accept hostnames (containerized
+        // consumers address peers by service name). Multicast
+        // classification runs on the resolved address either way; group
+        // addresses are conventionally written as literals.
+        //
+        // Resolution runs AFTER the query loop on purpose: an explicit
+        // `?localaddr=` constrains which address family a resolved
+        // candidate may have (a socket bound to one family cannot send to
+        // the other), and a literal peer of the wrong family is rejected
+        // here rather than failing the first send with an opaque OS error.
+        let addr: IpAddr = match host_str.parse::<IpAddr>() {
+            Ok(a) => {
+                if let Some(la) = localaddr {
+                    if a.is_ipv4() != la.is_ipv4() {
+                        return Err(UdpUrlError::FamilyMismatch { peer: a, local: la });
+                    }
+                }
+                a
+            }
+            Err(_) => resolve_host(host_str, port, localaddr.map(|a| a.is_ipv4()))?,
+        };
 
         Ok(Self {
             addr,
@@ -179,16 +210,38 @@ impl UdpUrl {
 /// TS-over-UDP tooling). If every probe fails, fall back to the first
 /// resolved address so the real send path surfaces the OS error — never
 /// worse than not probing at all.
-fn resolve_host(host: &str, port: u16) -> Result<IpAddr, UdpUrlError> {
+fn resolve_host(
+    host: &str,
+    port: u16,
+    // `Some(true)` = only IPv4 candidates are acceptable, `Some(false)` =
+    // only IPv6 — set when `?localaddr=` pins the local family. `None` =
+    // unconstrained (the documented IPv4-preference tiebreak applies).
+    required_v4: Option<bool>,
+) -> Result<IpAddr, UdpUrlError> {
     use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 
-    let candidates: Vec<SocketAddr> = (host, port)
+    let mut candidates: Vec<SocketAddr> = (host, port)
         .to_socket_addrs()
         .map_err(|e| UdpUrlError::HostResolve {
             host: host.to_string(),
             detail: e.to_string(),
         })?
         .collect();
+    if let Some(v4) = required_v4 {
+        let unfiltered = candidates.len();
+        candidates.retain(|sa| sa.is_ipv4() == v4);
+        if candidates.is_empty() && unfiltered > 0 {
+            return Err(UdpUrlError::HostResolve {
+                host: host.to_string(),
+                detail: format!(
+                    "resolved to no {} addresses ({} candidate(s) of the \
+                     other family) — required by the ?localaddr= family",
+                    if v4 { "IPv4" } else { "IPv6" },
+                    unfiltered
+                ),
+            });
+        }
+    }
     let first = candidates
         .first()
         .copied()
@@ -253,6 +306,64 @@ fn parse_byte_size(key: &str, value: &str) -> Result<usize, UdpUrlError> {
 
 #[cfg(test)]
 mod tests {
+    /// B04 regression set: `?localaddr=` and the peer must agree on IP
+    /// family. Literal mismatches are typed parse errors; hostname
+    /// resolution filters candidates to the local family (the old code
+    /// resolved IPv4-first BEFORE reading localaddr, then bound an IPv6
+    /// socket that could never send to the chosen IPv4 peer).
+    #[test]
+    fn localaddr_family_mismatch_literals_rejected() {
+        let e = UdpUrl::parse("udp://239.0.0.1:5000?localaddr=::1").unwrap_err();
+        assert!(matches!(e, UdpUrlError::FamilyMismatch { .. }), "got {e:?}");
+        let e = UdpUrl::parse("udp://[ff02::1]:5000?localaddr=127.0.0.1").unwrap_err();
+        assert!(matches!(e, UdpUrlError::FamilyMismatch { .. }), "got {e:?}");
+    }
+
+    #[test]
+    fn localaddr_v4_constrains_hostname_resolution_to_v4() {
+        // localhost always resolves 127.0.0.1; with an IPv4 localaddr the
+        // chosen peer MUST be IPv4 regardless of AAAA ordering.
+        let u = UdpUrl::parse("udp://localhost:5000?localaddr=127.0.0.1").unwrap();
+        assert!(u.addr.is_ipv4(), "got {:?}", u.addr);
+    }
+
+    #[test]
+    fn localaddr_v6_never_yields_v4_peer() {
+        // Environment-tolerant: hosts without an ::1 mapping for
+        // localhost legitimately fail resolution with the
+        // no-candidates-of-family detail — what must NEVER happen is the
+        // old bug's outcome, an IPv4 peer paired with an IPv6 localaddr.
+        match UdpUrl::parse("udp://localhost:5000?localaddr=::1") {
+            Ok(u) => assert!(
+                !u.addr.is_ipv4(),
+                "IPv4 peer with IPv6 localaddr: {:?}",
+                u.addr
+            ),
+            Err(UdpUrlError::HostResolve { detail, .. }) => {
+                assert!(detail.contains("IPv6"), "unexpected detail: {detail}");
+            }
+            Err(e) => panic!("unexpected error kind: {e:?}"),
+        }
+    }
+
+    /// v0.4 callers that name `BadHost` (match arms, constructions) must
+    /// keep compiling through the 0.5 deprecation cycle — the Stable-tier
+    /// promise in docs/reference/api-stability.md this variant's
+    /// deprecation implements.
+    #[test]
+    fn deprecated_bad_host_still_compiles_for_v04_callers() {
+        #[allow(deprecated)]
+        fn classify(e: &UdpUrlError) -> &'static str {
+            match e {
+                UdpUrlError::BadHost(_) => "bad-host",
+                _ => "other",
+            }
+        }
+        #[allow(deprecated)]
+        let e = UdpUrlError::BadHost("example".into());
+        assert_eq!(classify(&e), "bad-host");
+    }
+
     use super::*;
 
     #[test]

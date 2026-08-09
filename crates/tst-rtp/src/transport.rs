@@ -1012,9 +1012,13 @@ impl RtpRecvTransport {
     pub fn recv_timeout(
         &mut self,
         buf: &mut [u8],
-        deadline: Duration,
+        timeout: Duration,
     ) -> Result<Option<usize>, TransportError> {
-        match self.recv_bytes_inner(buf, Some(Instant::now() + deadline)) {
+        // checked_add: a timeout too large to represent as an `Instant`
+        // (e.g. `Duration::MAX`) saturates to "no deadline" rather than
+        // panicking on a public input; `Duration::ZERO` expires at the
+        // first poll.
+        match self.recv_bytes_inner(buf, Instant::now().checked_add(timeout)) {
             Ok(n) => Ok(Some(n)),
             Err(TransportError::Backpressure { .. }) => Ok(None),
             Err(e) => Err(e),
@@ -1324,6 +1328,50 @@ mod tests {
             .unwrap();
         assert!(res2.is_none());
         assert!(t.is_alive(), "transport must survive repeated timeouts");
+    }
+
+    /// Extreme timeout inputs are specified, not panics: ZERO expires at
+    /// the first poll (`Ok(None)`); MAX saturates to "no deadline" via
+    /// `checked_add` (the old unchecked add panicked) — proven by a
+    /// delayed packet actually being received under a MAX timeout.
+    #[test]
+    fn rtp_recv_timeout_extreme_durations_never_panic() {
+        // Discover a free base/base+1 pair first (RTP transports expose no
+        // local-addr accessor; RTCP auto-binds port+1) — the same pattern
+        // as the loopback integration tests.
+        let port = {
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let base = s.local_addr().unwrap().port();
+            assert!(base < u16::MAX, "ephemeral port at u16::MAX");
+            drop(std::net::UdpSocket::bind(("127.0.0.1", base + 1)).unwrap());
+            base
+        };
+        let mut t = RtpRecvSocketBuilder::new("127.0.0.1", port)
+            .build()
+            .unwrap();
+        let mut buf = vec![0u8; 2048];
+        let res = t.recv_timeout(&mut buf, std::time::Duration::ZERO).unwrap();
+        assert!(res.is_none(), "ZERO must expire promptly");
+        // MAX: a peer sends one minimal RTP packet after a short delay;
+        // the saturated no-deadline wait must deliver it (not panic, not
+        // return instantly empty).
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            // RTP header (V=2, PT=33) + one valid MP2T packet as payload —
+            // the receive path discards degenerate payloads (must be a
+            // non-empty 188-multiple starting with the 0x47 sync byte),
+            // so a header-only packet would be dropped and the wait would
+            // continue.
+            let mut pkt = vec![0u8; 12 + 188];
+            pkt[0] = 0x80;
+            pkt[1] = 33;
+            pkt[12] = 0x47;
+            let _ = s.send_to(&pkt, ("127.0.0.1", port));
+        });
+        let res = t.recv_timeout(&mut buf, std::time::Duration::MAX).unwrap();
+        assert!(res.is_some(), "MAX wait must deliver the delayed packet");
+        sender.join().unwrap();
     }
 
     /// Compile-time check: RtpTransport satisfies Transport (so

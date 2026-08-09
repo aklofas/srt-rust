@@ -112,9 +112,18 @@ for pkg in tstrans-srt-sys tstrans-rist-sys tstrans-mbedtls-src; do
   if [ "$rc" -eq 0 ]; then
     crate=$(ls -t target/package/${pkg}-*.crate | head -1)
     size=$(stat -c%s "$crate")
-  elif grep -q 'no matching package named `tstrans-mbedtls-src`' <<<"$out"; then
+  elif grep -qE 'no matching package named `tstrans-mbedtls-src`|failed to select a version for the requirement `tstrans-mbedtls-src' <<<"$out"; then
+    # Two windows share this structural condition — cargo's packaging step
+    # validates every path-dependency-with-a-`version`-key against the LIVE
+    # index, independent of --no-verify:
+    #   1. pre-first-publish (no version of tstrans-mbedtls-src exists;
+    #      "no matching package named" — the original v0.4.0 branch), and
+    #   2. between a release version sweep and that release's publish (the
+    #      bumped `version =` key isn't on the index yet; "failed to select
+    #      a version for the requirement" — first hit at the 0.5.0 sweep).
+    # Both self-heal the moment the new tstrans-mbedtls-src version is live.
     size=$(manual_package_size "$pkg" "$dir") || { echo "FAIL: manual size reconstruction for $pkg"; fail=1; continue; }
-    echo "NOTE: $pkg pre-first-publish fallback size estimate = $size bytes (manual tar+gzip of the package file list; will use the real cargo-package artifact once tstrans-mbedtls-src is live on crates.io)"
+    echo "NOTE: $pkg unpublished-internal-dep fallback size estimate = $size bytes (manual tar+gzip of the package file list; will use the real cargo-package artifact once the current tstrans-mbedtls-src version is live on crates.io)"
   else
     echo "FAIL: cargo package $pkg"
     echo "$out" >&2

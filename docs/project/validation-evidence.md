@@ -51,17 +51,19 @@ one of four verdicts:
 
 | Verdict | Meaning |
 | --- | --- |
-| **PASS** | The cell's tier requirement held: a byte-for-byte match against the source (`transparent` tier, used for pure-relay tools/paths), or `tst-interop verify`'s profile invariants (video/KLV counts within a documented slack, correct codec/carriage, monotonic PTS — `remux` tier, used where the peer legitimately re-packetizes), or no error in the peer's own log (`n/a` tier, used for decode-only probes). |
+| **PASS** | The cell's tier requirement held: a byte-for-byte match against the source (`transparent` tier, used for pure-relay tools/paths), or `tst-interop verify`'s profile invariants (`remux` tier, used where the peer legitimately re-packetizes: video/KLV/audio event counts within a documented slack, correct video codec and KLV carriage kind, program count, rollover-aware monotonic PTS — count-and-kind checks; deeper per-profile properties such as PCR cadence, AV1 carriage-mode discrimination on the wire, per-program media accounting, and an actually-observed PTS wrap are NOT yet independently verified and are tracked as harness-hardening backlog), or no error in the peer's own log (`n/a` tier, used for decode-only probes). |
 | **EXPECTED-UNSUPPORTED** | A `FAIL` that matches a row in `expectations.toml` — a known, already-investigated gap (see below). |
 | **KNOWN-FLAKY** | A `FAIL` (or PASS) matching a row marked flaky rather than reliably-reproducing. |
 | **SKIPPED** | The peer tool wasn't installed on the runner. Never a silent pass. |
 
 **Current census: 157 cells — 80 PASS, 0 FAIL, 65 EXPECTED-UNSUPPORTED, 12
-SKIPPED.** This exact per-cell (cell id, verdict) set has reproduced
-byte-identically across four independent full local runs of the current
-codebase, plus the public CI run below — five runs total, across two hosts,
-two different `--seconds`-per-cell settings (8 locally, 10 in CI), and two
-different TSDuck point releases (3.43-4549 locally, 3.44-4676 in CI).
+SKIPPED.** This exact per-cell (cell id, verdict) set first reproduced
+byte-identically across four independent full local runs plus a public CI
+run — five runs total, across two hosts, two different
+`--seconds`-per-cell settings (8 locally, 10 in CI), and two different
+TSDuck point releases (3.43-4549 locally, 3.44-4676 in CI) — and has
+since reproduced on every verified run, most recently the release-gate
+run cited below.
 `report merge`'s exit code is 0 iff every `FAIL` matched a documented
 `expectations.toml` row; any new, undocumented `FAIL` still exits nonzero —
 an unexpected failure is never silently absorbed into the census.
@@ -74,8 +76,11 @@ local dev-box state, no vendored corpus) via
 weekly on a schedule (Mondays 05:00 UTC), on every `workflow_dispatch`, and
 on any PR touching `crates/tst-interop/`, `scripts/interop/`, or the
 workflow file itself. The verified run cited above is
-[run 30839828140](https://github.com/aklofas/ts-transformer/actions/runs/30839828140)
-(`workflow_dispatch`, completed `success`) — its `results.json`/`results.md`,
+[run 31294818583](https://github.com/aklofas/ts-transformer/actions/runs/31294818583)
+(`workflow_dispatch` at commit `1b11c234`, completed `success`; a fresh
+dispatch on the exact 0.5.0 release-candidate commit replaces this
+citation before the release tag — this page never cites an ancestor run
+as release-tree evidence) — its `results.json`/`results.md`,
 per-cell logs, and captures are attached as the `interop-evidence` artifact
 (90-day retention) and the run's own step summary. Every future weekly run
 re-publishes a fresh `interop-evidence` artifact and step summary on that

@@ -166,7 +166,9 @@ inside `send_video` returns promptly, before `close()` proceeds to
 flush and tear down. From the outside, `close()` is the right shape
 for "stop the shell now" *when the thread doing the close also owns
 the shell*; `cancel_handle().cancel()` is the right shape *when it
-doesn't*.
+doesn't*. When the buffered tail matters more than promptness, use
+`MuxSender::finish()` instead — it drains pending bytes to the live
+transport (fallibly, and possibly blocking like `Drop`) before closing.
 
 ## Anti-priorities
 

@@ -58,13 +58,16 @@ All `ts-transformer` crates are published on crates.io:
 
 ```toml
 [dependencies]
-tst-core = "0.4"
+tst-core = "0.5"
 ```
 
-Note on cold builds: the first build compiles libsrt + mbedTLS from
-source and takes ~3-5 minutes. Pass `--no-default-features` on
-`tst-core` to skip mbedTLS for faster builds (this also disables
-encryption — only do this for testing).
+Note on cold builds: `tst-core` itself is pure Rust — it has no
+native dependencies and builds in seconds. It's adding `tst-srt` (or
+`tst-rist`) that compiles the vendored libsrt + mbedTLS from source on
+the first build (~3-5 minutes; warm builds are seconds). Building
+`tst-srt` with `--no-default-features` skips the mbedTLS build for
+faster iteration (this also disables encryption — only do this for
+testing).
 
 ## Send your first packet
 

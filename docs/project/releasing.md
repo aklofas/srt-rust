@@ -1,19 +1,26 @@
 # Releasing
 
-`ts-transformer` publishes two artifacts on a single `v*` tag: **PyPI**
-(`tstrans` wheels) and **Maven Central** (`org.tstrans:tstrans-jvm`). PyPI
-publishes automatically (OIDC trusted publishing); Maven uploads to the
-Central Portal in a **staged** state that a maintainer releases manually.
+A single `v*` tag publishes to **three immutable registries** through
+three workflows — treat them as one release transaction:
 
-> **Release state (updated 2026-06-23 — v0.2.0 shipped).** Both registries are
-> now live at **0.2.0**: `tstrans` on PyPI (the first-ever PyPI publish — the
-> OIDC trusted-publisher path ran successfully) and
-> `org.tstrans:tstrans-jvm:0.2.0` on Maven Central. Future releases are normal
-> *subsequent* publishes on both registries. Two standing cautions remain:
-> Maven Central is immutable — **never tag a release without explicit
+| Registry | Artifact(s) | Workflow | Publish mode |
+|---|---|---|---|
+| **crates.io** | the 11 Rust library crates, in dependency-layer order | `crates-io.yml` | automatic (OIDC trusted publishing, per-layer tokens) |
+| **PyPI** | `tstrans` wheels + sdist | `python-wheels.yml` | automatic (OIDC trusted publishing) |
+| **Maven Central** | `org.tstrans:tstrans-jvm` fat JAR | `jvm-jar.yml` | **staged** — a maintainer inspects and clicks Publish |
+
+A GitHub Release (notes seeded from the CHANGELOG highlights block) completes
+the set — 14 published artifacts per release in total.
+
+> **Release state (updated at the 0.5.0 gate).** All three registries are
+> live: crates.io (all 11 crates, first published at 0.4.0 and OIDC-wired
+> since), PyPI `tstrans` (since 0.2.0), and Maven Central
+> `org.tstrans:tstrans-jvm` (since 0.1.0). Standing cautions: every one of
+> these registries is immutable — **never tag a release without explicit
 > maintainer confirmation** — and on the tag run **watch the OIDC
-> `publish to PyPI` job**: a *skipped* publish means nothing reached PyPI (the
-> way v0.1.0 silently missed).
+> `publish to PyPI` job**: a *skipped* publish means nothing reached PyPI
+> (the way v0.1.0 silently missed). For crates.io, watch the `crates-io`
+> run's ordered layers and verify docs.rs builds afterwards.
 
 ## One-time prerequisites
 
@@ -112,7 +119,8 @@ Central Portal in a **staged** state that a maintainer releases manually.
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
-2. The tag triggers both workflows:
+2. The tag triggers all three publish workflows (`crates-io.yml` is
+   covered in its own section below):
    - **python-wheels.yml** builds wheels + sdist and **publishes to PyPI via
      OIDC trusted publishing.** **Watch the publish job:** if any required
      wheel leg is cancelled or stuck queued, the `needs:`-gated publish job
@@ -126,8 +134,10 @@ Central Portal in a **staged** state that a maintainer releases manually.
 4. **Verify BEFORE advertising:**
    - `pip install tstrans==X.Y.Z` resolves and imports.
    - A Gradle / Maven resolve of `org.tstrans:tstrans-jvm:X.Y.Z` succeeds.
-   Only **after** both verify, announce the release (GitHub Release notes
-   seeded from the CHANGELOG highlights block).
+   - Every crate page at `https://crates.io/crates/<pkg>` shows X.Y.Z and
+     the docs.rs builds are green (see the crates.io section below).
+   Only **after** all three verify, announce the release (GitHub Release
+   notes seeded from the CHANGELOG highlights block).
 
 ## crates.io publish (Rust crates)
 
@@ -216,15 +226,15 @@ publish` command returned success.
 
 **Rail note:** the `publish-package-sanity` CI rail
 (`scripts/check/rust/publish-package-sanity.sh`) cannot run a real `cargo
-package --no-verify` on `tstrans-srt-sys` / `tstrans-rist-sys` until
-`tstrans-mbedtls-src` is live on crates.io (Cargo's packaging step validates
-every path-dependency-with-a-`version`-key against the real index,
-independent of `--no-verify`). Until then the rail falls back to a manual
-tar+gzip size reconstruction of the exact `cargo package --list` file set.
-This is self-healing: once `tstrans-mbedtls-src`'s first publish lands, the
-rail's real `cargo package --no-verify` calls start succeeding on their own
-and the fallback branch simply stops firing — no rail change needed after
-this release.
+package --no-verify` on `tstrans-srt-sys` / `tstrans-rist-sys` whenever the
+`tstrans-mbedtls-src` version they pin is not yet live on crates.io
+(Cargo's packaging step validates every
+path-dependency-with-a-`version`-key against the real index, independent
+of `--no-verify`). That happens in two windows: before the first-ever
+publish, and — recurring every release — between a version sweep and the
+new version's publish. In both, the rail falls back to a manual tar+gzip
+size reconstruction of the exact `cargo package --list` file set and
+self-heals the moment the new `tstrans-mbedtls-src` version is live.
 
 ## Notes
 

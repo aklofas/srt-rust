@@ -171,8 +171,9 @@ pub enum RtspServerError {
     #[error("RTSP server I/O error: {0:?}")]
     Io(io::ErrorKind),
 
-    /// rustls server-side handshake / cert-loading failure (only emitted
-    /// when the `tls` feature is enabled).
+    /// rustls server-side handshake / cert-loading failure (the
+    /// acceptor lives behind the `rtsp-server-tls` feature; an
+    /// `rtsps://` bind without it also fails with this variant).
     #[error("RTSP server TLS error: {0}")]
     Tls(String),
 

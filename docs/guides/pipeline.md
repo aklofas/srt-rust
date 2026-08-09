@@ -785,7 +785,11 @@ parked inside libsrt to return promptly (typically as
 
 `MuxSender::close()` already does this internally — a `close()` call from
 a watchdog thread wakes any sender thread parked inside `send_video`
-within milliseconds, then completes. You only need to grab a
+within milliseconds, then completes. (The flip side of that promptness:
+pending bytes retained from a prior transient send error are abandoned.
+`MuxSender::finish()` is the graceful counterpart — it drains them to
+the live transport first and reports failure, at the cost of possibly
+blocking like `Drop`.) You only need to grab a
 `cancel_handle()` directly when you want to keep the shell alive but
 still wake a worker:
 

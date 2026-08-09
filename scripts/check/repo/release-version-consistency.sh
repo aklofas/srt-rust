@@ -18,7 +18,7 @@
 # CONSTRUCTION — they are intentionally not re-checked here.
 #
 # CRITICAL: sources 4 & 5 anchor on `TST_VERSION_` so they do NOT match the
-# unrelated C ABI version (`TST_ABI_VERSION_*`, currently 0.17) — a different
+# unrelated C ABI version (`TST_ABI_VERSION_*`, currently 0.19) — a different
 # number that must be ignored.
 #
 # ADDITIONALLY: every internal path-dependency's pinned `version = "X.Y.Z"`

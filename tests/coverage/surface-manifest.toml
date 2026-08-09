@@ -6295,6 +6295,15 @@ tier = "A"
 [[surface]]
 kind = "rust"
 crate = "tst-pipeline"
+item = "tst_pipeline::ext::file_transport::FileTransport::finish"
+owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::ext::file_transport::FileTransport::send_bytes"
 owning_tests = ["crates/tst-pipeline/src/ext/file_transport.rs"]
 bindings = []

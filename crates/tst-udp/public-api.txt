@@ -191,11 +191,15 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::transport::UdpTranspor
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::transport::UdpTransport
 pub mod tst_udp::url
 #[non_exhaustive] pub enum tst_udp::url::UdpUrlError
+pub tst_udp::url::UdpUrlError::BadHost(alloc::string::String)
 pub tst_udp::url::UdpUrlError::BadQueryValue
 pub tst_udp::url::UdpUrlError::BadQueryValue::detail: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadQueryValue::key: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadQueryValue::value: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadScheme(alloc::string::String)
+pub tst_udp::url::UdpUrlError::FamilyMismatch
+pub tst_udp::url::UdpUrlError::FamilyMismatch::local: core::net::ip_addr::IpAddr
+pub tst_udp::url::UdpUrlError::FamilyMismatch::peer: core::net::ip_addr::IpAddr
 pub tst_udp::url::UdpUrlError::HostResolve
 pub tst_udp::url::UdpUrlError::HostResolve::detail: alloc::string::String
 pub tst_udp::url::UdpUrlError::HostResolve::host: alloc::string::String
@@ -305,11 +309,15 @@ impl core::marker::UnsafeUnpin for tst_udp::error::UdpErrorKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::error::UdpErrorKind
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::error::UdpErrorKind
 #[non_exhaustive] pub enum tst_udp::UdpUrlError
+pub tst_udp::UdpUrlError::BadHost(alloc::string::String)
 pub tst_udp::UdpUrlError::BadQueryValue
 pub tst_udp::UdpUrlError::BadQueryValue::detail: alloc::string::String
 pub tst_udp::UdpUrlError::BadQueryValue::key: alloc::string::String
 pub tst_udp::UdpUrlError::BadQueryValue::value: alloc::string::String
 pub tst_udp::UdpUrlError::BadScheme(alloc::string::String)
+pub tst_udp::UdpUrlError::FamilyMismatch
+pub tst_udp::UdpUrlError::FamilyMismatch::local: core::net::ip_addr::IpAddr
+pub tst_udp::UdpUrlError::FamilyMismatch::peer: core::net::ip_addr::IpAddr
 pub tst_udp::UdpUrlError::HostResolve
 pub tst_udp::UdpUrlError::HostResolve::detail: alloc::string::String
 pub tst_udp::UdpUrlError::HostResolve::host: alloc::string::String

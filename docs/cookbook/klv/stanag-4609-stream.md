@@ -168,8 +168,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The Python binding exposes `Muxer.push_video_misp_to` (keyword-only after the
 NAL bytes) and `encode_uas_datalink_strict_compliance` for the same pipeline.
-The `MuxSender` shell does not yet expose `send_video_misp_to` — use `Muxer`
-directly when you need MISP timestamps (see the
+The **binding-side** `MuxSender` wrappers do not yet expose
+`send_video_misp_to` — in Python/JVM/C use `Muxer.push_video_misp_to`
+directly when you need MISP timestamps (the Rust `MuxSender` exposes
+`send_video_misp_to` natively; see the
 [Binding-side MuxSender misp mirrors](/docs/project/deferred-features.md)
 deferred-features entry).
 
@@ -287,8 +289,9 @@ binary wire format (1 version + 1 usage + N×16-byte UUID blocks). Assign
 it to `UasDatalinkLs::miis_core_id` as a `Vec<u8>`. Use a stable UUID per
 physical sensor — changing it across sessions breaks archive correlation.
 
-**Binding-side `send_video_misp_to`:** `MuxSender` (Python, JVM, C shell
-wrappers) does not yet expose the MISP variant of `send_video`. Use
+**Binding-side `send_video_misp_to`:** the Python, JVM, and C shell
+wrappers around `MuxSender` do not yet expose the MISP variant of
+`send_video` (the Rust `MuxSender::send_video_misp_to` exists). Use
 `Muxer::push_video_misp_to` directly (as above), or the C ABI entry point
 `tst_muxer_push_video_misp_to`. See the
 [reference/stanag-4609.md](/docs/reference/stanag-4609.md) page for the

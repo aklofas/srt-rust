@@ -54,7 +54,18 @@ impl UdpTransport {
         }
 
         let local: SocketAddr = match (cfg.localaddr, url.addr) {
-            (Some(a), _) => SocketAddr::new(a, 0),
+            (Some(a), peer) => {
+                // URL-sourced localaddr already passed the parse-time family
+                // check; this guards direct SocketConfig users the same way —
+                // a socket bound to one family cannot send to the other, and
+                // failing here beats an opaque OS error at the first send.
+                if a.is_ipv4() != peer.is_ipv4() {
+                    return Err(UdpError::InvalidConfig(format!(
+                        "localaddr {a} and peer {peer} are different IP families"
+                    )));
+                }
+                SocketAddr::new(a, 0)
+            }
             (None, IpAddr::V4(_)) => {
                 SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0)
             }
@@ -87,7 +98,8 @@ impl UdpTransport {
         self.stats
     }
 
-    /// Peer address this transport is connected to.
+    /// Destination address sends go to. The socket is deliberately
+    /// UNCONNECTED (`send_to` per datagram) — see the send-path notes.
     pub fn peer(&self) -> SocketAddr {
         self.peer
     }

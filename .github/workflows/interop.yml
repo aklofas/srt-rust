@@ -195,6 +195,24 @@ jobs:
             --outdir "$RUNNER_TEMP/interop" \
             --seconds 10
 
+      - name: Assert census completeness
+        # Fail-closed inventory check (release-gate audit RLS-B08 quick
+        # win): `report merge` exits 0 on whatever subset of cell JSONs it
+        # finds, so a silently truncated run (missing peer, dropped cell
+        # subset, profile-list drift) could otherwise publish a smaller
+        # census as green. The advertised shape is 157 cells with exactly
+        # the 12 documented gst-play skips; anything else fails this job.
+        # (Full per-cell-identity inventory enforcement is tracked as
+        # harness-hardening backlog.)
+        run: |
+          total=$(jq '.summary.total' "$RUNNER_TEMP/interop/results.json")
+          skipped=$(jq '.summary.skipped_tool_missing' "$RUNNER_TEMP/interop/results.json")
+          if [ "$total" != "157" ] || [ "$skipped" != "12" ]; then
+            echo "::error::census mismatch: total=$total (want 157) skipped=$skipped (want 12)"
+            exit 1
+          fi
+          echo "census complete: 157 cells, 12 expected skips"
+
       - name: Publish step summary
         # Re-render with --github-summary so the verdict table appears
         # directly on the workflow run's summary page, not only inside the

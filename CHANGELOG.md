@@ -9,8 +9,90 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [0.5.0] — 2026-08-09
+
+Post-v0.4.0: two integrator field-report remediation arcs, the interop
+evidence arc's library-bug fixes, the first published 72-hour soak run,
+client-only (tokio-free) RTSP builds behind a new feature split, and two
+breaking renames. C ABI unchanged at 0.19.
+
+### Release highlights
+
+The integrator-facing changes at a glance (full detail in the sections below):
+
+- **One breaking change, one deprecation** (compile-time only): the `tls`
+  cargo feature no longer enables the RTSP **server's** TLS acceptor —
+  server TLS moved to the new `rtsp-server-tls` feature, with the whole
+  push server now behind a default-on `rtsp-server` feature (breaking for
+  server-TLS builds; a `"0.4"` requirement will not auto-update into it).
+  On the Stable `tst-udp` surface, `UdpUrlError::BadHost` is **deprecated,
+  not removed** — new hostname-resolution failures report through the
+  richer `HostResolve` (and a new `SendRecvMismatch` covers send/recv
+  entry-point mixups); v0.4 code naming `BadHost` still compiles, and the
+  variant is removed no earlier than 0.6 per the published Stable-tier
+  deprecation policy.
+- **Client-only RTSP builds are tokio-free.** `default-features = false`
+  (+ `tls` for `rtsps://`) builds the RTSP/RTP client plane with zero tokio
+  in the dependency tree — sized for mobile/embedded consumers — and a
+  standing CI leg now pins both the build and the tokio-free invariant.
+- **`DemuxReceiver` sessions on ≤ 0.4.0 drop the final buffered video
+  access unit when the transport ends non-cleanly** (break, cancel, close —
+  anything but a clean end-of-stream; the pending-AU flush only ran on
+  `EndOfStream`). Found by the interop soak harness; the teardown path now
+  flushes the last pending AU, with the truncated-sample tradeoff disclosed
+  in the implementation docs. If you have seen a one-frame-short capture
+  through `DemuxReceiver`, this was it.
+- **A rarely-lost race in `Listener::accept_timeout`** could hand back a
+  connection whose first receive failed fatally (non-blocking mode inherited
+  from the accept probe). Fixed; only ever reproduced on loaded CI runners.
+- **Field-report remediation, second and third integrators** — the full ask
+  lists from both reports shipped: unconnected UDP sends (the spurious
+  `ECONNREFUSED` failure class is structurally gone), RTSP-client
+  poison-recovery (a panic mid-session no longer aborts the process from
+  `Drop`), a new fallible
+  `MuxSender::finish()` delivers the buffered tail on explicit shutdown
+  (superseding the drop-don't-close workaround; `close()` stays the
+  prompt cancel-first primitive, unchanged), deadline-bounded receives
+  (`H264Receiver::recv_au_timeout`, `RtpRecvTransport::recv_timeout`),
+  `SETUP` 400 diagnostics, `udp://` hostname resolution, DTS-capable mount
+  pushes, `SecretString` re-export, `RtspClientBuilder::transport_preference`,
+  and a documented+pinned `Send` guarantee on the client types.
+- **`flow_window_packets` actually works for buffer sizing now**: both
+  config-apply paths set `SRTO_RCVBUF` before `SRTO_FC`/`SRTO_MSS`, so libsrt
+  silently clamped large receive buffers to the *default* flow-control window
+  even when you raised it. Ordering fixed, and a silent clamp now emits a
+  `tracing::warn!` naming the effective size and the lifting knob.
+- **The first full 72-hour soak run is published** in
+  `docs/project/validation-evidence.md`: overall PASS — zero process exits,
+  12/12 outage-window reconnects, statistically clean drop rates on both
+  legs, and flat memory on all six processes, at ~1.9 Mb/s of GOP-structured
+  traffic per leg through a seeded impairment proxy.
+
+
 ### Added
 
+- **`MuxSender::finish()` + `FileTransport::finish()` — fallible graceful
+  shutdown pair** (release-gate audit). `MuxSender::finish` drains
+  `pending_bytes` to the live transport and reports the drain outcome
+  before closing (see the Fixed entry on explicit-shutdown tail delivery);
+  `FileTransport::finish` flushes the userspace buffer and surfaces the
+  I/O error the infallible `close()`/`Drop` paths must swallow — a
+  flush-only failure (ENOSPC, EIO, removed device) previously lost the
+  capture tail silently after every send had reported success.
+  `FileTransport::bytes_sent` is now documented as accepted-not-flushed
+  bytes. Bindings parity for both is deferred
+  (`docs/project/deferred-features.md`).
+- **`UdpUrlError::FamilyMismatch`**: `?localaddr=` and the peer address
+  must agree on IP family; a literal mismatch is now a typed parse error
+  and hostname resolution filters candidates to the local family (a
+  dual-stack hostname with `?localaddr=<IPv6>` previously chose an IPv4
+  peer, bound an IPv6 socket, and failed at the first send with an opaque
+  OS error). `UdpTransport::with_config` applies the same construction-time
+  check for direct `SocketConfig` users.
 - **`SRTO_RCVBUF` silent-clamp warning** (tst-srt, integrator field ask):
   libsrt accepts any receive-buffer request but silently clamps the stored
   size to the flow-control window (`SRTO_FC`, default 25600 packets —
@@ -100,13 +182,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   address family but cannot detect an absent listener, so `localhost`
   resolving `[::1, 127.0.0.1]` on a dual-stack host previously picked
   `::1` by resolver order and died against an IPv4-only listener.
-- **Breaking (Rust, pre-1.0): `UdpUrlError::BadHost` is removed**, superseded
-  by the hostname-resolution work above. Unresolvable or junk hosts now
-  surface as `UdpUrlError::HostResolve { host, detail }`, and passing an
+- **Deprecated: `UdpUrlError::BadHost`** (softened from outright removal at
+  the release gate — `tst-udp` is a Stable-tier surface, and the published
+  policy in `docs/reference/api-stability.md` promises Stable breaking
+  changes a deprecation cycle). The variant is never constructed since
+  0.5.0: unresolvable or junk hosts now surface as
+  `UdpUrlError::HostResolve { host, detail }`, and passing an
   `@`-prefixed (recv-bind) URL to the send-side builder — which previously
   misreported through `BadHost` — gets the purpose-specific
-  `UdpUrlError::SendRecvMismatch`. The C ABI and error-kind mappings are
-  unchanged (URL errors ride the existing `Url` kind); C ABI minor stays 19.
+  `UdpUrlError::SendRecvMismatch`. **Migration:** replace `BadHost(host)`
+  match arms with `HostResolve { host, .. }`; removal no earlier than 0.6.
+  The C ABI and error-kind mappings are unchanged (URL errors ride the
+  existing `Url` kind); C ABI minor stays 19.
 - **`tst-rtp`: new default-on `rtsp-server` feature gates `RtspServer`
   (and tokio)**. `tst-rtp` was already a sync facade everywhere except
   `RtspServer`, which runs an internal tokio Runtime; that Runtime is now
@@ -137,6 +224,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`H264Receiver::recv_au_timeout` / `RtpRecvTransport::recv_timeout` no
+  longer panic on extreme durations** (release-gate audit): the deadline
+  arithmetic uses `checked_add` — a timeout too large to represent as an
+  `Instant` (e.g. `Duration::MAX`) behaves as "no deadline" instead of
+  panicking, `Duration::ZERO` expires at the first poll, and both
+  behaviors are pinned by tests. `recv_timeout`'s parameter is renamed
+  `deadline` → `timeout` (it is a relative duration; API introduced this
+  release, so no compatibility impact).
 - **`flow_window_packets` was a no-op for receive-buffer sizing** (tst-srt):
   socket and listener config application set `SRTO_RCVBUF` before `SRTO_FC`
   and `SRTO_MSS`, but libsrt clamps and converts the buffer against the
@@ -145,22 +240,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the default window. Options are now applied MSS → FC → buffers;
   regression-tested against the vendored libsrt.
 
-- **`MuxSender::close()` no longer cancels the transport before draining
-  pending bytes: an explicit close is now as lossless as `Drop` when no
-  send is in flight** (interop-arc finding). `close()` cancelled the
-  transport unconditionally before acquiring the inner lock, so on SRT/RIST
-  the cancel made the pending-bytes drain sends fail — the tail of a stream
-  was lost on an explicit close even though `Drop` (which drains first)
-  delivered it. `close()` now takes a non-blocking lock attempt first:
-  uncontended (the common case — nobody is parked inside a `send_*` call)
-  drains and closes with no cancel at all; only a contended lock (a peer
-  thread possibly parked in `send_bytes`) takes the cancel-first path, to
-  avoid deadlocking against it. The "drop, don't close" workaround from the
-  interop-evidence arc is no longer needed. Flip side: an uncontended
-  `close()` can now block draining pending bytes against a still-live
-  transport where it previously returned immediately (it cancelled first,
-  unconditionally) — the price of the losslessness fix. No public API
-  changes.
+- **Explicit shutdown can now deliver the buffered tail: new
+  `MuxSender::finish()`** (interop-arc finding, reshaped at the release
+  gate). `close()` cancels the transport before draining, so on SRT/RIST
+  the pending-bytes drain sends failed and the tail of a stream was lost
+  on an explicit close even though `Drop` (which drains first) delivered
+  it. Rather than change `close()`'s Stable contract (prompt, cancel-first,
+  ~3-10 ms wake — an emergency primitive must never block on a slow or
+  dead network), the lossless path is a new, separately named
+  `finish() -> Result<(), MuxSenderError>`: it drains `pending_bytes` to
+  the still-live transport FIRST — reporting a drain failure instead of
+  swallowing it — then closes; it may block like `Drop`, and a watchdog
+  holding `cancel_handle()` can unblock it. `close()` behavior is
+  unchanged from 0.4.0. The "drop, don't close" workaround from the
+  interop-evidence arc is superseded by `finish()` — which is strictly
+  better, because unlike `Drop` it tells you whether the tail actually
+  made it. Bindings parity for `finish` is deferred (see
+  `docs/project/deferred-features.md`).
 - **`tst-srt`: a connection accepted via `Listener::accept_timeout` could
   permanently inherit non-blocking mode and die on its first read with
   zero delivery.** `accept_timeout`'s readiness probe briefly toggles the

@@ -1729,6 +1729,24 @@ the trigger that would unblock it.
   a stall watchdog — the Python wheel consumers currently wrap
   `recv_au` with a reader thread for this purpose.
 
+## `MuxSender::finish` bindings parity
+
+- **Status:** Deferred. `MuxSender::finish()` (fallible graceful
+  shutdown: drain `pending_bytes` to the live transport, report the
+  drain outcome, then close) is Rust-only; the C ABI, Python, and JVM
+  surfaces expose only the prompt `close()` (cancel-first, pending
+  abandoned) and `Drop`-equivalent teardown.
+- **Why deferred:** shipped Rust-first at the 0.5.0 release gate as the
+  resolution of the interop-arc close-ordering finding — the prompt
+  `close()` contract had to stay unchanged for every binding, and no
+  binding consumer has yet asked for an error-reporting lossless
+  shutdown (the drop-don't-close workaround remains available and
+  equivalent-minus-error-reporting there).
+- **Trigger to revisit:** the first binding consumer that needs to know
+  whether the buffered tail was delivered on shutdown — the same
+  capture/gateway consumers the `FileTransport::finish` surface serves
+  in Rust.
+
 ## `ManagedRecvTransport::max_payload` during reconnect
 
 - **Status:** Resolved 2026-07-11 (recv API pass). `ManagedRecvTransport::max_payload`

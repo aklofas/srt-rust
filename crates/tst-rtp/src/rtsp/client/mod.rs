@@ -807,13 +807,11 @@ mod poison_policy {
 
     /// Fake peer: accepts one TCP connection, holds it open briefly, never
     /// replies, then closes. Enough for `connect()`; TEARDOWN writes land
-    /// in the kernel buffer. The client has no active SETUP/pump here, so
-    /// `teardown_with_deadline`'s non-pump branch calls the deadline-
-    /// agnostic `send_and_read` — the caller's `deadline` argument is inert
-    /// on that path (only the pump-active branch honors it). The 200 ms
-    /// close below, not the deadline, is what bounds this test: once the
-    /// peer drops the socket, the client's next 100 ms-timeout read poll
-    /// observes EOF.
+    /// in the kernel buffer. Both `teardown_with_deadline` read paths
+    /// honor the deadline (`send_and_read_with_deadline`); in this test
+    /// the 200 ms peer close usually races ahead of the deadline — the
+    /// client's next 100 ms-timeout read poll observes EOF — and either
+    /// bound keeps the test prompt.
     fn client_against_silent_peer() -> RtspClient {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();

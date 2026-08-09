@@ -254,11 +254,18 @@ impl H264Receiver {
     /// `Err(TransportError::Backpressure)` if no complete AU arrives within
     /// `timeout` — the session stays valid, call again to keep waiting.
     /// Deadline granularity is the internal cancel-poll interval (~100 ms).
+    /// Never panics on extreme inputs: a `timeout` too large to represent
+    /// as an [`Instant`] (e.g. [`Duration::MAX`]) behaves as "no deadline";
+    /// `Duration::ZERO` expires at the first poll.
     /// This is the intended primitive for stall watchdogs (a healthy RTSP
     /// session whose server stops sending produces no error and no EOS —
     /// without a deadline the caller blocks forever).
     pub fn recv_au_timeout(&mut self, timeout: Duration) -> Result<Option<H264Au>, TransportError> {
-        self.recv_au_inner(Some(Instant::now() + timeout))
+        // checked_add: a timeout too large to represent as an `Instant`
+        // (e.g. `Duration::MAX`) saturates to "no deadline" — semantically
+        // indistinguishable from a bound that outlives the process — rather
+        // than panicking on a public input.
+        self.recv_au_inner(Instant::now().checked_add(timeout))
     }
 
     fn recv_au_inner(
@@ -567,6 +574,29 @@ mod tests {
         drop(tx);
         assert!(matches!(
             r.recv_au_timeout(Duration::from_secs(2)),
+            Ok(None)
+        ));
+    }
+
+    /// Extreme timeout inputs are specified, not panics: `Duration::ZERO`
+    /// expires at the first poll; `Duration::MAX` (unrepresentable as an
+    /// `Instant`) saturates to "no deadline" via `checked_add` — the old
+    /// unchecked `Instant::now() + timeout` panicked on it.
+    #[test]
+    fn recv_au_timeout_extreme_durations_never_panic() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        let res = r.recv_au_timeout(std::time::Duration::ZERO);
+        assert!(
+            matches!(res, Err(TransportError::Backpressure { .. })),
+            "ZERO must expire promptly, got {res:?}"
+        );
+        // MAX: with the source disconnected, the no-deadline wait still
+        // terminates via clean EOS — proving the call neither panicked
+        // nor treated saturation as an instant expiry.
+        drop(tx);
+        assert!(matches!(
+            r.recv_au_timeout(std::time::Duration::MAX),
             Ok(None)
         ));
     }

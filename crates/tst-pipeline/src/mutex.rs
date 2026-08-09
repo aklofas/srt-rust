@@ -50,39 +50,3 @@ mod no_std_impl {
         }
     }
 }
-
-/// Outcome of a non-blocking lock attempt on a [`ShellMutex`], unified
-/// across both backends via the [`try_lock`] free function so a call site
-/// (`MuxSender::close`) written once compiles identically against `std`
-/// and `no_std`. Spin-backed `no_std` mutexes cannot poison — the `no_std`
-/// arm of [`try_lock`] never constructs `Poisoned` — but the variant stays
-/// so the match at the call site doesn't need per-backend `#[cfg]`.
-pub(crate) enum TryLockOutcome<G> {
-    /// Lock acquired uncontended.
-    Acquired(G),
-    /// Another holder has the lock right now.
-    WouldBlock,
-    /// The lock is poisoned (a previous holder panicked while it was
-    /// held); the guard is still handed back for best-effort recovery.
-    /// `std` only — the `no_std` backend never constructs this arm since
-    /// a spin mutex cannot poison.
-    #[cfg_attr(not(feature = "std"), allow(dead_code))]
-    Poisoned(G),
-}
-
-#[cfg(feature = "std")]
-pub(crate) fn try_lock<T>(m: &ShellMutex<T>) -> TryLockOutcome<std::sync::MutexGuard<'_, T>> {
-    match m.try_lock() {
-        Ok(g) => TryLockOutcome::Acquired(g),
-        Err(std::sync::TryLockError::WouldBlock) => TryLockOutcome::WouldBlock,
-        Err(std::sync::TryLockError::Poisoned(e)) => TryLockOutcome::Poisoned(e.into_inner()),
-    }
-}
-
-#[cfg(not(feature = "std"))]
-pub(crate) fn try_lock<T>(m: &ShellMutex<T>) -> TryLockOutcome<spin::MutexGuard<'_, T>> {
-    match m.try_lock() {
-        Some(g) => TryLockOutcome::Acquired(g),
-        None => TryLockOutcome::WouldBlock,
-    }
-}

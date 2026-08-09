@@ -8,12 +8,22 @@ use std::path::Path;
 
 use tst_core::transport::{Transport, TransportError};
 
-/// Appends every chunk verbatim to a file. `close` flushes; post-close
-/// sends return [`TransportError::Closed`] per the trait contract. A fatal
-/// write error also marks the transport dead: that call returns
+/// Appends every chunk verbatim to a file. Post-close sends return
+/// [`TransportError::Closed`] per the trait contract. A fatal write error
+/// also marks the transport dead: that call returns
 /// [`TransportError::Broken`], `is_alive()` becomes `false`, and any
 /// subsequent send returns [`TransportError::Closed`] — the same
 /// mark-dead-on-write-error contract `tst-tcp`'s `TcpTransport` follows.
+///
+/// # Finalization
+///
+/// [`Self::finish`] is the fallible finalization path: it flushes the
+/// userspace buffer and surfaces any I/O error. The trait's `close()` and
+/// the implicit `Drop` also flush, but BEST-EFFORT only — `Transport::
+/// close` returns `()`, so a flush-only failure there (ENOSPC, EIO, a
+/// removed device) is silently swallowed. A capture whose tail matters
+/// must end with `finish()` (via
+/// [`MuxSender::into_inner`](crate::MuxSender::into_inner)), not `close`.
 pub struct FileTransport {
     writer: Option<BufWriter<File>>,
     bytes_sent: u64,
@@ -28,10 +38,36 @@ impl FileTransport {
         })
     }
 
-    /// Total bytes accepted by `send_bytes` (pre-flush count).
+    /// Total bytes ACCEPTED by `send_bytes`. Accepted means written into
+    /// the userspace buffer — not necessarily flushed to the OS yet; only
+    /// a successful [`Self::finish`] proves every accepted byte reached
+    /// the file.
     #[must_use]
     pub fn bytes_sent(&self) -> u64 {
         self.bytes_sent
+    }
+
+    /// Flush every buffered byte to the OS and consume the transport,
+    /// surfacing any I/O error the infallible `close()`/`Drop` paths
+    /// would swallow. Returns the underlying [`File`] so callers can
+    /// e.g. `sync_all()` for durability beyond the OS page cache.
+    ///
+    /// Calling `finish` after `close()` (or after a write error marked
+    /// the transport dead) returns `Ok(None)` — there is no writer left
+    /// and nothing buffered to lose.
+    ///
+    /// # Errors
+    ///
+    /// Any [`std::io::Error`] from flushing the buffered tail (ENOSPC,
+    /// EIO, a removed device, ...).
+    pub fn finish(mut self) -> std::io::Result<Option<File>> {
+        match self.writer.take() {
+            Some(w) => Ok(Some(
+                w.into_inner()
+                    .map_err(std::io::IntoInnerError::into_error)?,
+            )),
+            None => Ok(None),
+        }
     }
 }
 
@@ -69,6 +105,9 @@ impl Transport for FileTransport {
     }
 
     fn close(&mut self) {
+        // Best-effort by construction: `Transport::close` returns `()`,
+        // so a flush failure here is unreportable. `finish()` is the
+        // fallible path for captures whose tail matters.
         if let Some(mut w) = self.writer.take() {
             let _ = w.flush();
         }
@@ -161,5 +200,52 @@ mod tests {
             "write failure must mark the transport dead"
         );
         assert!(matches!(second_send, Err(TransportError::Closed)));
+    }
+
+    /// A failure that occurs ONLY at final flush — every send accepted,
+    /// bytes still in the userspace buffer — must surface through
+    /// `finish()`. This is exactly the case the infallible `close()`
+    /// swallows (the audit's silent-tail-loss finding): 188 bytes fit
+    /// the buffer, so `send_bytes` succeeds; the read-only inner file
+    /// rejects the write only when the buffer drains at finish.
+    #[test]
+    fn finish_surfaces_flush_only_failure() {
+        let path = std::env::temp_dir().join(format!(
+            "tst-file-transport-flush-fail-{}.ts",
+            std::process::id()
+        ));
+        let mut t = FileTransport::create(&path).unwrap();
+        let read_only = std::fs::OpenOptions::new().read(true).open(&path).unwrap();
+        // Large capacity: the 188-byte send stays buffered (no write-through),
+        // so the EBADF surfaces at finish's flush, not at send.
+        t.writer = Some(BufWriter::with_capacity(4096, read_only));
+        let mut pkt = [0u8; 188];
+        pkt[0] = 0x47;
+        t.send_bytes(&pkt)
+            .expect("small send must buffer successfully");
+        assert_eq!(t.bytes_sent(), 188);
+        let res = t.finish();
+        let _ = std::fs::remove_file(&path);
+        assert!(res.is_err(), "flush-only failure must surface, got {res:?}");
+    }
+
+    /// The happy path: after a successful `finish()`, every accepted byte
+    /// is visible to a plain reader (flush actually drained the buffer).
+    #[test]
+    fn finish_makes_accepted_bytes_visible() {
+        let path = std::env::temp_dir().join(format!(
+            "tst-file-transport-finish-{}.ts",
+            std::process::id()
+        ));
+        let mut t = FileTransport::create(&path).unwrap();
+        let mut pkt = [0u8; 188];
+        pkt[0] = 0x47;
+        t.send_bytes(&pkt).unwrap();
+        let file = t.finish().expect("finish").expect("live writer");
+        drop(file);
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(bytes.len(), 188);
+        assert_eq!(bytes[0], 0x47);
     }
 }

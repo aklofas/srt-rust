@@ -75,7 +75,7 @@ use crate::url::RtpUrl;
 /// 1. Drain `depay.next_au()` first — the depacketizer may have queued
 ///    AUs from a prior `feed` call.
 /// 2. If the EOS flag is set, return `Ok(None)`.
-/// 3. Call `source.recv_raw(scratch, cancel)`:
+/// 3. Call `source.recv_raw(scratch, cancel, deadline)`:
 ///    - `Ok(n)` — tick counters, decode RTP header (malformed → tick +
 ///      continue), check payload type (wrong PT → tick + continue), feed
 ///      depacketizer, go to step 1.

@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use tst_core::transport::{SocketStats, Transport, TransportError};
+use tst_core::transport::{Transport, TransportError};
 
 /// Appends every chunk verbatim to a file. `close` flushes; post-close
 /// sends return [`TransportError::Closed`] per the trait contract. A fatal
@@ -74,9 +74,7 @@ impl Transport for FileTransport {
         }
     }
 
-    fn socket_stats(&self) -> Option<SocketStats> {
-        None
-    }
+    // socket_stats: trait default (None) — a file has no socket.
 }
 
 #[cfg(test)]
@@ -107,13 +105,16 @@ mod tests {
         assert!(t.is_alive());
         t.close();
         let bytes = std::fs::read(&path).unwrap();
+        // Remove the temp file BEFORE asserting — a failed assert used to
+        // leak it into the temp dir. Nothing below touches the path
+        // (post-close send_bytes never reaches the filesystem).
+        let _ = std::fs::remove_file(&path);
         assert!(!bytes.is_empty() && bytes.len() % 188 == 0 && bytes[0] == 0x47);
         // Post-close contract from the Transport trait rustdoc:
         assert!(matches!(
             t.send_bytes(&[0u8; 188]),
             Err(TransportError::Closed)
         ));
-        let _ = std::fs::remove_file(&path);
     }
 
     /// A fatal write error must mark the transport dead: `is_alive()` goes
@@ -149,13 +150,16 @@ mod tests {
         t.writer = Some(BufWriter::with_capacity(8, read_only));
 
         let err = t.send_bytes(&[0u8; 188]).unwrap_err();
-        assert!(matches!(err, TransportError::Broken { .. }));
-        assert!(!t.is_alive(), "write failure must mark the transport dead");
-        assert!(matches!(
-            t.send_bytes(&[0u8; 188]),
-            Err(TransportError::Closed)
-        ));
-
+        let alive_after_failure = t.is_alive();
+        let second_send = t.send_bytes(&[0u8; 188]);
+        // Remove the temp file BEFORE asserting — a failed assert used to
+        // leak it into the temp dir.
         let _ = std::fs::remove_file(&path);
+        assert!(matches!(err, TransportError::Broken { .. }));
+        assert!(
+            !alive_after_failure,
+            "write failure must mark the transport dead"
+        );
+        assert!(matches!(second_send, Err(TransportError::Closed)));
     }
 }

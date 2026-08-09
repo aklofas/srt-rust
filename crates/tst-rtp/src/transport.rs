@@ -1316,6 +1316,14 @@ mod tests {
             "elapsed {dt:?}"
         );
         assert!(t.is_alive(), "transport must stay usable after a timeout");
+        // A second call after an expiry must behave identically — pins
+        // that a timeout leaves no poisoned state behind (deadline
+        // bookkeeping, socket read-timeout restoration).
+        let res2 = t
+            .recv_timeout(&mut buf, std::time::Duration::from_millis(150))
+            .unwrap();
+        assert!(res2.is_none());
+        assert!(t.is_alive(), "transport must survive repeated timeouts");
     }
 
     /// Compile-time check: RtpTransport satisfies Transport (so

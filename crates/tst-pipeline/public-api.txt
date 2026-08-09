@@ -121,7 +121,6 @@ pub fn tst_pipeline::ext::file_transport::FileTransport::close(&mut self)
 pub fn tst_pipeline::ext::file_transport::FileTransport::is_alive(&self) -> bool
 pub fn tst_pipeline::ext::file_transport::FileTransport::max_payload(&self) -> usize
 pub fn tst_pipeline::ext::file_transport::FileTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
-pub fn tst_pipeline::ext::file_transport::FileTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_pipeline::ext::file_transport::FileTransport
 impl core::marker::Send for tst_pipeline::ext::file_transport::FileTransport
 impl core::marker::Sync for tst_pipeline::ext::file_transport::FileTransport

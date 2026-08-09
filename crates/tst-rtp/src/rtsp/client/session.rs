@@ -21,6 +21,8 @@ use crate::transport::RtpRecvTransport;
 
 /// State held between SETUP and PLAY / TEARDOWN.
 ///
+/// # Send
+///
 /// This type is `Send`: moving it to a dedicated receive/watchdog thread
 /// is a supported, documented use — a regression here is a breaking
 /// change.

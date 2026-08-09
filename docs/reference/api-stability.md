@@ -93,7 +93,7 @@ its `rtsp` row), the more specific row wins for that path.
 | tst-pipeline | shell_error | Stable | shell error taxonomy |
 | tst-pipeline | dyn_aliases | Stable | boxed-transport type aliases (plumbing/re-export); spec-silent, defaults to tst-pipeline's tier |
 | tst-pipeline | mux_publisher | Provisional | HLS-adjacent, newer |
-| tst-pipeline | ext | Provisional | pairing extension |
+| tst-pipeline | ext | Provisional | extensions (pairing, file transport) — newer surface |
 | tst-srt | (crate) | Stable | primary transport of the project scope |
 | tst-udp | (crate) | Stable | small, settled |
 | tst-tcp | (crate) | Stable | small, settled |

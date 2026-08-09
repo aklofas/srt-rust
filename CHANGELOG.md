@@ -11,6 +11,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`SRTO_RCVBUF` silent-clamp warning** (tst-srt, integrator field ask):
+  libsrt accepts any receive-buffer request but silently clamps the stored
+  size to the flow-control window (`SRTO_FC`, default 25600 packets —
+  ≈ 37.7 MB at default MSS) while still reporting success. Applying a
+  config now reads the effective value back and emits a `tracing::warn!`
+  naming requested vs. effective bytes and the lifting knob
+  (`flow_window_packets`) when the shortfall exceeds the one-packet
+  rounding libsrt's bytes→packets conversion always incurs. The kernel-side
+  silent clamp on `SRTO_UDP_RCVBUF`/`SRTO_UDP_SNDBUF`
+  (`net.core.{r,w}mem_max`) is documented on the config fields instead —
+  that one is invisible to libsrt readback.
+
 - **`H264Receiver::recv_au_timeout(Duration)`** (from an integrator field
   report). Deadline-bounded AU receive for stall watchdogs — a stalled-but-
   healthy session (server stops sending, no error, no EOS) previously
@@ -113,6 +125,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   acceptor already).
 
 ### Fixed
+
+- **`flow_window_packets` was a no-op for receive-buffer sizing** (tst-srt):
+  socket and listener config application set `SRTO_RCVBUF` before `SRTO_FC`
+  and `SRTO_MSS`, but libsrt clamps and converts the buffer against the
+  window and MSS in effect *at set time* — so raising `flow_window_packets`
+  together with a large `recv_buf_bytes` still left the buffer clamped to
+  the default window. Options are now applied MSS → FC → buffers;
+  regression-tested against the vendored libsrt.
 
 - **`MuxSender::close()` no longer cancels the transport before draining
   pending bytes: an explicit close is now as lossless as `Drop` when no

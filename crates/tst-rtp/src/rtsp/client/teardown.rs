@@ -54,14 +54,10 @@ impl RtspClient {
             req = req.header("authorization", a.as_str());
         }
         let bytes = req.encode_checked()?;
-        // Use the deadline-aware send if a pump is active; the non-pump
-        // path's `send_and_read` already bounds via cancel-poll. With a
-        // deadline, route through the pump variant unconditionally.
-        let r = if self.pump_state.is_some() {
-            self.send_and_read_via_pump_with_deadline(&bytes, deadline)
-        } else {
-            self.send_and_read(&bytes)
-        };
+        // Deadline-aware on BOTH read paths (the non-pump path used to
+        // ignore `deadline`, bounding only via cancel — a silent peer
+        // could stall a deadline-carrying caller that hadn't cancelled).
+        let r = self.send_and_read_with_deadline(&bytes, deadline);
         // Always clear session_id — caller asked us to tear down; if it
         // failed, retrying won't help and we want Drop to skip on a
         // second pass.
@@ -73,3 +69,62 @@ impl RtspClient {
 // `Drop for RtspClient` is implemented in `client/mod.rs` (combines
 // teardown + keepalive-thread join). This file holds only the
 // teardown method itself.
+
+#[cfg(test)]
+mod tests {
+    use crate::error::RtspError;
+    use crate::rtsp::client::RtspClient;
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::time::{Duration, Instant};
+
+    /// A silent half-open peer: reads the TEARDOWN request, never
+    /// responds, and holds the socket open until the test signals done
+    /// (so the client sees neither a response nor an EOF — the exact
+    /// shape `teardown_with_deadline`'s deadline exists to bound).
+    #[test]
+    fn teardown_with_deadline_bounds_nonpump_silent_peer() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            if let Ok((mut sock, _)) = listener.accept() {
+                sock.set_read_timeout(Some(Duration::from_secs(2))).ok();
+                let mut chunk = [0u8; 4096];
+                let _ = sock.read(&mut chunk); // consume the TEARDOWN
+                // Hold the connection open (no reply, no FIN) until the
+                // client side has finished asserting.
+                let _ = done_rx.recv_timeout(Duration::from_secs(10));
+            }
+        });
+
+        let mut client = RtspClient::connect(&format!("rtsp://127.0.0.1:{port}/test")).unwrap();
+        // Simulate an established session without a wire SETUP exchange —
+        // teardown only requires `session_id` to be present, and this
+        // test targets the read path, not session establishment.
+        client.session_id = Some("silent-peer-test".into());
+
+        let deadline = Instant::now() + Duration::from_millis(300);
+        let t0 = Instant::now();
+        let r = client.teardown_with_deadline(Some(deadline));
+        let elapsed = t0.elapsed();
+
+        assert!(
+            matches!(r, Err(RtspError::Io(std::io::ErrorKind::TimedOut))),
+            "expected Io(TimedOut), got {r:?}"
+        );
+        // Lower bound: the deadline was actually honored as a wait, not
+        // an instant bail. Upper bound: generous CI slack, but far below
+        // the pre-fix forever-hang this regression test pins down.
+        assert!(
+            elapsed >= Duration::from_millis(200) && elapsed < Duration::from_secs(5),
+            "teardown returned in {elapsed:?}, outside the deadline envelope"
+        );
+        // Documented contract: session_id clears even on timeout so
+        // callers (and Drop) know not to retry.
+        assert!(client.session_id.is_none());
+
+        let _ = done_tx.send(());
+        let _ = server.join();
+    }
+}

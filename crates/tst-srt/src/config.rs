@@ -62,6 +62,13 @@ pub struct SocketConfig {
     /// For high-latency links, size as `RCVBUF ≥ latency × bitrate`.
     /// Values above `i32::MAX` are rejected (`OptionError::OutOfRange`).
     ///
+    /// **Ceiling:** libsrt silently clamps the stored size to the
+    /// flow-control window ([`Self::flow_window_packets`], `SRTO_FC`,
+    /// default 25600 packets — ≈ 37.7 MB at the default MSS) and still
+    /// reports success. Requests above the ceiling emit a
+    /// `tracing::warn!` naming both values; raise `flow_window_packets`
+    /// together with this field to actually get a larger buffer.
+    ///
     /// `None` leaves the libsrt default.
     pub recv_buf_bytes: Option<u32>,
     /// Send buffer size in **bytes**, passed verbatim to `SRTO_SNDBUF`.
@@ -82,10 +89,20 @@ pub struct SocketConfig {
     pub mss: Option<u16>,
     pub payload_size: Option<u16>,
 
-    // Underlying UDP socket buffer sizes (separate from SRT's own packet queue).
-    // For >25 Mbps streams, kernel UDP drops can masquerade as transmission
-    // losses; raising these helps. Linux clamps to net.core.{r,w}mem_max.
+    /// Kernel UDP socket receive buffer in bytes (`SRTO_UDP_RCVBUF` —
+    /// separate from SRT's own packet queue). For >25 Mbps streams,
+    /// kernel UDP drops can masquerade as transmission losses; raising
+    /// this helps.
+    ///
+    /// **Silent kernel clamp:** Linux caps the effective size at
+    /// `net.core.rmem_max` without reporting an error, and the clamp is
+    /// NOT visible through libsrt option readback (libsrt echoes the
+    /// stored request, not the kernel's actual buffer). If a large value
+    /// here doesn't cure drops, check `sysctl net.core.rmem_max`.
     pub udp_recv_buffer_bytes: Option<u32>,
+    /// Kernel UDP socket send buffer in bytes (`SRTO_UDP_SNDBUF`). Same
+    /// silent-clamp caveat as [`Self::udp_recv_buffer_bytes`], against
+    /// `net.core.wmem_max`.
     pub udp_send_buffer_bytes: Option<u32>,
 
     // Identification
@@ -100,6 +117,10 @@ pub struct SocketConfig {
 
     // Congestion / priority
     pub too_late_packet_drop: Option<bool>,
+    /// Flow-control window in packets (`SRTO_FC`, libsrt default 25600).
+    /// Also the hard ceiling for [`Self::recv_buf_bytes`] — libsrt
+    /// silently clamps the receive buffer to this window, so raise both
+    /// together for large-buffer configurations.
     pub flow_window_packets: Option<u32>,
     pub packet_filter: Option<PacketFilter>,
     pub congestion: Option<Congestion>,
@@ -229,6 +250,10 @@ pub struct ListenerConfig {
 
     // Congestion / priority
     pub too_late_packet_drop: Option<bool>,
+    /// Flow-control window in packets (`SRTO_FC`, libsrt default 25600).
+    /// Also the hard ceiling for [`Self::recv_buf_bytes`] — libsrt
+    /// silently clamps the receive buffer to this window, so raise both
+    /// together for large-buffer configurations.
     pub flow_window_packets: Option<u32>,
     pub packet_filter: Option<PacketFilter>,
     pub congestion: Option<Congestion>,

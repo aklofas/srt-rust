@@ -112,13 +112,17 @@ impl SocketBuilder {
     }
     /// Set `SRTO_UDP_RCVBUF` (kernel UDP socket recv buffer in bytes).
     /// For >25 Mbps streams; default is OS-dependent (~208 KB on Linux).
-    /// Linux clamps to `net.core.rmem_max`.
+    /// Linux clamps to `net.core.rmem_max` **silently** — and the clamp
+    /// is not visible through libsrt option readback (libsrt echoes the
+    /// stored request). If a large value doesn't cure kernel-level
+    /// drops, check `sysctl net.core.rmem_max`.
     pub fn udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self {
         self.config.udp_recv_buffer_bytes = Some(n);
         self
     }
     /// Set `SRTO_UDP_SNDBUF` (kernel UDP socket send buffer in bytes).
-    /// For >25 Mbps streams. Linux clamps to `net.core.wmem_max`.
+    /// For >25 Mbps streams. Linux clamps to `net.core.wmem_max`
+    /// silently (same readback caveat as [`Self::udp_recv_buffer_bytes`]).
     pub fn udp_send_buffer_bytes(&mut self, n: u32) -> &mut Self {
         self.config.udp_send_buffer_bytes = Some(n);
         self
@@ -140,6 +144,12 @@ impl SocketBuilder {
     /// Passed verbatim to libsrt, which converts to internal buffers via
     /// `(MSS - 28)` division with a 32-buffer floor.
     /// For high-latency links, size as `RCVBUF ≥ latency × bitrate`.
+    ///
+    /// libsrt silently clamps this to the flow-control window
+    /// (`SRTO_FC`, default 25600 packets ≈ 37.7 MB at default MSS); a
+    /// clamped request emits a `tracing::warn!`. Raise
+    /// [`SocketConfig::flow_window_packets`](crate::SocketConfig::flow_window_packets)
+    /// together with this for larger buffers.
     pub fn recv_buf_bytes(&mut self, n: u32) -> &mut Self {
         self.config.recv_buf_bytes = Some(n);
         self

@@ -465,6 +465,39 @@ fn buf_bytes_to_i32(name: &str, n: u32) -> Result<i32, OptionError> {
     })
 }
 
+/// Set `SRTO_RCVBUF` and warn if libsrt silently clamped it.
+///
+/// libsrt accepts any positive value but stores
+/// `min(bytes / (MSS - 28), SRTO_FC)` packets and still returns success
+/// (socketconfig.cpp, `RcvBufferSizeOptionToValue`) — at the default
+/// flow-control window of 25600 packets and default MSS that's a hard
+/// ceiling of ~37.7 MB, hit silently by anything larger. Read the
+/// effective value back and warn on a shortfall beyond the benign
+/// one-packet floor-division rounding, naming the knob that actually
+/// lifts the ceiling — this silent clamp cost an integrator a debugging
+/// session (2026-08-03 field ask). Callers must apply `SRTO_MSS` and
+/// `SRTO_FC` BEFORE calling this — both feed the conversion above.
+fn set_rcvbuf_checked(
+    handle: srt_sys::SRTSOCKET,
+    requested: u32,
+    mss: Option<u16>,
+) -> Result<(), OptionError> {
+    let bytes = buf_bytes_to_i32("recv_buf_bytes", requested)?;
+    set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, bytes)?;
+    let effective = get_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF)?;
+    let payload_per_pkt = i64::from(mss.unwrap_or(1500)) - 28;
+    if i64::from(effective) + payload_per_pkt < i64::from(bytes) {
+        tracing::warn!(
+            requested_bytes = bytes,
+            effective_bytes = effective,
+            "SRTO_RCVBUF silently clamped to the flow-control window; raise \
+             flow_window_packets (SRTO_FC, default 25600 packets) to lift \
+             the ceiling"
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn set_int(
     handle: srt_sys::SRTSOCKET,
     opt: srt_sys::SRT_SOCKOPT,
@@ -482,6 +515,24 @@ pub(crate) fn set_int(
         return Err(last_error().into());
     }
     Ok(())
+}
+
+/// Read an `int` socket option back from libsrt. Used to detect the
+/// silent adjustments libsrt applies at set time (e.g. `SRTO_RCVBUF`'s
+/// flow-control-window clamp) — the setter returns success in those
+/// cases, so a readback is the only way to see the effective value.
+pub(crate) fn get_int(
+    handle: srt_sys::SRTSOCKET,
+    opt: srt_sys::SRT_SOCKOPT,
+) -> Result<i32, OptionError> {
+    let mut value: i32 = 0;
+    let mut len = mem::size_of::<i32>() as c_int;
+    let rc =
+        unsafe { srt_sys::srt_getsockflag(handle, opt, (&raw mut value).cast(), &raw mut len) };
+    if rc < 0 {
+        return Err(last_error().into());
+    }
+    Ok(value)
 }
 
 pub(crate) fn set_i64(
@@ -681,9 +732,23 @@ pub(crate) fn apply_socket_config(
             duration_to_ms(d),
         )?;
     }
+    // MSS and the flow-control window MUST be applied before the SRT
+    // buffer sizes: libsrt converts SRTO_RCVBUF/SRTO_SNDBUF to packets
+    // using the MSS in effect at set time, and clamps SRTO_RCVBUF to the
+    // SRTO_FC window in effect at set time (socketconfig.cpp,
+    // RcvBufferSizeOptionToValue). With the old order — buffers first —
+    // a config that raised both `flow_window_packets` and
+    // `recv_buf_bytes` still had its receive buffer silently clamped to
+    // the DEFAULT window (25600 packets ≈ 37.7 MB at default MSS),
+    // making the FC raise a no-op for buffer sizing.
+    if let Some(mss) = cfg.mss {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
+    }
+    if let Some(n) = cfg.flow_window_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
+    }
     if let Some(n) = cfg.recv_buf_bytes {
-        let bytes = buf_bytes_to_i32("recv_buf_bytes", n)?;
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, bytes)?;
+        set_rcvbuf_checked(handle, n, cfg.mss)?;
     }
     if let Some(n) = cfg.send_buf_bytes {
         let bytes = buf_bytes_to_i32("send_buf_bytes", n)?;
@@ -703,9 +768,6 @@ pub(crate) fn apply_socket_config(
         }
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
     }
-    if let Some(mss) = cfg.mss {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
-    }
     if let Some(n) = cfg.payload_size {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
     }
@@ -723,9 +785,6 @@ pub(crate) fn apply_socket_config(
     }
     if let Some(on) = cfg.too_late_packet_drop {
         set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
-    }
-    if let Some(n) = cfg.flow_window_packets {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
     }
     if let Some(pf) = &cfg.packet_filter {
         set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
@@ -761,9 +820,17 @@ pub(crate) fn apply_listener_config(
             duration_to_ms(d),
         )?;
     }
+    // Same ordering requirement as apply_socket_config above: MSS and
+    // the flow-control window feed libsrt's SRTO_RCVBUF conversion at
+    // set time, so they must land first.
+    if let Some(mss) = cfg.mss {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
+    }
+    if let Some(n) = cfg.flow_window_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
+    }
     if let Some(n) = cfg.recv_buf_bytes {
-        let bytes = buf_bytes_to_i32("recv_buf_bytes", n)?;
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, bytes)?;
+        set_rcvbuf_checked(handle, n, cfg.mss)?;
     }
     if let Some(bw) = cfg.max_bandwidth {
         set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
@@ -776,9 +843,6 @@ pub(crate) fn apply_listener_config(
         }
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
     }
-    if let Some(mss) = cfg.mss {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
-    }
     if let Some(n) = cfg.payload_size {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
     }
@@ -790,9 +854,6 @@ pub(crate) fn apply_listener_config(
     }
     if let Some(on) = cfg.too_late_packet_drop {
         set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
-    }
-    if let Some(n) = cfg.flow_window_packets {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
     }
     if let Some(pf) = &cfg.packet_filter {
         set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
@@ -936,6 +997,59 @@ fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::SrtCancelHandle {
 
 #[cfg(test)]
 mod tests {
+    /// libsrt silently clamps `SRTO_RCVBUF` to the flow-control window
+    /// (default 25600 packets ≈ 37.7 MB at default MSS) — the setter
+    /// still returns success. `set_rcvbuf_checked` must surface that as
+    /// a warn naming the lifting knob. Empirically pins the clamp
+    /// mechanism against the vendored libsrt, not just our wrapper.
+    #[test]
+    #[tracing_test::traced_test]
+    fn rcvbuf_over_fc_window_clamps_and_warns() {
+        super::ensure_initialized();
+        let h = unsafe { srt_sys::srt_create_socket() };
+        assert_ne!(h, super::SRT_INVALID_SOCK);
+        let cfg = super::SocketConfig {
+            recv_buf_bytes: Some(60_000_000), // > default ceiling ~37.7 MB
+            ..Default::default()
+        };
+        super::apply_socket_config(h, &cfg).unwrap();
+        let effective = super::get_int(h, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF).unwrap();
+        unsafe { srt_sys::srt_close(h) };
+        assert!(
+            effective < 60_000_000,
+            "expected libsrt to clamp 60 MB below the FC window, got {effective}"
+        );
+        assert!(logs_contain("SRTO_RCVBUF silently clamped"));
+    }
+
+    /// Raising `flow_window_packets` must actually lift the receive
+    /// buffer ceiling — which requires SRTO_FC to be applied BEFORE
+    /// SRTO_RCVBUF (libsrt clamps against the window in effect at set
+    /// time). With the old buffers-first ordering this request came
+    /// back clamped to the DEFAULT window and the FC raise was a no-op
+    /// for buffer sizing.
+    #[test]
+    #[tracing_test::traced_test]
+    fn rcvbuf_with_raised_fc_window_honors_request() {
+        super::ensure_initialized();
+        let h = unsafe { srt_sys::srt_create_socket() };
+        assert_ne!(h, super::SRT_INVALID_SOCK);
+        let cfg = super::SocketConfig {
+            flow_window_packets: Some(51_200), // 2x default → ceiling ~75 MB
+            recv_buf_bytes: Some(60_000_000),
+            ..Default::default()
+        };
+        super::apply_socket_config(h, &cfg).unwrap();
+        let effective = super::get_int(h, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF).unwrap();
+        unsafe { srt_sys::srt_close(h) };
+        // Allow the one-packet floor-division rounding, nothing more.
+        assert!(
+            i64::from(effective) + (1500 - 28) >= 60_000_000,
+            "raised FC window did not lift the rcvbuf ceiling: effective {effective}"
+        );
+        assert!(!logs_contain("SRTO_RCVBUF silently clamped"));
+    }
+
     #[test]
     fn stats_struct_has_role_split_loss_fields() {
         // Compile-check that the new public fields exist.

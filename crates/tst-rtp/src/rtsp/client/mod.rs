@@ -79,9 +79,13 @@ impl Write for Stream {
 
 /// Sync RTSP client. One instance per server.
 ///
-/// Methods (options, describe, setup, play, pause, teardown,
-/// keepalive_now) are added by later tasks; this task ships only the
-/// struct definition + `connect` / `connect_with`.
+/// Construct via [`Self::connect`] / [`Self::connect_with`], then drive
+/// the session: `options` / `describe` / `setup_mp2t_auto` (or the
+/// explicit `setup*` variants) / `play` / `pause` / `teardown`.
+/// Keepalive pings run automatically on a background thread once SETUP
+/// establishes a session, at the server-advertised `timeout=` cadence.
+///
+/// # Send
 ///
 /// This type is `Send`: moving it to a dedicated receive/watchdog thread
 /// is a supported, documented use — a regression here is a breaking

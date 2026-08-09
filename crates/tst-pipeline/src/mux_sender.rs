@@ -1025,6 +1025,12 @@ impl<T: Transport> MuxSender<T> {
     pub fn close(&self) {
         match crate::mutex::try_lock(&self.inner) {
             crate::mutex::TryLockOutcome::Acquired(mut inner) => {
+                // Fast-path soundness: drain + close happen entirely under
+                // the inner lock, and every send routes through
+                // `push_then_drain`, whose FIRST action under that same
+                // lock is the `inner.closed` check — so a send that loses
+                // the lock race observes `closed` and refuses, and no
+                // bytes can ever be pushed at an already-closed transport.
                 let _ = inner.drain_pending();
                 inner.closed = true;
                 inner.transport.close();
@@ -1039,7 +1045,12 @@ impl<T: Transport> MuxSender<T> {
                     inner.transport.close();
                 }
             }
-            crate::mutex::TryLockOutcome::Poisoned(_) => {
+            crate::mutex::TryLockOutcome::Poisoned(guard) => {
+                // Release the poisoned guard BEFORE cancelling — cancel
+                // handles can wake threads that immediately retry this
+                // same lock, and there is no reason to hold it across
+                // the (potentially side-effectful) cancel call.
+                drop(guard);
                 if let Some(c) = &self.cancel {
                     c.cancel();
                 }
@@ -1081,9 +1092,16 @@ impl<T: Transport> MuxSender<T> {
             )
         };
         drop(cancel);
-        drop(span);
         let mut inner = inner.into_inner().unwrap_or_else(|e| e.into_inner());
-        let _ = inner.drain_pending();
+        {
+            // Keep the sender's span alive and entered across the final
+            // drain so its tracing events still attribute to this
+            // MuxSender (the span used to be dropped first, orphaning
+            // the drain's events).
+            let _enter = span.0.enter();
+            let _ = inner.drain_pending();
+        }
+        drop(span);
         inner.transport
     }
 

@@ -124,6 +124,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now enable `rtsp-server-tls` explicitly (they ship the server's TLS
   acceptor already).
 
+- **Docs:** **SETUP → PLAY → `into_h264_receiver` call order**, from an integrator
+  field report. `RtspSession::into_h264_receiver` and `RtspClient::play`
+  now spell out that PLAY must be issued before converting the session to
+  a receiver, and what happens if it isn't — `H264Receiver::recv_au` just
+  blocks waiting for AUs the server hasn't started sending yet. Previously
+  discoverable only by reading the integration tests.
+- **Docs:** **`Send` guarantee on `RtspClient` / `RtspSession` / `H264Receiver`**,
+  same field report. Moving one of these to a dedicated receive/watchdog
+  thread is now a documented, supported use — pinned with a compile-time
+  regression test, not just an implementation accident.
+
 ### Fixed
 
 - **`flow_window_packets` was a no-op for receive-buffer sizing** (tst-srt):
@@ -193,19 +204,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   background thread poisoned an internal mutex** (poison is recovered; a
   prior keepalive-thread panic can no longer abort the process via
   panic-in-panic during `Drop`), from an integrator field report.
-
-### Documented
-
-- **SETUP → PLAY → `into_h264_receiver` call order**, from an integrator
-  field report. `RtspSession::into_h264_receiver` and `RtspClient::play`
-  now spell out that PLAY must be issued before converting the session to
-  a receiver, and what happens if it isn't — `H264Receiver::recv_au` just
-  blocks waiting for AUs the server hasn't started sending yet. Previously
-  discoverable only by reading the integration tests.
-- **`Send` guarantee on `RtspClient` / `RtspSession` / `H264Receiver`**,
-  same field report. Moving one of these to a dedicated receive/watchdog
-  thread is now a documented, supported use — pinned with a compile-time
-  regression test, not just an implementation accident.
 
 ---
 

@@ -76,11 +76,11 @@ local dev-box state, no vendored corpus) via
 weekly on a schedule (Mondays 05:00 UTC), on every `workflow_dispatch`, and
 on any PR touching `crates/tst-interop/`, `scripts/interop/`, or the
 workflow file itself. The verified run cited above is
-[run 31294818583](https://github.com/aklofas/ts-transformer/actions/runs/31294818583)
-(`workflow_dispatch` at commit `1b11c234`, completed `success`; a fresh
-dispatch on the exact 0.5.0 release-candidate commit replaces this
-citation before the release tag — this page never cites an ancestor run
-as release-tree evidence) — its `results.json`/`results.md`,
+[run 31335394509](https://github.com/aklofas/ts-transformer/actions/runs/31335394509)
+(`workflow_dispatch` at commit `049fd4e3` — the complete 0.5.0
+release-candidate code; the release tag differs from that commit only
+by this citation paragraph — completed `success`, including the
+census-completeness assert) — its `results.json`/`results.md`,
 per-cell logs, and captures are attached as the `interop-evidence` artifact
 (90-day retention) and the run's own step summary. Every future weekly run
 re-publishes a fresh `interop-evidence` artifact and step summary on that

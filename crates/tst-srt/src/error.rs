@@ -355,13 +355,20 @@ pub enum SrtError {
 #[derive(Debug, Clone)]
 pub(crate) struct RawError {
     pub kind: SrtErrno,
+    /// Full libsrt errno exactly as `srt_getlasterror` returned it
+    /// (`major * 1000 + minor`, e.g. `SRT_ETIMEOUT` = 6003). `kind`
+    /// keeps only the major category; classifiers that need to
+    /// distinguish siblings within a category (timeout vs would-block,
+    /// both major 6) match on this instead of the error message text,
+    /// which libsrt does not treat as a stable API.
+    pub code: i32,
     pub message: String,
 }
 
 /// Read libsrt's last-error state. Call immediately after a libsrt FFI call
 /// returned an error indicator.
 pub(crate) fn last_error() -> RawError {
-    let kind = unsafe { srt_sys::srt_getlasterror(std::ptr::null_mut()) };
+    let code = unsafe { srt_sys::srt_getlasterror(std::ptr::null_mut()) };
     let msg_ptr = unsafe { srt_sys::srt_getlasterror_str() };
     let message = if msg_ptr.is_null() {
         "<no error string>".to_string()
@@ -371,7 +378,8 @@ pub(crate) fn last_error() -> RawError {
             .into_owned()
     };
     RawError {
-        kind: SrtErrno::from_raw(kind),
+        kind: SrtErrno::from_raw(code),
+        code,
         message,
     }
 }
@@ -561,11 +569,16 @@ impl RejectReason {
 }
 
 /// Decide whether a `RawError` indicates a timeout.
+///
+/// Matches the exact libsrt errno (`SRT_ETIMEOUT`, 6003 — what a
+/// blocking call raises when `SRTO_RCVTIMEO`/`SRTO_SNDTIMEO`/
+/// `SRTO_CONNTIMEO` expires) rather than the error message text. The
+/// previous implementation substring-matched "timeout"/"timed out",
+/// which libsrt does not treat as a stable API — any upstream rewording
+/// would have silently turned timeouts into generic errors (flagged by
+/// the interop-evidence arc, 2026-08-03).
 pub(crate) fn is_timeout(raw: &RawError) -> bool {
-    matches!(raw.kind, SrtErrno::Async)
-        && (raw.message.contains("Timeout")
-            || raw.message.contains("timeout")
-            || raw.message.contains("timed out"))
+    raw.code == srt_sys::SRT_ERRNO_SRT_ETIMEOUT
 }
 
 /// Decide whether a `RawError` indicates the connection has been broken.
@@ -578,7 +591,9 @@ pub(crate) fn is_broken(raw: &RawError) -> bool {
 // From<RawError> impls — translate raw libsrt errors into typed variants.
 // Each per-call enum has an `Other { kind, message }` catch-all populated here.
 // Specific cases (timeout, broken, refused, rejected, address-in-use,
-// permission-denied) are detected by classifier helpers and string matching.
+// permission-denied) are detected by classifier helpers — errno-matched
+// where libsrt gives a dedicated code (timeout = SRT_ETIMEOUT), string-
+// matched where it doesn't (broken/refused/in-use ride generic majors).
 // ============================================================================
 
 impl From<RawError> for ConnectError {
@@ -975,17 +990,29 @@ mod tests {
 
     #[test]
     fn timeout_classifier() {
+        // The real thing: SRT_ETIMEOUT (6003), regardless of message text.
         let r = RawError {
             kind: SrtErrno::Async,
-            message: "Operation timed out".into(),
+            code: srt_sys::SRT_ERRNO_SRT_ETIMEOUT,
+            message: "whatever text libsrt uses this release".into(),
         };
         assert!(is_timeout(&r));
+        // A sibling major-6 errno (EASYNCRCV, 6002) is NOT a timeout even
+        // when its message happens to contain the word — pins the
+        // errno-over-text contract.
+        let r = RawError {
+            kind: SrtErrno::Async,
+            code: srt_sys::SRT_ERRNO_SRT_EASYNCRCV,
+            message: "Operation timed out".into(),
+        };
+        assert!(!is_timeout(&r));
     }
 
     #[test]
     fn broken_classifier() {
         let r = RawError {
             kind: SrtErrno::Connection,
+            code: 2001, // SRT_ECONNLOST; is_broken doesn't consult code
             message: "Connection broken".into(),
         };
         assert!(is_broken(&r));
@@ -1179,6 +1206,7 @@ mod tests {
     fn setup_category_reject_maps_to_rejected_badsecret() {
         let raw = RawError {
             kind: SrtErrno::Setup,
+            code: 1002, // SRT_ECONNREJ; classifier reads kind + reject reason
             message: "Connection rejected".into(),
         };
         let reason = RejectReason::BadSecret;
@@ -1197,6 +1225,7 @@ mod tests {
     fn connection_category_unknown_reason_maps_to_other() {
         let raw = RawError {
             kind: SrtErrno::Connection,
+            code: 2001, // SRT_ECONNLOST; classifier reads kind + message
             message: "some other connection error".into(),
         };
         let reason = RejectReason::Unknown;
@@ -1212,6 +1241,7 @@ mod tests {
     fn connection_category_refused_message_maps_to_refused() {
         let raw = RawError {
             kind: SrtErrno::Connection,
+            code: 2001, // SRT_ECONNLOST; classifier reads kind + message
             message: "Connection refused".into(),
         };
         let reason = RejectReason::Unknown;
@@ -1230,6 +1260,7 @@ mod tests {
     fn setup_category_refused_message_maps_to_other_not_refused() {
         let raw = RawError {
             kind: SrtErrno::Setup,
+            code: 1002, // SRT_ECONNREJ; classifier reads kind + reject reason
             message: "Connection setup failure: connection refused".into(),
         };
         let reason = RejectReason::Unknown;
@@ -1247,6 +1278,7 @@ mod tests {
     fn setup_category_reject_timeout_maps_to_timed_out() {
         let raw = RawError {
             kind: SrtErrno::Setup,
+            code: 1002, // SRT_ECONNREJ; classifier reads kind + reject reason
             message: "Connection setup failure: connection timeout".into(),
         };
         let reason = RejectReason::Timeout;
@@ -1263,6 +1295,7 @@ mod tests {
     fn setup_category_reject_badsecret_still_maps_to_rejected() {
         let raw = RawError {
             kind: SrtErrno::Setup,
+            code: 1002, // SRT_ECONNREJ; classifier reads kind + reject reason
             message: "Connection rejected".into(),
         };
         let reason = RejectReason::BadSecret;
@@ -1276,12 +1309,15 @@ mod tests {
         }
     }
 
-    // The Async+timeout-message path (existing behaviour) must remain TimedOut.
+    // The SRT_ETIMEOUT path must remain TimedOut (classification now keys
+    // on the errno, not the message text — the text here is deliberately
+    // unhelpful to pin that).
     #[test]
-    fn async_timeout_message_maps_to_timed_out() {
+    fn async_timeout_errno_maps_to_timed_out() {
         let raw = RawError {
             kind: SrtErrno::Async,
-            message: "Timeout occurred".into(),
+            code: srt_sys::SRT_ERRNO_SRT_ETIMEOUT,
+            message: "some future libsrt wording".into(),
         };
         let reason = RejectReason::Unknown;
         let err = classify_connect_error(raw, reason);

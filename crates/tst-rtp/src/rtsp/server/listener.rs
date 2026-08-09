@@ -103,6 +103,12 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                         // EVERY exit path (including a TLS-handshake failure that
                         // returns before the session loop runs — the leak the old
                         // in-session `fetch_sub` couldn't cover).
+                        // `fetch_update` carries a nightly-only deprecation in
+                        // favor of `try_update`, which is NOT available on the
+                        // pinned 1.85 toolchain — do not migrate until the
+                        // workspace MSRV moves past `try_update`'s
+                        // stabilization (tracked as a dated ROADMAP rider so
+                        // the next toolchain bump doesn't trip clippy here).
                         let reserved = state
                             .active_sessions
                             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {

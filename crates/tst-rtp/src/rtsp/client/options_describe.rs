@@ -268,8 +268,23 @@ impl RtspClient {
         &mut self,
         request_bytes: &[u8],
     ) -> Result<RtspResponse, RtspError> {
+        self.send_and_read_with_deadline(request_bytes, None)
+    }
+
+    /// Variant of [`Self::send_and_read`] with an optional hard deadline,
+    /// honored on BOTH read paths. When `deadline` elapses with no
+    /// complete response, returns [`RtspError::Io`] with
+    /// [`std::io::ErrorKind::TimedOut`]. Deadline granularity is one
+    /// read-poll cycle (~100 ms — the stream read timeout set in
+    /// [`RtspClient::connect_with`]) on the non-pump path, one `ctrl_rx`
+    /// poll on the pump path.
+    pub(crate) fn send_and_read_with_deadline(
+        &mut self,
+        request_bytes: &[u8],
+        deadline: Option<std::time::Instant>,
+    ) -> Result<RtspResponse, RtspError> {
         if self.pump_state.is_some() {
-            return self.send_and_read_via_pump(request_bytes);
+            return self.send_and_read_via_pump_with_deadline(request_bytes, deadline);
         }
         let mut s = crate::rtsp::client::lock_unpoisoned(&self.stream);
         s.write_all(request_bytes)
@@ -279,6 +294,9 @@ impl RtspClient {
         loop {
             if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(RtspError::LocalCancel);
+            }
+            if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                return Err(RtspError::Io(std::io::ErrorKind::TimedOut));
             }
             match s.read(&mut chunk) {
                 Ok(0) => return Err(RtspError::Io(std::io::ErrorKind::UnexpectedEof)),
@@ -349,13 +367,7 @@ impl RtspClient {
         }
     }
 
-    /// Pump-active variant of [`Self::send_and_read`]. Write under the
-    /// stream mutex (brief), then poll `ctrl_rx` matching by CSeq.
-    fn send_and_read_via_pump(&mut self, request_bytes: &[u8]) -> Result<RtspResponse, RtspError> {
-        self.send_and_read_via_pump_with_deadline(request_bytes, None)
-    }
-
-    /// Variant of [`Self::send_and_read_via_pump`] with an optional
+    /// Pump-active variant of [`Self::send_and_read`] with an optional
     /// hard deadline. When `deadline` elapses with no matching response,
     /// returns [`RtspError::Io`] with [`std::io::ErrorKind::TimedOut`].
     ///

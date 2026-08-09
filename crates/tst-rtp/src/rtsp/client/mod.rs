@@ -90,13 +90,6 @@ impl Write for Stream {
 /// This type is `Send`: moving it to a dedicated receive/watchdog thread
 /// is a supported, documented use — a regression here is a breaking
 /// change.
-//
-// `dead_code` allowed because several fields here are populated /
-// consumed by later tasks in this plan (session lifecycle, keepalive,
-// transport negotiation). The struct shape is intentionally fixed up
-// front so each later task can dispatch in parallel against a stable
-// surface.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct RtspClient {
     /// The control-plane byte stream — plain TCP for `rtsp://`, or

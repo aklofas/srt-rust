@@ -3,8 +3,9 @@
 //! channel, routes RTP/RTCP frames to the appropriate ingest path, and
 //! pushes RTSP request frames to the per-session handler.
 //!
-//! Mirror of the (yet-to-land Task 20) client-side pump. Both close
-//! Phase 2's deferred fix 1.
+//! Mirror of the client-side pump
+//! (`crate::rtsp::client::interleaved_pump`). Both close Phase 2's
+//! deferred fix 1.
 //!
 //! Architecture (per-session):
 //! - The per-session task owns a `OwnedReadHalf<TcpStream>` (split from

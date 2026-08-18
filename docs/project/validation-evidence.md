@@ -76,11 +76,15 @@ local dev-box state, no vendored corpus) via
 weekly on a schedule (Mondays 05:00 UTC), on every `workflow_dispatch`, and
 on any PR touching `crates/tst-interop/`, `scripts/interop/`, or the
 workflow file itself. The verified run cited above is
-[run 31335394509](https://github.com/aklofas/ts-transformer/actions/runs/31335394509)
-(`workflow_dispatch` at commit `049fd4e3` — the complete 0.5.0
+[run 32103732958](https://github.com/aklofas/ts-transformer/actions/runs/32103732958)
+(`workflow_dispatch` at commit `239e2d80` — the complete 0.5.1
 release-candidate code; the release tag differs from that commit only
-by this citation paragraph — completed `success`, including the
-census-completeness assert) — its `results.json`/`results.md`,
+by documentation/evidence updates, this citation included — completed
+`success` on 2026-08-18 with the census-completeness assert, the same
+157 / 80 / 0 / 65 / 12 census, and 157 per-cell result records with
+zero `FAIL`; the earlier 0.5.0-candidate
+[run 31335394509](https://github.com/aklofas/ts-transformer/actions/runs/31335394509)
+remains valid historical evidence) — its `results.json`/`results.md`,
 per-cell logs, and captures are attached as the `interop-evidence` artifact
 (90-day retention) and the run's own step summary. Every future weekly run
 re-publishes a fresh `interop-evidence` artifact and step summary on that
@@ -88,8 +92,9 @@ same workflow; check the [workflow's runs page](https://github.com/aklofas/ts-tr
 for the latest one.
 
 Peer-tool versions drift over time on a rolling `ubuntu-latest` image
-(FFmpeg 6.1.1-3ubuntu5, TSDuck pinned to a specific `.deb` release, VLC
-3.0.20, mpv 0.37.0, GStreamer 1.24.2 as of the run cited here) — a future
+(FFmpeg 6.1.1-3ubuntu5, TSDuck 3.44-4676 pinned via a specific `.deb`
+release, VLC 3.0.20, mpv 0.37.0, GStreamer 1.24.2 as recorded in the
+cited run's `results.md` tool stamps) — a future
 run surfacing a new `FAIL`, or flagging a documented gap as stale because it
 started passing, is this system working as designed, not a bug in the
 workflow. See the workflow file's own comments for the exact reasoning.

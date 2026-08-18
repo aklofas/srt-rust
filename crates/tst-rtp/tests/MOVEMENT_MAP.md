@@ -74,7 +74,7 @@ unchanged (310) and the test leaf-name multiset is byte-identical before/after
 | `rtsp_server_lagging_peer.rs` | `rtsp_server/lagging_peer.rs` |
 | `rtsp_server_loopback_interleaved.rs` | `rtsp_server/loopback_interleaved.rs` |
 | `rtsp_server_loopback_udp.rs` | `rtsp_server/loopback_udp.rs` |
-| `rtsp_server_mixed_transports.rs` | `rtsp_server/mixed_transports.rs` |
+| `rtsp_server_mixed_transports.rs` | DELETED 2026-08-18 — was an empty no-op placeholder for a mixed UDP+multicast assertion; both legs are covered in isolation (`loopback_udp.rs`, `multicast.rs`) and the scenario adds no new server behavior (release-gate audit RLS-051-FU-N04) |
 | `rtsp_server_mount.rs` | `rtsp_server/mount.rs` |
 | `rtsp_server_multicast.rs` | `rtsp_server/multicast.rs` |
 | `rtsp_server_notice_5402.rs` | `rtsp_server/notice_5402.rs` |

@@ -29,8 +29,6 @@ mod lagging_peer;
 mod loopback_interleaved;
 #[path = "rtsp_server/loopback_udp.rs"]
 mod loopback_udp;
-#[path = "rtsp_server/mixed_transports.rs"]
-mod mixed_transports;
 #[path = "rtsp_server/mount.rs"]
 mod mount;
 #[path = "rtsp_server/multicast.rs"]

@@ -676,20 +676,39 @@ deliberate ergonomic adaptations for each language's idiom.
 
 ## Sanitizers
 
-Nightly GitHub Actions workflow `.github/workflows/sanitizers.yml` runs
-`tst-core` and `tst-pipeline` test suites under AddressSanitizer +
-ThreadSanitizer (separate jobs; sanitizers can't combine in a single
-binary). Trigger: `schedule: '0 3 * * *'` UTC + on-demand
-`workflow_dispatch`.
+Nightly GitHub Actions workflow `.github/workflows/sanitizers.yml`
+(trigger: `schedule: '0 3 * * *'` UTC + on-demand `workflow_dispatch`)
+runs three sanitizer jobs. The workflow file is the source of truth for
+this section; the current scope is:
 
-Crates currently NOT covered by sanitizer CI:
-- `tst-srt` — links vendored libsrt (C++) which is not yet built with
-  `-fsanitize=*`. Tracked as a follow-up plan that threads sanitizer
-  flags into the cmake invocation.
-- `tst-c` — same constraint via its `tst-srt` dependency.
+- **AddressSanitizer + ThreadSanitizer, hard-gated:** the six pure-Rust
+  crates — `tst-core`, `tst-pipeline`, `tst-rtp`, `tst-udp`, `tst-tcp`,
+  `tst-hls` — run their test suites under ASan and under TSan in
+  separate jobs (sanitizers can't combine in a single binary).
+- **Native AddressSanitizer, phase-in (soft-fail):** `tst-srt`,
+  `tst-rist`, and `tst-c` run under ASan with the vendored native
+  libraries (libsrt, librist, mbedTLS) themselves compiled
+  `-fsanitize=address` via the `TST_NATIVE_SANITIZER` build hook. This
+  job is currently `continue-on-error` during its dated phase-in window
+  and is scheduled to become hard-gating after 2026-08-19.
+- **No native ThreadSanitizer job exists yet** — a native-TSan twin is
+  planned but has not landed. JVM and Python memory-sanitizer coverage
+  is likewise deferred; see
+  [deferred-features](/docs/project/deferred-features.md).
 
-OSS-Fuzz (separate infrastructure under `oss-fuzz/`) runs ASan + UBSan
-on the 16 fuzz harnesses continuously.
+## Fuzzing
+
+31 cargo-fuzz harnesses live in-tree (26 in `tst-core`, 4 in `tst-rtp`,
+1 in `tst-srt`; inventory ground truth is
+`tests/coverage/fuzz-targets.toml`). CI compile-checks the harnesses
+nightly; deeper runs are local (`cargo +nightly fuzz run <target>`).
+
+OSS-Fuzz status: **onboarding artifacts exist under `oss-fuzz/`
+(Dockerfile + build script bundling all 31 harnesses), but the project
+is not yet enrolled upstream — there is no continuous OSS-Fuzz fleet
+coverage today.** Enrollment is a planned maintainer-driven PR to
+`google/oss-fuzz`; the bundle requires a fresh local verification run
+before submission (see `oss-fuzz/VERIFICATION.md`).
 
 ---
 

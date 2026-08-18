@@ -6,8 +6,10 @@
 #     gcr.io/oss-fuzz/ts-transformer compile
 #
 # Responsibilities:
-#   1. Build all 16 cargo-fuzz harnesses (tst-core: 15, tst-srt: 1) under
-#      libFuzzer with the SANITIZER env-var honored by cargo-fuzz.
+#   1. Build every cargo-fuzz harness in the tree (tst-core, tst-rtp,
+#      tst-srt — the count is asserted against the fuzz_targets/*.rs
+#      inventory at the end of this script, so it cannot silently drift)
+#      under libFuzzer with the SANITIZER env-var honored by cargo-fuzz.
 #   2. Copy each driver binary to $OUT/<target_name>.
 #
 # Seed corpora, dictionaries, and .options files are emitted in later
@@ -25,31 +27,33 @@ pushd crates/tst-core
 cargo +nightly fuzz build --release
 popd
 
+# Build tst-rtp fuzz targets.
+pushd crates/tst-rtp
+cargo +nightly fuzz build --release
+popd
+
 # Build tst-srt fuzz targets.
 pushd crates/tst-srt
 cargo +nightly fuzz build --release
 popd
 
-# Copy tst-core fuzz drivers to $OUT/.
-for target_src in crates/tst-core/fuzz/fuzz_targets/*.rs; do
-  target_name=$(basename "$target_src" .rs)
-  bin_path="crates/tst-core/fuzz/$TARGET_DIR/$target_name"
-  if [ -x "$bin_path" ]; then
-    cp "$bin_path" "$OUT/$target_name"
-  else
-    echo "WARN: tst-core fuzz binary missing for $target_name (expected $bin_path)"
-  fi
-done
-
-# Copy tst-srt fuzz drivers to $OUT/.
-for target_src in crates/tst-srt/fuzz/fuzz_targets/*.rs; do
-  target_name=$(basename "$target_src" .rs)
-  bin_path="crates/tst-srt/fuzz/$TARGET_DIR/$target_name"
-  if [ -x "$bin_path" ]; then
-    cp "$bin_path" "$OUT/$target_name"
-  else
-    echo "WARN: tst-srt fuzz binary missing for $target_name (expected $bin_path)"
-  fi
+# Copy fuzz drivers to $OUT/, counting executable drivers only (corpora,
+# dictionaries, and .options are packaged separately below and must not
+# inflate the driver count).
+shipped_drivers=0
+expected_drivers=0
+for crate_dir in crates/tst-core crates/tst-rtp crates/tst-srt; do
+  for target_src in "$crate_dir"/fuzz/fuzz_targets/*.rs; do
+    expected_drivers=$((expected_drivers + 1))
+    target_name=$(basename "$target_src" .rs)
+    bin_path="$crate_dir/fuzz/$TARGET_DIR/$target_name"
+    if [ -x "$bin_path" ]; then
+      cp "$bin_path" "$OUT/$target_name"
+      shipped_drivers=$((shipped_drivers + 1))
+    else
+      echo "ERROR: $crate_dir fuzz binary missing for $target_name (expected $bin_path)"
+    fi
+  done
 done
 
 # Copy per-target .options files where present.
@@ -105,6 +109,12 @@ zip_seeds mux_push_video            crates/tst-core/fuzz/seeds/mux_push_video
 zip_seeds parse_parameter_sets      crates/tst-core/fuzz/seeds/parse_parameter_sets
 zip_seeds parse_av1_sequence_header crates/tst-core/fuzz/seeds/parse_av1_sequence_header
 
-# Confirm the expected count made it to $OUT/.
-shipped=$(ls "$OUT/" | wc -l)
-echo "INFO: shipped $shipped fuzz drivers to \$OUT"
+# Assert every declared harness shipped as an executable driver. This
+# counts drivers only — NOT the corpora/dict/options files above — so a
+# fuzz-target addition that build.sh fails to bundle breaks the build
+# loudly instead of shipping a silently smaller fleet.
+echo "INFO: shipped $shipped_drivers/$expected_drivers fuzz drivers to \$OUT"
+if [ "$shipped_drivers" -ne "$expected_drivers" ]; then
+  echo "ERROR: driver count mismatch — expected $expected_drivers (one per fuzz_targets/*.rs), shipped $shipped_drivers"
+  exit 1
+fi

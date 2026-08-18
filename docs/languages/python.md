@@ -610,9 +610,12 @@ cancel fires. RTP/UDP is connectionless — a remote sender closing does NOT
 end a `recv()` loop; stop on a sentinel or via `cancel_handle().cancel()`,
 which wakes a parked `send` / `recv` with `RtpError(CANCELLED)` within
 ~100 ms. The RTP `CancelHandle` has only `cancel()` — no `is_cancelled()`
-(differs from SRT). A literal `rtp://host:0` receiver is unusable: RTCP
-auto-binds `port + 1`, which for port 0 lands on port 1 — bind a concrete
-port.
+(differs from SRT). A literal `rtp://host:0` receiver binds (the kernel
+picks an ephemeral port; RTCP is off by default on this surface), but it
+is impractical: the raw receiver exposes no local-address getter, so
+there is no way to learn which port the kernel chose and no sender can
+be pointed at it — bind a concrete port. (The H.264 receiver surface
+differs: `H264Receiver.local_addr()` reports its bound address.)
 
 ### RTP convenience (`MuxSender` / `DemuxReceiver`)
 

@@ -1694,22 +1694,27 @@ mod tests {
     /// The configured knob on the REAL UDP source — the persistent-path
     /// twin of the mpsc trait-level test above: a quiet socket with a
     /// 300 ms configured timeout must surface `Backpressure` through the
-    /// trait `recv_bytes`, transport still alive. The port pair is
-    /// discovered up front (RTCP companion binds port+1) so a wake-up
-    /// packet can serve as the unblock lever if a regression
-    /// re-introduces the infinite block.
+    /// trait `recv_bytes`, transport still alive. The port must be known
+    /// up front (the transport exposes no local-addr getter and the
+    /// wake-packet unblock lever below needs a destination), so the test
+    /// discovers-then-releases an ephemeral port and retries the build
+    /// on the rare cross-process steal. RTCP stays at the builder
+    /// default (off) — no companion port is involved.
     #[test]
     fn configured_recv_timeout_bounds_udp_trait_recv_bytes() {
-        let port = {
-            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-            let base = s.local_addr().unwrap().port();
-            assert!(base < u16::MAX, "ephemeral port at u16::MAX");
-            drop(std::net::UdpSocket::bind(("127.0.0.1", base + 1)).unwrap());
-            base
+        let (mut t, port) = {
+            let mut out = None;
+            for _ in 0..50 {
+                let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+                let candidate = s.local_addr().unwrap().port();
+                drop(s);
+                if let Ok(built) = RtpRecvSocketBuilder::new("127.0.0.1", candidate).build() {
+                    out = Some((built, candidate));
+                    break;
+                }
+            }
+            out.expect("could not allocate a loopback UDP port in 50 attempts")
         };
-        let mut t = RtpRecvSocketBuilder::new("127.0.0.1", port)
-            .build()
-            .unwrap();
         t.set_recv_timeout(Some(Duration::from_millis(300)));
 
         let worker = std::thread::spawn(move || {

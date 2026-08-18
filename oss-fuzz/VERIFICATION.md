@@ -10,6 +10,19 @@
 > 2026-05-15 run; re-verification before the OSS-Fuzz PR ships will produce
 > updated figures (expect 15 targets / 13 seed corpora / 3 dicts).
 
+> **Subsequent change (2026-08-18):** the workspace fuzz inventory has since
+> grown to **31 targets** (26 in `tst-core`, 4 in `tst-rtp`, 1 in `tst-srt`
+> — ground truth: `tests/coverage/fuzz-targets.toml` /
+> `find crates -path '*fuzz/fuzz_targets/*.rs'`). `build.sh` was updated the
+> same day to build + bundle all three crates and to hard-fail on any
+> shipped-driver count mismatch against that inventory (the old script built
+> only tst-core + tst-srt and its final count line counted every `$OUT` file,
+> corpora included). **This log's 2026-05-15 run is therefore STALE for the
+> current bundle: the full `helper.py` build_image / build_fuzzers /
+> check_build / run_fuzzer sequence MUST be re-run and recorded here before
+> the upstream `google/oss-fuzz` PR is opened.** No upstream enrollment
+> exists yet; nothing runs continuously on the OSS-Fuzz fleet today.
+
 ## Build method
 
 Built with local source mount (required because Tasks 1-10 commits are not yet pushed to

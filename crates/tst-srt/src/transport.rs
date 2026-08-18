@@ -410,15 +410,6 @@ mod tests {
     #[ignore = "needs live SRT socket; covered by tests/cancellation_loopback.rs"]
     fn cancel_handle_some_when_alive() {}
 
-    /// Sanity: with no Socket held (already-closed transport), the
-    /// cancel-handle accessor returns None — there's nothing to cancel.
-    #[test]
-    fn cancel_handle_none_when_already_closed() {
-        // We can't construct an SrtTransport without a live Socket
-        // through the public API, so this assertion lives in the
-        // integration test instead. Documented as a guarantee here.
-    }
-
     /// validate-1 D5: ensure `SrtErrno::raw_code()` produces the libsrt
     /// MJ_* major-category integers the `errno_code` field on
     /// `TransportError::{Backpressure, Broken}` carries. Bindings that

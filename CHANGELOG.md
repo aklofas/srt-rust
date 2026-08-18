@@ -9,7 +9,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`RtpRecvTransport::set_recv_timeout(Option<Duration>)`** (from an
+  integrator field report — the same stalled-but-healthy session class
+  0.5.0's one-shot deadlines addressed). A persistent receive deadline
+  honored by the blocking trait `recv_bytes` path: on expiry it returns
+  `TransportError::Backpressure` with the transport left alive, so the
+  receive shells (`DemuxReceiver`, `Receiver`, `RawReceiver`) surface
+  the stall as their retryable `Backpressure`-kind error — the same
+  shell-visible contract SRT's builder-configured `recv_timeout`
+  (`SRTO_RCVTIMEO`) has always had. This makes a `for ev in
+  DemuxReceiver` pump over an RTSP/RTP session deadline-drivable with
+  no cancel thread: set the timeout on the transport returned by
+  `RtspSession::into_recv_transport` before wrapping it. Default `None`
+  keeps the existing infinite block; granularity is the ~100 ms
+  cancel-poll interval; `Duration::MAX` saturates to "no deadline"; the
+  one-shot `recv_timeout` method ignores the configured value (its
+  explicit argument wins for that call). `ManagedRecvTransport`
+  propagates the expiry unchanged — a recv timeout is not a reconnect
+  trigger. Python/JVM/C mirrors ride the existing "RTP receive-deadline
+  bindings parity" entry in `docs/project/deferred-features.md`.
 
 ---
 

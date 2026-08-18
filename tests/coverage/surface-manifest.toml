@@ -8808,6 +8808,19 @@ bindings = []
 scenario_ids = []
 tier = "A"
 
+# set_recv_timeout: configured (persistent) receive deadline honored by
+# the blocking trait recv_bytes path, so the receive shells surface a
+# stall as their retryable Backpressure-kind error; dedicated tests
+# (trait-level + DemuxReceiver-level) colocated in transport.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::transport::RtpRecvTransport::set_recv_timeout"
+owning_tests = ["crates/tst-rtp/src/transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::transport::RtpRecvTransport::rtcp_stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

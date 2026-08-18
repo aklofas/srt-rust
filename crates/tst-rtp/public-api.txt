@@ -1369,6 +1369,7 @@ pub fn tst_rtp::transport::RtpRecvTransport::listen_with_rtcp(&tst_rtp::url::Rtp
 pub fn tst_rtp::transport::RtpRecvTransport::recv_timeout(&mut self, &mut [u8], core::time::Duration) -> core::result::Result<core::option::Option<usize>, tst_core::transport::TransportError>
 pub fn tst_rtp::transport::RtpRecvTransport::rtcp_stats(&self) -> tst_rtp::rtcp::stats::RtcpStats
 pub fn tst_rtp::transport::RtpRecvTransport::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpRecvTransport::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>)
 impl core::ops::drop::Drop for tst_rtp::transport::RtpRecvTransport
 pub fn tst_rtp::transport::RtpRecvTransport::drop(&mut self)
 impl tst_core::transport::RecvTransport for tst_rtp::transport::RtpRecvTransport
@@ -2558,6 +2559,7 @@ pub fn tst_rtp::transport::RtpRecvTransport::listen_with_rtcp(&tst_rtp::url::Rtp
 pub fn tst_rtp::transport::RtpRecvTransport::recv_timeout(&mut self, &mut [u8], core::time::Duration) -> core::result::Result<core::option::Option<usize>, tst_core::transport::TransportError>
 pub fn tst_rtp::transport::RtpRecvTransport::rtcp_stats(&self) -> tst_rtp::rtcp::stats::RtcpStats
 pub fn tst_rtp::transport::RtpRecvTransport::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpRecvTransport::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>)
 impl core::ops::drop::Drop for tst_rtp::transport::RtpRecvTransport
 pub fn tst_rtp::transport::RtpRecvTransport::drop(&mut self)
 impl tst_core::transport::RecvTransport for tst_rtp::transport::RtpRecvTransport

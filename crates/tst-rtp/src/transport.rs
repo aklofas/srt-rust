@@ -651,6 +651,10 @@ pub struct RtpRecvTransport {
     /// reflection by Task 8 ingest paths.
     #[allow(dead_code)]
     ssrc: u32,
+    /// Persistent deadline applied by the blocking
+    /// [`RecvTransport::recv_bytes`] path. `None` (the default) blocks
+    /// indefinitely. See [`Self::set_recv_timeout`].
+    recv_timeout: Option<Duration>,
 }
 
 /// RTP-protocol-level stats separate from [`SocketStats`].
@@ -817,6 +821,7 @@ impl RtpRecvTransport {
                             rtcp_stats,
                             rtcp_reporter: None,
                             ssrc,
+                            recv_timeout: None,
                         });
                     }
                 };
@@ -846,6 +851,7 @@ impl RtpRecvTransport {
                         rtcp_stats,
                         rtcp_reporter: None,
                         ssrc,
+                        recv_timeout: None,
                     });
                 };
                 let rtcp_target = SocketAddr::new(ip, rtcp_companion_port);
@@ -886,6 +892,7 @@ impl RtpRecvTransport {
             rtcp_stats,
             rtcp_reporter,
             ssrc,
+            recv_timeout: None,
         })
     }
 
@@ -917,6 +924,7 @@ impl RtpRecvTransport {
             rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
             rtcp_reporter: None,
             ssrc,
+            recv_timeout: None,
         })
     }
 
@@ -953,6 +961,7 @@ impl RtpRecvTransport {
             rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
             rtcp_reporter: None,
             ssrc,
+            recv_timeout: None,
         }
     }
 
@@ -998,12 +1007,45 @@ impl RtpRecvTransport {
             .unwrap_or_default()
     }
 
+    /// Configure a persistent receive deadline for the blocking
+    /// [`RecvTransport::recv_bytes`] path — and therefore for any shell
+    /// wrapping this transport (`DemuxReceiver`, `Receiver`,
+    /// `RawReceiver`).
+    ///
+    /// With `Some(timeout)`, a `recv_bytes` call that sees no valid MP2T
+    /// bundle within `timeout` returns
+    /// [`TransportError::Backpressure`]; the transport stays alive and
+    /// the next call starts a fresh deadline. This is the
+    /// configured-knob mirror of [`Self::recv_timeout`]'s one-shot
+    /// deadline, aligned with the SRT transport's builder-configured
+    /// receive timeout: shells surface the expiry as their
+    /// `Backpressure`-kind error (see `DemuxReceiverError`'s
+    /// reachable-kinds table in `tst-pipeline`) rather than a terminal
+    /// one. That makes a deadline-driven stall watchdog possible with no
+    /// cancel thread — a stalled-but-healthy session (peer stops
+    /// sending; no error, no EOS) hands control back to the caller every
+    /// `timeout`. `ManagedRecvTransport` propagates the `Backpressure`
+    /// unchanged (a recv timeout is not a reconnect trigger).
+    ///
+    /// `None` (the default) restores the indefinite-block behavior.
+    ///
+    /// Deadline granularity is the internal cancel-poll interval
+    /// (~100 ms). A `timeout` too large to represent as a deadline
+    /// (e.g. `Duration::MAX`) saturates to "no deadline". The one-shot
+    /// [`Self::recv_timeout`] method ignores this setting — its explicit
+    /// argument always wins for that call.
+    pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) {
+        self.recv_timeout = timeout;
+    }
+
     /// [`RecvTransport::recv_bytes`] with a deadline. Returns `Ok(None)` if
     /// no valid MP2T bundle arrives within `deadline` — the transport
     /// stays alive and callers may call this again to keep waiting.
     /// Mirrors `UdpRecvTransport::recv_timeout`'s `Ok(None)` shape
-    /// (`crates/tst-udp/src/recv.rs`); `recv_bytes`'s infinite-block
-    /// behavior is unchanged.
+    /// (`crates/tst-udp/src/recv.rs`); `recv_bytes` still blocks
+    /// indefinitely unless a persistent deadline was configured via
+    /// [`Self::set_recv_timeout`] (which this one-shot method ignores —
+    /// the explicit `timeout` argument always wins for this call).
     ///
     /// Deadline granularity is the internal cancel-poll interval
     /// (~100 ms): RTP-header-decode failures and PT mismatches keep
@@ -1134,8 +1176,24 @@ impl RecvTransport for RtpRecvTransport {
     ///
     /// The demuxer's own resync logic remains defense-in-depth and is
     /// unchanged.
+    ///
+    /// # Blocking and the configured deadline
+    ///
+    /// Blocks indefinitely by default. With a persistent deadline
+    /// configured via [`RtpRecvTransport::set_recv_timeout`], returns
+    /// [`TransportError::Backpressure`] when no valid MP2T bundle
+    /// arrives within the configured window — the transport stays
+    /// alive and the next call starts a fresh deadline (the receive
+    /// shells surface this as their `Backpressure`-kind error).
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
-        self.recv_bytes_inner(buf, None)
+        // checked_add mirrors `recv_timeout`'s saturation: a configured
+        // timeout too large to represent as an `Instant` (e.g.
+        // `Duration::MAX`) means "no deadline" rather than a panic on a
+        // public input.
+        let deadline = self
+            .recv_timeout
+            .and_then(|t| Instant::now().checked_add(t));
+        self.recv_bytes_inner(buf, deadline)
     }
 
     fn max_payload(&self) -> usize {
@@ -1372,6 +1430,180 @@ mod tests {
         let res = t.recv_timeout(&mut buf, std::time::Duration::MAX).unwrap();
         assert!(res.is_some(), "MAX wait must deliver the delayed packet");
         sender.join().unwrap();
+    }
+
+    /// Configured-timeout knob (`set_recv_timeout`): the blocking TRAIT
+    /// `recv_bytes` path must honor a persistent deadline, surfacing
+    /// `TransportError::Backpressure` on expiry with the transport left
+    /// alive — the RTP mirror of `tst-srt`'s `SocketBuilder::recv_timeout`.
+    /// Runs on the mpsc source: both sources share `recv_bytes_inner`'s
+    /// deadline plumbing (per-source expiry mechanics are pinned by the
+    /// one-shot `recv_timeout` tests above), and mpsc gives a
+    /// deterministic unblock lever (drop the sender) so a regression to
+    /// infinite-block fails loudly instead of wedging the suite.
+    #[test]
+    fn configured_recv_timeout_bounds_trait_recv_bytes() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(rx);
+        t.set_recv_timeout(Some(Duration::from_millis(300)));
+
+        let worker = std::thread::spawn(move || {
+            let mut buf = vec![0u8; 2048];
+            let start = std::time::Instant::now();
+            let r = t.recv_bytes(&mut buf);
+            (r, start.elapsed(), t)
+        });
+        // Hang-proof join: if recv_bytes ignores the configured deadline
+        // (the pre-knob behavior), dropping the sender unblocks the
+        // parked recv via the mpsc-disconnect path so this test FAILS
+        // instead of hanging the binary.
+        let hang_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() && std::time::Instant::now() < hang_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !worker.is_finished() {
+            drop(tx);
+            let _ = worker.join();
+            panic!("recv_bytes ignored the configured timeout (blocked >= 5 s)");
+        }
+        let (result, elapsed, mut t) = worker.join().unwrap();
+        match result {
+            Err(TransportError::Backpressure { .. }) => {}
+            other => panic!("expected Backpressure on expiry, got {other:?}"),
+        }
+        assert!(
+            elapsed >= Duration::from_millis(250) && elapsed < Duration::from_secs(5),
+            "elapsed {elapsed:?}"
+        );
+        assert!(t.is_alive(), "transport must stay alive after expiry");
+
+        // The session stays usable: a packet queued after the expiry is
+        // delivered by the very next call.
+        let payload = {
+            let mut p = [0u8; 188];
+            p[0] = 0x47;
+            p
+        };
+        tx.send(make_rtp_packet(&payload)).unwrap();
+        let mut buf = vec![0u8; 2048];
+        let n = t
+            .recv_bytes(&mut buf)
+            .expect("post-expiry recv must deliver");
+        assert_eq!(n, 188);
+        assert_eq!(buf[0], 0x47);
+
+        // And a second quiet interval expires the same way — pins that a
+        // timeout leaves no poisoned deadline bookkeeping behind.
+        match t.recv_bytes(&mut buf) {
+            Err(TransportError::Backpressure { .. }) => {}
+            other => panic!("expected Backpressure on second expiry, got {other:?}"),
+        }
+    }
+
+    /// The headline consumer contract: `DemuxReceiver` over an
+    /// `RtpRecvTransport` with a configured timeout surfaces
+    /// `ShellErrorKind::Backpressure` on a stalled-but-healthy session
+    /// (peer stops sending; no error, no EOS) — the shell's documented
+    /// Backpressure-on-recv-timeout path, previously reachable only on
+    /// SRT — and the same receiver keeps demuxing once bytes flow again.
+    /// A deadline-driven stall watchdog with no cancel thread.
+    #[test]
+    fn demux_receiver_surfaces_backpressure_then_keeps_demuxing() {
+        use tst_core::mpegts::common::Pts90khz;
+        use tst_core::mpegts::demux::DemuxEvent;
+        use tst_core::mpegts::mux::{Muxer, MuxerConfig};
+        use tst_pipeline::{DemuxReceiver, ShellErrorKind};
+
+        // Real muxed TS bytes (PAT + PMT + video PES) so the demuxer has
+        // something to emit once the stall ends. Ten AUs, not one: the
+        // receive shell's TS syncer needs several consecutive aligned
+        // packets to declare lock before it emits the FIRST packet (see
+        // `Receiver::next_packet`'s doc example), so a 3-packet burst
+        // would never reach the demuxer. Minimal Annex-B AUs: the muxer
+        // doesn't parse past the start-code shape.
+        let mut mux = Muxer::new(MuxerConfig::default()).expect("valid default config");
+        let au = [0x00, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        for i in 0..10i64 {
+            mux.push_video(&au, Pts90khz::new(i * 3000), i == 0)
+                .expect("push_video");
+        }
+        let mut ts = Vec::new();
+        let mut pkt = [0u8; 188];
+        loop {
+            let n = mux.pull(&mut pkt);
+            if n == 0 {
+                break;
+            }
+            ts.extend_from_slice(&pkt[..n]);
+        }
+        assert!(
+            !ts.is_empty() && ts.len() % 188 == 0,
+            "muxer output shape (got {} bytes)",
+            ts.len()
+        );
+
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(rx);
+        t.set_recv_timeout(Some(Duration::from_millis(300)));
+        let mut shell = DemuxReceiver::new(t);
+
+        let worker = std::thread::spawn(move || {
+            let r = shell.recv_event();
+            (r, shell)
+        });
+        // Same hang-proofing as the trait-level test above.
+        let hang_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() && std::time::Instant::now() < hang_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !worker.is_finished() {
+            drop(tx);
+            let _ = worker.join();
+            panic!("recv_event ignored the configured timeout (blocked >= 5 s)");
+        }
+        let (result, mut shell) = worker.join().unwrap();
+        let err = match result {
+            Err(e) => e,
+            other => panic!("expected a Backpressure-kind error on stall, got {other:?}"),
+        };
+        assert_eq!(
+            err.kind,
+            ShellErrorKind::Backpressure,
+            "stall must surface as Backpressure, got {err:?}"
+        );
+
+        // Stall ends: the muxed bytes arrive as one RTP packet and the
+        // SAME receiver emits the PSI map — no rebuild, no cancel thread.
+        tx.send(make_rtp_packet(&ts)).unwrap();
+        let ev = shell
+            .recv_event()
+            .expect("post-stall recv_event must succeed")
+            .expect("post-stall recv_event must yield an event");
+        assert!(
+            matches!(ev, DemuxEvent::ProgramMap(_)),
+            "first event should be the PSI map"
+        );
+    }
+
+    /// `Duration::MAX` as a configured timeout must saturate to "no
+    /// deadline" (checked_add), not panic — the configured-path mirror
+    /// of the one-shot extreme-duration pin above.
+    #[test]
+    fn configured_recv_timeout_duration_max_saturates() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(rx);
+        t.set_recv_timeout(Some(Duration::MAX));
+        let payload = {
+            let mut p = [0u8; 188];
+            p[0] = 0x47;
+            p
+        };
+        tx.send(make_rtp_packet(&payload)).unwrap();
+        let mut buf = vec![0u8; 2048];
+        let n = t
+            .recv_bytes(&mut buf)
+            .expect("MAX-saturated recv must deliver");
+        assert_eq!(n, 188);
     }
 
     /// Compile-time check: RtpTransport satisfies Transport (so

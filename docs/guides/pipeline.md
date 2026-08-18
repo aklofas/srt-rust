@@ -631,6 +631,14 @@ implementors can opt in only when they own a tear-down resource.
 has been broken; `TransportError::Backpressure` on a recv timeout
 (transport still alive, caller may retry).
 
+Whether the timeout arm can fire is per-transport configuration: SRT
+via `SocketBuilder::recv_timeout` / `Socket::set_recv_timeout`
+(`SRTO_RCVTIMEO`), RTP via `RtpRecvTransport::set_recv_timeout`. With
+one configured, a `DemuxReceiver` pump regains control on every
+deadline tick as a retryable `Backpressure`-kind error — a stall
+watchdog for a stalled-but-healthy session (peer stops sending; no
+error, no EOS) with no cancel thread.
+
 ### `ManagedRecvTransport<R>`
 
 ```rust,ignore

@@ -1717,9 +1717,11 @@ the trigger that would unblock it.
 
 ## RTP receive-deadline bindings parity
 
-- **Status:** Deferred. `H264Receiver::recv_au_timeout` and
-  `RtpRecvTransport::recv_timeout` (deadline-bounded receive, for stall
-  watchdogs) are Rust-only; no Python, JVM, or C ABI mirror exists.
+- **Status:** Deferred. `H264Receiver::recv_au_timeout`,
+  `RtpRecvTransport::recv_timeout`, and the configured-knob
+  `RtpRecvTransport::set_recv_timeout` (deadline-bounded receive, for
+  stall watchdogs) are Rust-only; no Python, JVM, or C ABI mirror
+  exists.
 - **Why deferred:** shipped Rust-first from an integrator field report
   (a healthy-but-stalled RTSP session — no error, no EOS — previously
   required a ~150-line reader-thread + `sync_channel` + cancel-handle

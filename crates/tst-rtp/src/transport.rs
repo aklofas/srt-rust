@@ -1068,10 +1068,14 @@ impl RtpRecvTransport {
     }
 
     /// Shared body for [`RecvTransport::recv_bytes`] and
-    /// [`Self::recv_timeout`]. `deadline` is `None` for the trait's
-    /// infinite-block `recv_bytes`; `Some` threads an absolute instant
-    /// down to [`Source::recv_raw`] so a stalled source (no packets, no
-    /// disconnect) can surface `Backpressure` instead of blocking forever.
+    /// [`Self::recv_timeout`]. `deadline` is `None` for an unbounded
+    /// wait (the trait `recv_bytes` with no
+    /// [`Self::set_recv_timeout`] value configured); `Some` — from the
+    /// one-shot `recv_timeout` argument or the configured persistent
+    /// timeout — threads an absolute instant down to
+    /// [`Source::recv_raw`] so a stalled source (no packets, no
+    /// disconnect) can surface `Backpressure` instead of blocking
+    /// forever.
     fn recv_bytes_inner(
         &mut self,
         buf: &mut [u8],

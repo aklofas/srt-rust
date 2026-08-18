@@ -76,15 +76,18 @@ local dev-box state, no vendored corpus) via
 weekly on a schedule (Mondays 05:00 UTC), on every `workflow_dispatch`, and
 on any PR touching `crates/tst-interop/`, `scripts/interop/`, or the
 workflow file itself. The verified run cited above is
-[run 32103732958](https://github.com/aklofas/ts-transformer/actions/runs/32103732958)
-(`workflow_dispatch` at commit `239e2d80` — the complete 0.5.1
+[run 32106462041](https://github.com/aklofas/ts-transformer/actions/runs/32106462041)
+(`workflow_dispatch` at commit `47ceee90` — the complete 0.5.1
 release-candidate code; the release tag differs from that commit only
-by documentation/evidence updates, this citation included — completed
-`success` on 2026-08-18 with the census-completeness assert, the same
+by this documentation/evidence update — completed `success` on
+2026-08-18 with the census-completeness assert, the
 157 / 80 / 0 / 65 / 12 census, and 157 per-cell result records with
-zero `FAIL`; the earlier 0.5.0-candidate
-[run 31335394509](https://github.com/aklofas/ts-transformer/actions/runs/31335394509)
-remains valid historical evidence) — its `results.json`/`results.md`,
+zero `FAIL` and no expectation drift: all 65 documented-gap rows
+reproduced. The ancestor run
+[32103732958](https://github.com/aklofas/ts-transformer/actions/runs/32103732958)
+at `239e2d80` and the 0.5.0-candidate run
+[31335394509](https://github.com/aklofas/ts-transformer/actions/runs/31335394509)
+remain as historical evidence) — its `results.json`/`results.md`,
 per-cell logs, and captures are attached as the `interop-evidence` artifact
 (90-day retention) and the run's own step summary. Every future weekly run
 re-publishes a fresh `interop-evidence` artifact and step summary on that

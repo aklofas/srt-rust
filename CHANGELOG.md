@@ -9,6 +9,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [0.5.1] — 2026-08-18
+
+A small, additive patch release: one new Rust API on the RTP receive
+path, from an integrator field report. No breaking changes — `"0.5"`
+consumers pick it up on a normal `cargo update`. C ABI unchanged at
+0.19; Python/JVM surfaces unchanged (version bump only).
+
+### Release highlights
+
+- **Deadline-driven stall watchdogs on RTP/RTSP receive pumps, no
+  cancel thread.** `RtpRecvTransport::set_recv_timeout` configures a
+  persistent receive deadline that the blocking `recv_bytes` trait path
+  honors, so `DemuxReceiver` / `Receiver` / `RawReceiver` surface a
+  stalled-but-healthy session (peer stops sending; no error, no EOS)
+  as their retryable `Backpressure`-kind error — the same shell-visible
+  contract SRT's configured receive timeout has always had. Set it on
+  the transport returned by `RtspSession::into_recv_transport` before
+  wrapping it in a shell.
+
 ### Added
 
 - **`RtpRecvTransport::set_recv_timeout(Option<Duration>)`** (from an

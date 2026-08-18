@@ -1034,12 +1034,19 @@ impl RtpRecvTransport {
     /// (e.g. `Duration::MAX`) saturates to "no deadline". The one-shot
     /// [`Self::recv_timeout`] method ignores this setting — its explicit
     /// argument always wins for that call.
+    ///
+    /// The setting belongs to THIS transport instance. A
+    /// `ManagedRecvTransport` factory that rebuilds an
+    /// `RtpRecvTransport` after a genuine `Closed`/`Broken` error must
+    /// call `set_recv_timeout` on the newly constructed transport —
+    /// configuration does not automatically cross a factory
+    /// reconstruction.
     pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) {
         self.recv_timeout = timeout;
     }
 
     /// [`RecvTransport::recv_bytes`] with a deadline. Returns `Ok(None)` if
-    /// no valid MP2T bundle arrives within `deadline` — the transport
+    /// no valid MP2T bundle arrives within `timeout` — the transport
     /// stays alive and callers may call this again to keep waiting.
     /// Mirrors `UdpRecvTransport::recv_timeout`'s `Ok(None)` shape
     /// (`crates/tst-udp/src/recv.rs`); `recv_bytes` still blocks
@@ -1608,6 +1615,135 @@ mod tests {
             .recv_bytes(&mut buf)
             .expect("MAX-saturated recv must deliver");
         assert_eq!(n, 188);
+    }
+
+    /// `set_recv_timeout(None)` restores the indefinite-block contract:
+    /// after clearing a previously configured 250 ms timeout, a quiet
+    /// recv must NOT surface Backpressure at the old deadline. The
+    /// timing assertion points in the safe direction — an early worker
+    /// return can only mean the cleared timeout still fired.
+    #[test]
+    fn set_recv_timeout_none_restores_infinite_block() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(rx);
+        t.set_recv_timeout(Some(Duration::from_millis(250)));
+        t.set_recv_timeout(None);
+
+        let worker = std::thread::spawn(move || {
+            let mut buf = vec![0u8; 2048];
+            t.recv_bytes(&mut buf)
+        });
+        // Watch well past the cleared 250 ms deadline (plus the ~100 ms
+        // poll granularity): the worker must still be parked throughout.
+        let check_deadline = std::time::Instant::now() + Duration::from_millis(900);
+        while std::time::Instant::now() < check_deadline {
+            std::thread::sleep(Duration::from_millis(50));
+            assert!(
+                !worker.is_finished(),
+                "recv_bytes returned early — the cleared timeout still fired"
+            );
+        }
+        // Unblock via channel disconnect and confirm the exit is the
+        // disconnect error, not a stale Backpressure.
+        drop(tx);
+        match worker.join().unwrap() {
+            Err(TransportError::Backpressure { .. }) => {
+                panic!("cleared timeout must not produce Backpressure")
+            }
+            Err(_) => {}
+            Ok(n) => panic!("unexpected data on an empty channel: {n}"),
+        }
+    }
+
+    /// The one-shot `recv_timeout` ignores the configured persistent
+    /// value — its explicit argument wins. With a 60 s persistent
+    /// timeout configured, an explicit 250 ms one-shot must still
+    /// expire at ~250 ms (`Ok(None)`), not inherit the 60 s value.
+    #[test]
+    fn one_shot_recv_timeout_wins_over_configured() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(rx);
+        t.set_recv_timeout(Some(Duration::from_secs(60)));
+
+        let worker = std::thread::spawn(move || {
+            let mut buf = vec![0u8; 2048];
+            let start = std::time::Instant::now();
+            let r = t.recv_timeout(&mut buf, Duration::from_millis(250));
+            (r, start.elapsed())
+        });
+        let hang_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() && std::time::Instant::now() < hang_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !worker.is_finished() {
+            drop(tx);
+            let _ = worker.join();
+            panic!("one-shot recv_timeout inherited the 60 s configured value");
+        }
+        let (result, elapsed) = worker.join().unwrap();
+        assert!(
+            result.expect("one-shot expiry is Ok(None)").is_none(),
+            "expected expiry, got data"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(200) && elapsed < Duration::from_secs(5),
+            "elapsed {elapsed:?}"
+        );
+    }
+
+    /// The configured knob on the REAL UDP source — the persistent-path
+    /// twin of the mpsc trait-level test above: a quiet socket with a
+    /// 300 ms configured timeout must surface `Backpressure` through the
+    /// trait `recv_bytes`, transport still alive. The port pair is
+    /// discovered up front (RTCP companion binds port+1) so a wake-up
+    /// packet can serve as the unblock lever if a regression
+    /// re-introduces the infinite block.
+    #[test]
+    fn configured_recv_timeout_bounds_udp_trait_recv_bytes() {
+        let port = {
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let base = s.local_addr().unwrap().port();
+            assert!(base < u16::MAX, "ephemeral port at u16::MAX");
+            drop(std::net::UdpSocket::bind(("127.0.0.1", base + 1)).unwrap());
+            base
+        };
+        let mut t = RtpRecvSocketBuilder::new("127.0.0.1", port)
+            .build()
+            .unwrap();
+        t.set_recv_timeout(Some(Duration::from_millis(300)));
+
+        let worker = std::thread::spawn(move || {
+            let mut buf = vec![0u8; 2048];
+            let start = std::time::Instant::now();
+            let r = t.recv_bytes(&mut buf);
+            (r, start.elapsed(), t)
+        });
+        let hang_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() && std::time::Instant::now() < hang_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !worker.is_finished() {
+            // Unblock lever: a valid RTP+MP2T packet makes a hung recv
+            // return data so the test FAILS instead of wedging.
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let mut pkt = vec![0u8; 12 + 188];
+            pkt[0] = 0x80;
+            pkt[1] = 33;
+            pkt[12] = 0x47;
+            let _ = s.send_to(&pkt, ("127.0.0.1", port));
+            let _ = worker.join();
+            panic!("UDP trait recv_bytes ignored the configured timeout");
+        }
+        let (result, elapsed, t) = worker.join().unwrap();
+        match result {
+            Err(TransportError::Backpressure { .. }) => {}
+            other => panic!("expected Backpressure on expiry, got {other:?}"),
+        }
+        assert!(
+            elapsed >= Duration::from_millis(250) && elapsed < Duration::from_secs(5),
+            "elapsed {elapsed:?}"
+        );
+        assert!(t.is_alive(), "transport must stay alive after expiry");
     }
 
     /// Compile-time check: RtpTransport satisfies Transport (so

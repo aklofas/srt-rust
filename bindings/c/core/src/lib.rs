@@ -169,7 +169,7 @@ pub const TST_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version.
 pub const TST_VERSION_MINOR: crate::c_types::c_int = 5;
 /// Patch version.
-pub const TST_VERSION_PATCH: crate::c_types::c_int = 0;
+pub const TST_VERSION_PATCH: crate::c_types::c_int = 1;
 
 /// Major version of the C ABI contract. Bumped only on **breaking
 /// C-ABI change** — i.e., a change that would force a consumer to

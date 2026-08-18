@@ -217,7 +217,7 @@
 /**
  * Patch version.
  */
-#define TST_VERSION_PATCH 0
+#define TST_VERSION_PATCH 1
 
 enum tst_video_codec
 #ifdef __cplusplus

@@ -11,7 +11,7 @@ keywords = ["udp", "multicast", "mpeg-ts", "streaming"]
 categories = ["multimedia::video", "network-programming"]
 
 [dependencies]
-tst-core = { path = "../tst-core", version = "0.5.0" }
+tst-core = { path = "../tst-core", version = "0.5.1" }
 socket2 = { workspace = true }
 thiserror = { workspace = true }
 libc = { workspace = true }

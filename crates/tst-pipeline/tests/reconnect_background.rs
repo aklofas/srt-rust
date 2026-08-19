@@ -461,3 +461,78 @@ fn background_none_budget_never_gives_up() {
         "no give-up report with None budget"
     );
 }
+
+#[test]
+fn close_joins_worker_promptly_mid_backoff() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    // 30s backoff: a sleep-bounded join would hang the test far past the
+    // assert; the interruptible wait makes close return in milliseconds.
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_secs(30)));
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(u32::MAX), policy);
+    managed.send_bytes(&[0]).unwrap(); // worker parks in the 30s wait
+    let t0 = Instant::now();
+    managed.close();
+    assert!(
+        t0.elapsed() < Duration::from_secs(5),
+        "close must interrupt the backoff wait and join, took {:?}",
+        t0.elapsed()
+    );
+    assert!(matches!(
+        managed.send_bytes(&[1]).unwrap_err(),
+        tst_core::transport::TransportError::Closed
+    ));
+}
+
+#[test]
+fn drop_detaches_without_blocking_and_worker_quiesces() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(5)));
+    let calls = Arc::clone(&rig.factory_calls);
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(u32::MAX), policy);
+    managed.send_bytes(&[0]).unwrap();
+    wait_until(Duration::from_secs(10), || {
+        calls.load(Ordering::SeqCst) >= 2
+    });
+    let t0 = Instant::now();
+    drop(managed);
+    assert!(
+        t0.elapsed() < Duration::from_secs(1),
+        "Drop must signal-and-detach, never join: {:?}",
+        t0.elapsed()
+    );
+    // Quiescence: at a 5ms retry cadence a live worker adds ~40 calls per
+    // 200ms window; a signaled worker exits and the counter goes flat.
+    std::thread::sleep(Duration::from_millis(100)); // allow the exit to land
+    let a = calls.load(Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(200));
+    let b = calls.load(Ordering::SeqCst);
+    assert_eq!(a, b, "worker kept retrying after Drop ({a} -> {b})");
+}
+
+#[test]
+fn cancel_handle_stops_background_worker() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(5)));
+    let calls = Arc::clone(&rig.factory_calls);
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(u32::MAX), policy);
+    let cancel = managed
+        .cancel_handle()
+        .expect("managed always has a handle");
+    managed.send_bytes(&[0]).unwrap();
+    wait_until(Duration::from_secs(10), || {
+        calls.load(Ordering::SeqCst) >= 2
+    });
+    cancel.cancel();
+    std::thread::sleep(Duration::from_millis(100));
+    let a = calls.load(Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(200));
+    let b = calls.load(Ordering::SeqCst);
+    assert_eq!(a, b, "worker kept retrying after cancel ({a} -> {b})");
+    assert!(matches!(
+        managed.send_bytes(&[1]).unwrap_err(),
+        tst_core::transport::TransportError::Closed
+    ));
+}

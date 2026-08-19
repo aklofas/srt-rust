@@ -83,6 +83,7 @@ fn fast_policy(max_attempts: Option<u32>) -> ReconnectPolicy {
         backoff: BackoffStrategy::Constant(Duration::from_millis(1)),
         gap_buffer_capacity: 16,
         overflow_policy: tst_pipeline::reconnect::OverflowPolicy::DropOldest,
+        ..Default::default()
     }
 }
 

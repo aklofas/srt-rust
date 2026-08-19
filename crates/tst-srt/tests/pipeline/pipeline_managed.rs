@@ -26,6 +26,7 @@ fn managed_recovers_from_brief_outage() {
         backoff: BackoffStrategy::Constant(Duration::from_millis(1)),
         gap_buffer_capacity: 10,
         overflow_policy: OverflowPolicy::DropOldest,
+        ..Default::default()
     };
     let mut managed = ManagedTransport::new(inner, factory, policy);
 

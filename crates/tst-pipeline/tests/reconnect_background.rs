@@ -404,10 +404,14 @@ fn flap_cycles_never_wedge_or_hang() {
     // outage, where the worker sits through several failed reconnect
     // attempts before draining. `Rig::factory`'s fail-first count is
     // fixed at construction and shared across the whole ManagedTransport
-    // lifetime (not per-cycle), so a fresh rig + transport is the
-    // simplest way to force that shape: 3 additional break -> drain
-    // cycles whose first reconnect must survive 3 failed attempts at a
-    // slower 300ms cadence, checked independently for FIFO/subsequence.
+    // lifetime, not re-armed per cycle — so with `factory(3)` only the
+    // FIRST of the 3 cycles below is a genuinely persisting outage (3
+    // failed attempts at the slower 300ms cadence before the reconnect
+    // succeeds); the counter has already passed 3 by the time cycles 2
+    // and 3 break, so those reconnect immediately, same as the fast
+    // cycles above. They're kept anyway for extra drain-empty -> break-
+    // again handoff coverage at the slower cadence. All 3 cycles are
+    // checked together, independently, for FIFO/subsequence below.
     let rig2 = Rig::new();
     let policy2 = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(300)));
     let mut managed2 = ManagedTransport::new(rig2.transport(), rig2.factory(3), policy2);

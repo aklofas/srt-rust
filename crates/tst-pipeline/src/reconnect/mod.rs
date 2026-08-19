@@ -138,7 +138,7 @@ pub struct ManagedTransportStats {
     /// Successful reconnects (factory returned a transport that was installed).
     pub reconnect_successes: u64,
     /// Messages currently queued in the gap buffer.
-    pub gap_len: usize,
+    pub gap_len: u64,
     /// Messages lost to `DropOldest` eviction (plus oversized-after-reconnect drops).
     pub gap_messages_dropped: u64,
     /// Bytes lost to the same.
@@ -166,7 +166,7 @@ impl ManagedStatsHandle {
         Some(ManagedTransportStats {
             reconnect_attempts: self.shared.reconnect_attempts.load(Ordering::Relaxed),
             reconnect_successes: self.shared.reconnect_successes.load(Ordering::Relaxed),
-            gap_len: gap.len(),
+            gap_len: gap.len() as u64,
             gap_messages_dropped: gap.messages_dropped,
             gap_bytes_dropped: gap.bytes_dropped,
             reconnecting: self.shared.bg_active.load(Ordering::Acquire),

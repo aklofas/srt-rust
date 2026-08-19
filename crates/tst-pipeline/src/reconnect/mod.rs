@@ -6,10 +6,10 @@
 //! Wraps any inner Transport (most commonly `SrtTransport`); on send
 //! failure with `Broken` semantics, queues the bytes in a fixed-size
 //! gap buffer and attempts to re-establish the inner transport with
-//! configurable backoff, either on the caller's thread (`ReconnectMode::
-//! Blocking`, the default) or on a dedicated per-outage worker thread
-//! (`ReconnectMode::Background`). On reconnect success, drains the gap
-//! buffer before resuming new sends.
+//! configurable backoff, either on the caller's thread
+//! (`ReconnectMode::Blocking`, the default) or on a dedicated
+//! per-outage worker thread (`ReconnectMode::Background`). On
+//! reconnect success, drains the gap buffer before resuming new sends.
 
 mod background;
 mod gap_buffer;

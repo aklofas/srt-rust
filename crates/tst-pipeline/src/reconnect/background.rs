@@ -135,26 +135,53 @@ enum DrainStep {
 /// healthy, exactly the class of stall this feature exists to eliminate.
 ///
 /// Constructed once at the top of `worker_run` so it covers every exit
-/// path (normal `return` or unwind) via `Drop`. The Empty-protocol exit
-/// (drain phase, gap goes empty) still clears `bg_active` in place under
-/// the gap lock it's already holding, for the same-critical-section
-/// linearization with the send gate (invariant 2) — this guard's later
-/// clear on top of that is idempotent and harmless.
+/// path (normal `return` or unwind) via `Drop`.
+///
+/// The Empty-protocol exit (drain phase, gap goes empty) still clears
+/// `bg_active` in place under the gap lock it's already holding, for the
+/// same-critical-section linearization with the send gate (invariant 2).
+/// That in-place clear also **hands ownership of `bg_active` away** from
+/// this worker: the send gate may immediately enqueue a fresh break and
+/// spawn a brand-new worker (setting `bg_active = true` again) before this
+/// thread's `Drop` runs — `spawn_worker`'s `prev.join()` waits on exactly
+/// this `Drop`, so the old worker's stack can still be unwinding (or just
+/// finishing its `return`) while a newer cycle is already live. If `Drop`
+/// then stored `bg_active = false` unconditionally, it would clobber that
+/// newer cycle's `true` — the newest worker would run "unowned" (no one
+/// believes it's active), a subsequent gate call would spawn yet another
+/// worker on top of it, and `spawn_worker`'s join on the still-live worker
+/// could hang indefinitely under `max_attempts: None`. The `skip` flag,
+/// set by the Empty-exit in that same critical section, tells `Drop` "you
+/// no longer own `bg_active` — do not touch it again": once ownership has
+/// been handed off, a re-clear here is not idempotent, it's a clobber.
 struct ActiveClearGuard {
     gap: Arc<Mutex<GapBuffer>>,
     shared: Arc<ManagedShared>,
+    /// Set true (under the gap lock, from the Empty-exit's own critical
+    /// section) once `bg_active` has already been cleared in place and
+    /// ownership handed off. `Drop` checks this under the same lock, so
+    /// the set-site and the check-site linearize.
+    skip: AtomicBool,
 }
 
 impl Drop for ActiveClearGuard {
     fn drop(&mut self) {
-        // Take the gap lock purely to linearize this clear with the send
-        // gate (invariant 2) — the store below doesn't touch the gap
-        // buffer, so this reads like an unlocked store, but `guard`
-        // staying alive through the whole body is what makes it safe.
-        // Poisoned gap: acquire anyway (the Result's poisoned arm still
-        // embeds — and holds — the underlying MutexGuard) and clear
-        // regardless; a panic elsewhere is already unwinding the system.
+        // Take the gap lock purely to linearize this clear (or no-op)
+        // with the send gate (invariant 2) — the operations below don't
+        // touch the gap buffer, so this reads like unlocked state, but
+        // `guard` staying alive through the whole body is what makes it
+        // safe. Poisoned gap: acquire anyway (the Result's poisoned arm
+        // still embeds — and holds — the underlying MutexGuard) and
+        // proceed regardless; a panic elsewhere is already unwinding.
         let guard = self.gap.lock();
+        if self.skip.load(Ordering::Acquire) {
+            // Ownership already handed off by the Empty-exit (see the
+            // struct doc) — this worker must not write bg_active again.
+            // A panic can't reach here: the Empty branch returns
+            // immediately after setting skip, with nothing left running.
+            drop(guard);
+            return;
+        }
         if std::thread::panicking() {
             // Unwinding: no normal exit path ran, so nobody reported a
             // give-up. Report an abnormal one so the next send_bytes
@@ -172,10 +199,12 @@ impl Drop for ActiveClearGuard {
 /// or shutdown is signaled.
 pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
     // Cleared on every exit path via Drop — including an unwind. See
-    // ActiveClearGuard's doc comment for why that matters.
-    let _active_guard = ActiveClearGuard {
+    // ActiveClearGuard's doc comment for why that matters (and for the
+    // `skip` flag the Empty-exit below sets).
+    let active_guard = ActiveClearGuard {
         gap: Arc::clone(&ctx.gap),
         shared: Arc::clone(&ctx.shared),
+        skip: AtomicBool::new(false),
     };
     // The budget covers ONE continuous outage: reset after each
     // successful install. `max_attempts` bounds attempts per outage, not
@@ -222,9 +251,14 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
             let Ok(mut guard) = ctx.inner.lock() else {
                 // Inner lock poisoned — unrecoverable from a worker with
                 // no caller. Surface as an abnormal give-up so the next
-                // send reports Broken instead of queuing forever.
-                ctx.shared.gave_up.store(true, Ordering::Release);
+                // send reports Broken instead of queuing forever. Store
+                // the abnormal flag FIRST, matching the guard's Drop
+                // order (Finding A): otherwise a send_bytes landing
+                // between the two stores could observe gave_up = true
+                // with gave_up_abnormal still false and report the wrong
+                // (budget) message for this poison abort.
                 ctx.shared.gave_up_abnormal.store(true, Ordering::Release);
+                ctx.shared.gave_up.store(true, Ordering::Release);
                 return;
             };
             *guard = Some(new_inner);
@@ -247,9 +281,10 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
             let step = {
                 let Ok(mut transport_guard) = ctx.inner.lock() else {
                     // Inner lock poisoned mid-drain — same abnormal
-                    // give-up as the reconnect-phase poison path above.
-                    ctx.shared.gave_up.store(true, Ordering::Release);
+                    // give-up (and the same abnormal-first store order,
+                    // Finding A) as the reconnect-phase poison path above.
                     ctx.shared.gave_up_abnormal.store(true, Ordering::Release);
+                    ctx.shared.gave_up.store(true, Ordering::Release);
                     return;
                 };
                 let mut gap = ctx
@@ -260,8 +295,15 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
                     // Empty protocol: clear active while STILL holding the
                     // gap lock — the send gate checks bg_active under this
                     // same lock, so it can never enqueue into a
-                    // worker-less buffer (invariant 2).
+                    // worker-less buffer (invariant 2). Mark the guard
+                    // skip-on-drop in this SAME critical section: from
+                    // this point on, bg_active belongs to whatever the
+                    // send gate does next (possibly a brand-new worker),
+                    // not to this one — see ActiveClearGuard's doc for
+                    // why an unconditional re-clear on Drop would clobber
+                    // that ownership handoff (Finding B).
                     ctx.shared.bg_active.store(false, Ordering::Release);
+                    active_guard.skip.store(true, Ordering::Release);
                     DrainStep::Empty
                 } else if let Some(transport) = transport_guard.as_mut() {
                     let msg = gap.front().expect("checked non-empty above");

@@ -84,6 +84,7 @@ pub(crate) fn build_reconnect_policy(
         backoff,
         gap_buffer_capacity: gap_buffer_capacity.max(1) as usize,
         overflow_policy: overflow,
+        ..Default::default()
     })
 }
 

@@ -32,6 +32,26 @@ impl Default for BackoffStrategy {
     }
 }
 
+/// How `ManagedTransport` runs its reconnect loop after the inner
+/// transport breaks. Send-side only: `ManagedRecvTransport` /
+/// `ManagedDemuxReceiver` log a warning and behave as `Blocking` if
+/// handed `Background`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum ReconnectMode {
+    /// Reconnect on the caller's thread (the pre-0.6 behavior and the
+    /// default). Simple; a sink outage blocks the caller inside
+    /// `send_bytes` until reconnect succeeds or `max_attempts` runs out.
+    #[default]
+    Blocking,
+    /// Reconnect on a background worker thread. `send_bytes` never blocks
+    /// on backoff: while the inner transport is down it enqueues to the
+    /// gap buffer under `overflow_policy` and returns immediately.
+    /// `Ok(())` means *accepted*, not *delivered* — pair with
+    /// [`ManagedTransport::stats_handle`] for drop/reconnect visibility.
+    Background,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReconnectPolicy {
     /// Maximum reconnect attempts before giving up. None = retry forever.
@@ -47,6 +67,10 @@ pub struct ReconnectPolicy {
     /// What to do when gap buffer is full and a new message arrives.
     /// Default: drop oldest message.
     pub overflow_policy: OverflowPolicy,
+
+    /// Reconnect-loop placement. Default: `ReconnectMode::Blocking`
+    /// (reconnect runs on the caller's thread — pre-0.6 behavior).
+    pub mode: ReconnectMode,
 }
 
 impl Default for ReconnectPolicy {
@@ -56,6 +80,7 @@ impl Default for ReconnectPolicy {
             backoff: BackoffStrategy::default(),
             gap_buffer_capacity: 256,
             overflow_policy: OverflowPolicy::DropOldest,
+            mode: ReconnectMode::Blocking,
         }
     }
 }
@@ -699,5 +724,11 @@ mod cancel_tests {
         // The factory should NOT have been called repeatedly trying to
         // reconnect after cancel.
         assert!(factory_calls.load(Ordering::SeqCst) <= 1);
+    }
+
+    #[test]
+    fn reconnect_policy_default_mode_is_blocking() {
+        assert_eq!(ReconnectPolicy::default().mode, ReconnectMode::Blocking);
+        assert_eq!(ReconnectMode::default(), ReconnectMode::Blocking);
     }
 }

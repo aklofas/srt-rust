@@ -61,6 +61,7 @@ fn reject_policy_surfaces_backpressure_when_gap_full() {
         backoff: BackoffStrategy::Constant(Duration::from_millis(0)),
         gap_buffer_capacity: 1,
         overflow_policy: OverflowPolicy::Reject,
+        ..Default::default()
     };
 
     let inner = AlwaysBroken {
@@ -105,6 +106,7 @@ fn drop_oldest_policy_does_not_surface_backpressure_on_overflow() {
         backoff: BackoffStrategy::Constant(Duration::from_millis(0)),
         gap_buffer_capacity: 1,
         overflow_policy: OverflowPolicy::DropOldest,
+        ..Default::default()
     };
 
     let inner = AlwaysBroken {

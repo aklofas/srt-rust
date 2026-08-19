@@ -210,6 +210,7 @@ impl PyReconnectPolicy {
                 backoff: backoff_inner,
                 gap_buffer_capacity,
                 overflow_policy: overflow_policy.into(),
+                ..Default::default()
             },
         })
     }

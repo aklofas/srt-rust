@@ -238,6 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         gap_buffer_capacity: 256,
         overflow_policy: OverflowPolicy::DropOldest,
+        ..Default::default()
     };
     let managed = ManagedTransport::new(initial, factory, policy);
 

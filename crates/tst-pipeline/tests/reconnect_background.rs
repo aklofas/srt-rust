@@ -17,7 +17,6 @@ use tst_pipeline::{
 #[derive(Clone, Copy, Debug)]
 enum SendOutcome {
     Ok,
-    #[allow(dead_code)] // constructed starting in a later task of this arc
     Backpressure,
     Broken,
 }
@@ -325,10 +324,13 @@ fn background_worker_panic_recovers_via_abnormal_give_up() {
 ///
 /// This drives many drain-empty-then-break-again flaps back to back —
 /// exactly the window the clobber lives in — with every `send_bytes` call
-/// deadline-asserted so a wedge fails the test instead of hanging the
-/// process. Note: the clobber needs specific cross-thread timing to land
-/// (see the fix report for why a deterministic red run isn't attempted
-/// here — this is a soak against the race, not a targeted repro).
+/// deadline-asserted. The assert runs after `send_bytes` returns, so it
+/// cannot convert a genuine join-block wedge into a clean test failure —
+/// a real wedge hangs this binary under plain `cargo test`; nextest's
+/// per-test timeout is the actual bound in CI. Note: the clobber needs
+/// specific cross-thread timing to land (see the fix report for why a
+/// deterministic red run isn't attempted here — this is a soak against
+/// the race, not a targeted repro).
 #[test]
 fn flap_cycles_never_wedge_or_hang() {
     let rig = Rig::new();
@@ -394,6 +396,71 @@ fn flap_cycles_never_wedge_or_hang() {
     assert!(
         stats.stats().unwrap().reconnect_successes >= 30,
         "expected at least one successful reconnect per flap cycle"
+    );
+
+    // M10 (routed fix): the 30 cycles above all reconnect on the first
+    // attempt (factory(0), 1ms backoff), so the guard-clobber window
+    // closes fast every time — not discriminating for a PERSISTING
+    // outage, where the worker sits through several failed reconnect
+    // attempts before draining. `Rig::factory`'s fail-first count is
+    // fixed at construction and shared across the whole ManagedTransport
+    // lifetime (not per-cycle), so a fresh rig + transport is the
+    // simplest way to force that shape: 3 additional break -> drain
+    // cycles whose first reconnect must survive 3 failed attempts at a
+    // slower 300ms cadence, checked independently for FIFO/subsequence.
+    let rig2 = Rig::new();
+    let policy2 = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(300)));
+    let mut managed2 = ManagedTransport::new(rig2.transport(), rig2.factory(3), policy2);
+    let stats2 = managed2.stats_handle();
+
+    let mut next_idx2: u32 = 0;
+    let mut all_sent2: Vec<u32> = Vec::new();
+    for _ in 0..3 {
+        rig2.push_outcome(SendOutcome::Broken); // breaks the inner on this cycle's first send
+        for _ in 0..5 {
+            let idx = next_idx2;
+            next_idx2 += 1;
+            let t0 = Instant::now();
+            managed2
+                .send_bytes(&idx.to_le_bytes())
+                .expect("background mode always accepts, direct or into the gap");
+            assert!(
+                t0.elapsed() < Duration::from_secs(1),
+                "send_bytes blocked for {:?} on message {idx} (persisting-outage cycle) — possible join() wedge (Finding B)",
+                t0.elapsed()
+            );
+            all_sent2.push(idx);
+        }
+        wait_until(Duration::from_secs(10), || {
+            let s = stats2.stats().unwrap();
+            !s.reconnecting && s.gap_len == 0
+        });
+    }
+
+    let delivered2: Vec<u32> = rig2
+        .sent_snapshot()
+        .into_iter()
+        .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("4-byte u32 index")))
+        .collect();
+
+    let mut send_iter2 = all_sent2.into_iter().peekable();
+    let mut prev2: Option<u32> = None;
+    for idx in &delivered2 {
+        if let Some(p) = prev2 {
+            assert!(*idx > p, "delivered log out of order: {p} then {idx}");
+        }
+        while send_iter2.peek().is_some_and(|s| s != idx) {
+            send_iter2.next();
+        }
+        assert!(
+            send_iter2.next().is_some(),
+            "delivered index {idx} is not a subsequence of what was sent"
+        );
+        prev2 = Some(*idx);
+    }
+    assert!(
+        stats2.stats().unwrap().reconnect_successes >= 3,
+        "expected at least one successful reconnect per persisting-outage cycle"
     );
 }
 
@@ -535,4 +602,135 @@ fn cancel_handle_stops_background_worker() {
         managed.send_bytes(&[1]).unwrap_err(),
         tst_core::transport::TransportError::Closed
     ));
+}
+
+#[test]
+fn drain_backpressure_retries_same_message_without_loss() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken); //       msg 0 -> gap
+    rig.push_outcome(SendOutcome::Backpressure); // drain: msg 0 stalls twice...
+    rig.push_outcome(SendOutcome::Backpressure);
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(10)));
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(0), policy);
+    managed.send_bytes(&[0]).unwrap();
+    managed.send_bytes(&[1]).unwrap();
+    // ...then the script runs dry (=> Ok): the worker's 20ms retry loop
+    // must deliver both, in order, exactly once.
+    wait_until(Duration::from_secs(10), || {
+        rig.sent_snapshot() == vec![vec![0], vec![1]]
+    });
+}
+
+#[test]
+fn drain_break_resumes_reconnect_with_front_message_retained() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken); // initial break: msg 0 -> gap
+    rig.push_outcome(SendOutcome::Ok); //     reconnect #1 drains msg 0...
+    rig.push_outcome(SendOutcome::Broken); // ...and breaks on msg 1 mid-drain
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(10)));
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(0), policy);
+    managed.send_bytes(&[0]).unwrap();
+    managed.send_bytes(&[1]).unwrap();
+    managed.send_bytes(&[2]).unwrap();
+    // Worker: reconnect, drain 0, break on 1 (1 stays at front), reconnect
+    // again, drain 1 then 2. Exact FIFO, no loss, no double-send.
+    wait_until(Duration::from_secs(10), || {
+        rig.sent_snapshot() == vec![vec![0], vec![1], vec![2]]
+    });
+    assert!(managed.stats_handle().stats().unwrap().reconnect_successes >= 2);
+}
+
+#[test]
+fn background_reject_full_returns_backpressure_immediately() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    let policy = ReconnectPolicy {
+        max_attempts: None,
+        backoff: BackoffStrategy::Constant(Duration::from_secs(5)), // park the worker far away
+        gap_buffer_capacity: 2,
+        overflow_policy: OverflowPolicy::Reject,
+        mode: ReconnectMode::Background,
+    };
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(u32::MAX), policy);
+    managed.send_bytes(&[0]).unwrap(); // break -> queued (gap: [0])
+    managed.send_bytes(&[1]).unwrap(); // gate -> gap: [0,1] == capacity
+    let t0 = Instant::now();
+    let err = managed.send_bytes(&[2]).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            tst_core::transport::TransportError::Backpressure { .. }
+        ),
+        "Reject-full surfaces Backpressure, got {err:?}"
+    );
+    assert!(
+        t0.elapsed() < Duration::from_secs(1),
+        "Reject path must not block either"
+    );
+}
+
+#[test]
+fn oversized_after_ceiling_shrink_drops_and_counts_instead_of_wedging() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(10)));
+    // Initial inner accepts 1316 bytes; every REBUILT inner only 4. The
+    // 100-byte queued message would wedge the drain forever if the worker
+    // propagated TooLarge like the blocking drain does — instead it must
+    // drop-and-count and keep draining.
+    let mut managed = ManagedTransport::new(
+        rig.transport_with_payload(1316),
+        rig.factory_with_payload(0, 4),
+        policy,
+    );
+    managed.send_bytes(&[9; 100]).unwrap(); // breaks -> 100-byte msg queued
+    managed.send_bytes(&[1, 2, 3]).unwrap(); // small follower
+    wait_until(Duration::from_secs(10), || {
+        rig.sent_snapshot() == vec![vec![1, 2, 3]]
+    });
+    let s = managed.stats_handle().stats().unwrap();
+    assert_eq!(s.gap_messages_dropped, 1);
+    assert_eq!(s.gap_bytes_dropped, 100);
+}
+
+#[test]
+fn stress_pump_vs_flapping_sink_delivery_is_fifo_subsequence() {
+    let rig = Rig::new();
+    let policy = ReconnectPolicy {
+        max_attempts: None,
+        backoff: BackoffStrategy::Constant(Duration::from_millis(1)),
+        gap_buffer_capacity: 8,
+        overflow_policy: OverflowPolicy::DropOldest,
+        mode: ReconnectMode::Background,
+    };
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(0), policy);
+    // 2000 sends, a scripted break every 40th — breaks land on direct
+    // sends AND drain sends (whichever pops the script next), exercising
+    // both fault paths under pump/worker interleaving.
+    for i in 0..2000u32 {
+        if i % 40 == 0 {
+            rig.push_outcome(SendOutcome::Broken);
+        }
+        managed.send_bytes(&i.to_be_bytes()).unwrap();
+        if i % 7 == 0 {
+            std::thread::sleep(Duration::from_micros(50)); // let the worker interleave
+        }
+    }
+    let stats = managed.stats_handle();
+    wait_until(Duration::from_secs(30), || {
+        let s = stats.stats().unwrap();
+        !s.reconnecting && s.gap_len == 0
+    });
+    // FIFO + no-double-send: delivered indices strictly increase.
+    let sent = rig.sent_snapshot();
+    assert!(!sent.is_empty());
+    let mut prev: i64 = -1;
+    for m in &sent {
+        let v = u32::from_be_bytes(m[..4].try_into().unwrap()) as i64;
+        assert!(
+            v > prev,
+            "out-of-order or duplicate delivery: {v} after {prev}"
+        );
+        prev = v;
+    }
 }

@@ -49,9 +49,11 @@ pub enum ReconnectMode {
     /// `send_bytes` until reconnect succeeds or `max_attempts` runs out.
     #[default]
     Blocking,
-    /// Reconnect on a background worker thread. `send_bytes` never blocks
-    /// on backoff: while the inner transport is down it enqueues to the
-    /// gap buffer under `overflow_policy` and returns immediately.
+    /// Reconnect on a background worker thread. `send_bytes` never waits
+    /// on backoff or a factory call: while the inner transport is down it
+    /// enqueues to the gap buffer under `overflow_policy` — though it can
+    /// still block briefly on internal lock contention while the worker
+    /// is mid-drain (bounded to at most one in-flight inner send).
     /// `Ok(())` means *accepted*, not *delivered* — pair with
     /// [`ManagedTransport::stats_handle`] for drop/reconnect visibility.
     Background,
@@ -207,9 +209,12 @@ impl ManagedStatsHandle {
 /// - **`ReconnectMode::Background`** — a per-outage worker thread owns
 ///   the factory/backoff/drain loop instead. While that worker is active,
 ///   or the gap buffer is non-empty, `send_bytes` never touches the inner
-///   transport: it enqueues under `overflow_policy` and returns
-///   immediately. **`Ok(())` in this mode means the bytes were
-///   *accepted* into the gap buffer, not that they were *delivered*** —
+///   transport, never waits on backoff or a factory call, and enqueues
+///   under `overflow_policy` — though it can still block briefly on
+///   internal lock contention while the worker is mid-drain (bounded to
+///   at most one in-flight inner send). **`Ok(())` in this mode means the
+///   bytes were *accepted* into the gap buffer, not that they were
+///   *delivered*** —
 ///   pair `Background` with [`Self::stats_handle`] to observe
 ///   `reconnecting` / `gap_len` / `gap_messages_dropped`. That counter
 ///   also counts a queued message that no longer fits the *rebuilt*

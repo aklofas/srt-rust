@@ -54,14 +54,17 @@ Runnable: [examples/operations/managed_reconnect.rs](/examples/operations/manage
 > source backs up or drops frames on the floor anyway. If losing the
 > freshest frame is worse than losing an old one, "fresh beats
 > complete" is the right tradeoff, and `Background` mode is what makes
-> it possible: the producer thread never blocks on reconnect at all.
+> it possible: the producer thread never waits out the reconnect
+> backoff or a factory call.
 
 By default (`ReconnectMode::Blocking`) a `send_bytes` call that hits a
 broken transport blocks the caller for the whole reconnect window.
 Set `mode: ReconnectMode::Background` and a per-outage worker thread
 takes over the factory/backoff/drain loop instead — `send_bytes`
-enqueues into the gap buffer under `overflow_policy` and returns
-immediately, whether or not the sink is currently reachable:
+enqueues into the gap buffer under `overflow_policy` without waiting
+on backoff or the factory call, whether or not the sink is currently
+reachable (it can still block briefly on lock contention while the
+worker is mid-drain, bounded to at most one in-flight inner send):
 
 ```rust,ignore
 let policy = ReconnectPolicy {

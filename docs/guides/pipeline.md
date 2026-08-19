@@ -379,8 +379,11 @@ single `send_bytes` call may block for the full reconnect window.
 Opt in to `ReconnectMode::Background` and a per-outage worker thread
 owns the factory/backoff/drain loop instead: while it's active (or the
 gap buffer is non-empty) `send_bytes` enqueues under `overflow_policy`
-and returns immediately — `Ok(())` means *accepted*, not *delivered*.
-This is still a synchronous API, not an async runtime; see the
+without waiting on backoff or the factory call — `Ok(())` means
+*accepted*, not *delivered*. It can still block briefly on lock
+contention while the worker is mid-drain (bounded to at most one
+in-flight inner send). This is still a synchronous API, not an async
+runtime; see the
 [cookbook recipe](/docs/cookbook/operations/managed-transport-reconnect.md#background-mode-never-stall-the-producer)
 for when to reach for it. True async/reactor exposure remains on the
 deferred-features list; see

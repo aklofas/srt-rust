@@ -893,11 +893,12 @@ the trigger that would unblock it.
 ## Background reconnect — bindings parity (C / Python / JVM)
 
 - **Status:** Rust-only as of 2026-08-19. `ReconnectMode::Background`
-  (a per-outage worker thread that keeps `send_bytes` non-blocking
-  through a sink outage), `ManagedTransport::stats_handle()`, and
-  `ManagedStatsHandle` / `ManagedTransportStats` have no C ABI, Python,
-  or JVM mirror. Binding consumers configuring a `ReconnectPolicy` only
-  get `ReconnectMode::Blocking` (the unchanged pre-existing behavior).
+  (a per-outage worker thread that keeps `send_bytes` from waiting on
+  backoff or factory calls through a sink outage),
+  `ManagedTransport::stats_handle()`, and `ManagedStatsHandle` /
+  `ManagedTransportStats` have no C ABI, Python, or JVM mirror. Binding
+  consumers configuring a `ReconnectPolicy` only get
+  `ReconnectMode::Blocking` (the unchanged pre-existing behavior).
 - **Why deferred:** Ships Rust-first, matching the precedent set by
   recent pipeline additions (`RtpRecvTransport::set_recv_timeout`,
   `MuxSender::finish`) — no binding consumer has asked for it yet, and
@@ -906,8 +907,8 @@ the trigger that would unblock it.
   change to the existing struct.
 - **Trigger to revisit:** A binding consumer running a
   single-threaded relay pump against a managed sink — the same shape
-  that motivated the Rust-side feature — asks for the non-blocking
-  send path outside Rust.
+  that motivated the Rust-side feature — asks for that
+  backoff-decoupled send path outside Rust.
 
 ## Last-activity-wall-clock gauges per stream
 

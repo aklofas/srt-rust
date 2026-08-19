@@ -12,11 +12,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **`ReconnectMode::Background` on `ReconnectPolicy`** — opt-in
-  non-blocking reconnect for `ManagedTransport`. A per-outage worker
-  thread owns the factory/backoff/drain loop; while it's active (or
-  the gap buffer is non-empty) `send_bytes` enqueues under
-  `overflow_policy` and returns immediately (`Ok(())` means
-  *accepted*, not *delivered*). If the worker exhausts
+  reconnect for `ManagedTransport` that doesn't wait on backoff or
+  factory calls. A per-outage worker thread owns the
+  factory/backoff/drain loop; while it's active (or the gap buffer is
+  non-empty) `send_bytes` enqueues under `overflow_policy` (`Ok(())`
+  means *accepted*, not *delivered*) — it can still block briefly on
+  lock contention while the worker is mid-drain, bounded to at most
+  one in-flight inner send. If the worker exhausts
   `max_attempts` — which bounds one continuous outage, resetting after
   every successful reconnect — the give-up surfaces exactly once, as a
   single `Broken` on the next `send_bytes` call, whose own bytes are

@@ -871,23 +871,43 @@ the trigger that would unblock it.
 
 ## Reconnect counters on `ManagedTransport` stats
 
-- **Status:** `SenderStats` / `ReceiverStats` aggregate transport-level
-  byte / packet counters but not reconnect-cycle counters
-  (`reconnect_attempts`, `reconnect_successes`, `last_reconnect_at`).
-  Plain `Sender<SrtTransport>` has no such concept; only the managed
-  variants do.
-- **Why deferred:** Surfacing these on `SenderStats` / `ReceiverStats`
-  forces optional fields that are always zero for plain (non-managed)
-  handles, which muddies the C ABI shape. The cleaner home is a
-  separate `ManagedTransportStats` accessor exposed on the
-  `Sender<ManagedTransport<...>>` / `Receiver<ManagedRecvTransport<...>>`
-  variants only — but that means a second per-handle accessor, a
-  second C struct, and decisions about how plain handles behave when
-  callers ask (return zeros / return error). The first stats pass
-  ships pipeline-level counters; reconnect telemetry slots in next.
+- **Status:** Partially resolved 2026-08-19. Send-side reconnect/gap
+  telemetry (`reconnect_attempts`, `reconnect_successes`, `gap_len`,
+  `gap_messages_dropped`, `gap_bytes_dropped`, `reconnecting`) now ships
+  via `ManagedTransport::stats_handle() -> ManagedStatsHandle` and
+  `ManagedTransportStats` — a dedicated accessor, not a field grafted
+  onto `SenderStats`, per the design this entry originally called for.
+  Receive-side counters (`ManagedRecvTransport`) remain deferred: it
+  exposes only `reconnects_count()` (a bare rebuild tally), with no
+  gap-analog (the receive side has no gap buffer) and no per-cycle
+  attempt/success breakdown.
+- **Why deferred (recv side):** No consumer has asked for receive-side
+  reconnect telemetry beyond the existing rebuild counter; the send-side
+  pass landed first because it was the one an integrator field report
+  and the background-reconnect work both needed.
 - **Trigger to revisit:** A consumer running a managed-reconnect
-  pipeline asks for visibility into how often the link is flapping
-  (e.g. for alarm thresholds / backoff tuning).
+  receive pipeline asks for visibility into how often the link is
+  flapping (e.g. for alarm thresholds / backoff tuning) beyond the
+  existing rebuild count.
+
+## Background reconnect — bindings parity (C / Python / JVM)
+
+- **Status:** Rust-only as of 2026-08-19. `ReconnectMode::Background`
+  (a per-outage worker thread that keeps `send_bytes` non-blocking
+  through a sink outage), `ManagedTransport::stats_handle()`, and
+  `ManagedStatsHandle` / `ManagedTransportStats` have no C ABI, Python,
+  or JVM mirror. Binding consumers configuring a `ReconnectPolicy` only
+  get `ReconnectMode::Blocking` (the unchanged pre-existing behavior).
+- **Why deferred:** Ships Rust-first, matching the precedent set by
+  recent pipeline additions (`RtpRecvTransport::set_recv_timeout`,
+  `MuxSender::finish`) — no binding consumer has asked for it yet, and
+  the C surface is additive when it lands: an opaque-builder setter on
+  `tst_reconnect_policy_t` plus an ABI minor bump, not a breaking
+  change to the existing struct.
+- **Trigger to revisit:** A binding consumer running a
+  single-threaded relay pump against a managed sink — the same shape
+  that motivated the Rust-side feature — asks for the non-blocking
+  send path outside Rust.
 
 ## Last-activity-wall-clock gauges per stream
 

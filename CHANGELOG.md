@@ -9,7 +9,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`ReconnectMode::Background` on `ReconnectPolicy`** — opt-in
+  non-blocking reconnect for `ManagedTransport`. A per-outage worker
+  thread owns the factory/backoff/drain loop; while it's active (or
+  the gap buffer is non-empty) `send_bytes` enqueues under
+  `overflow_policy` and returns immediately (`Ok(())` means
+  *accepted*, not *delivered*). If the worker exhausts
+  `max_attempts` — which bounds one continuous outage, resetting after
+  every successful reconnect — the give-up surfaces exactly once, as a
+  single `Broken` on the next `send_bytes` call, whose own bytes are
+  not queued. The default, `ReconnectMode::Blocking`, is unchanged:
+  reconnect still runs synchronously on the caller's thread. Send-side
+  only — `ManagedRecvTransport` / `ManagedDemuxReceiver` log a warning
+  and behave as `Blocking` if handed `Background`. See the
+  [cookbook recipe](docs/cookbook/operations/managed-transport-reconnect.md#background-mode-never-stall-the-producer).
+- **`ManagedTransport::stats_handle()` + `ManagedStatsHandle` +
+  `ManagedTransportStats`** — a cloneable, `Send + Sync` observer
+  (obtain before moving the transport into a sender shell, mirroring
+  `cancel_handle()`) exposing `reconnect_attempts`,
+  `reconnect_successes`, `gap_len`, `gap_messages_dropped`,
+  `gap_bytes_dropped`, and `reconnecting`.
+- Cancel/close during a reconnect backoff wait now interrupts promptly
+  in both `Blocking` and `Background` modes — a Condvar-based wait
+  replaces the previous `thread::sleep`, so `close()` / `cancel()` /
+  `Drop` no longer wait out the full backoff period.
+
+### Changed
+
+- **`ReconnectPolicy` gained a `mode: ReconnectMode` field.** Full
+  struct literals (not using `..Default::default()`) need the new
+  field. This is compile-breaking for those callers, so the next
+  release is 0.6.0.
+
+Bindings (C ABI, Python, JVM) are unchanged this pass — `ReconnectMode::
+Background` and the new stats accessors are Rust-only for now; see the
+"Background reconnect — bindings parity" entry in
+[docs/project/deferred-features.md](docs/project/deferred-features.md).
 
 ---
 

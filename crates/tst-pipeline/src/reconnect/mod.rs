@@ -6,8 +6,10 @@
 //! Wraps any inner Transport (most commonly `SrtTransport`); on send
 //! failure with `Broken` semantics, queues the bytes in a fixed-size
 //! gap buffer and attempts to re-establish the inner transport with
-//! configurable backoff. On reconnect success, drains the gap buffer
-//! before resuming new sends.
+//! configurable backoff, either on the caller's thread (`ReconnectMode::
+//! Blocking`, the default) or on a dedicated per-outage worker thread
+//! (`ReconnectMode::Background`). On reconnect success, drains the gap
+//! buffer before resuming new sends.
 
 mod background;
 mod gap_buffer;
@@ -178,9 +180,8 @@ impl ManagedStatsHandle {
 /// On `send_bytes` returning `TransportError::Broken`, the bytes go into
 /// the gap buffer (subject to the configured overflow policy) and the
 /// inner transport is rebuilt via the user-supplied factory closure.
-/// Reconnect attempts run synchronously on the caller's thread with the
-/// configured backoff. After the inner transport reconnects, the gap
-/// buffer is drained before resuming new sends.
+/// After the inner transport reconnects, the gap buffer is drained
+/// before resuming new sends.
 ///
 /// `ManagedTransport` itself implements `Transport`, so all three sender
 /// shells (`MuxSender`, `Sender`, `RawSender`) compose with it
@@ -193,6 +194,59 @@ impl ManagedStatsHandle {
 /// let sender = MuxSender::new(managed, config)?;
 /// // sender now silently reconnects on transport breakage
 /// ```
+///
+/// # Reconnect modes
+///
+/// [`ReconnectPolicy::mode`] selects where the reconnect loop runs:
+///
+/// - **`ReconnectMode::Blocking`** (default; the pre-0.6 behavior) — the
+///   reconnect loop runs synchronously on the caller's thread, with the
+///   configured backoff, inline inside the `send_bytes` call that first
+///   observed `Broken`. That call blocks until reconnect succeeds or the
+///   policy's `max_attempts` budget is exhausted.
+/// - **`ReconnectMode::Background`** — a per-outage worker thread owns
+///   the factory/backoff/drain loop instead. While that worker is active,
+///   or the gap buffer is non-empty, `send_bytes` never touches the inner
+///   transport: it enqueues under `overflow_policy` and returns
+///   immediately. **`Ok(())` in this mode means the bytes were
+///   *accepted* into the gap buffer, not that they were *delivered*** —
+///   pair `Background` with [`Self::stats_handle`] to observe
+///   `reconnecting` / `gap_len` / `gap_messages_dropped`. `max_attempts`
+///   bounds one continuous outage (the budget resets after every
+///   successful reconnect, exactly as it does per-call in `Blocking`
+///   mode). If the worker exhausts that budget — or terminates
+///   abnormally (an unwind inside the factory, or an unrecoverable
+///   poisoned lock) — the give-up is reported exactly once, as a single
+///   `TransportError::Broken` on the next `send_bytes` call; that call's
+///   own bytes are **not** queued — the caller sees the error and owns
+///   the resend decision. [`Self::is_alive`] returns `true` while a
+///   background worker is actively recovering (never `false`, which
+///   would read as permanently dead rather than "recovering").
+///
+/// # Locking
+///
+/// 1. Lock order where both are held: `inner` → `gap` (matches
+///    `drain_gap_if_alive`). No code path acquires `inner` while holding
+///    `gap`.
+/// 2. `bg_active` transitions AND the send-path enqueue decision happen
+///    under the `gap` lock (linearizes worker-exit vs. pump-enqueue; no
+///    stranded bytes).
+/// 3. Never call `spawn_worker()` while holding the `gap` lock (it joins
+///    the previous worker, which may be blocked acquiring `gap` in its
+///    exit path).
+/// 4. The worker holds `gap` across a single inner send during drain —
+///    deliberate, pins the front message against `DropOldest` eviction.
+///
+/// # Closing
+///
+/// [`Self::close`] (via the `Transport::close` trait method) joins any
+/// active background worker before returning. That join is bounded by
+/// whatever the worker happens to be doing at the moment `close()` is
+/// called: an in-flight `factory()` call, or a single in-flight drain
+/// send — never an unbounded backoff wait (those are interruptible in
+/// both modes; cancel/close wakes them promptly). `Drop` never blocks:
+/// it signals shutdown and detaches, leaving the worker to observe the
+/// signal at its next check and exit on its own.
 ///
 /// # Lock poisoning policy (post-Wave-6.F)
 ///

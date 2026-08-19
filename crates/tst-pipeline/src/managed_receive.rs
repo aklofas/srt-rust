@@ -69,7 +69,7 @@
 //!   higher-level shell (`DemuxReceiver`) is responsible for calling
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
-use crate::reconnect::ReconnectPolicy;
+use crate::reconnect::{ReconnectMode, ReconnectPolicy};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
@@ -149,6 +149,17 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
         policy: ReconnectPolicy,
     ) -> Self {
+        if policy.mode == ReconnectMode::Background {
+            // Recv-side has no gap buffer and no background worker — there
+            // is nothing for the caller's thread to be freed from. Warn
+            // once at construction (rather than silently downgrading) so a
+            // caller who copy-pasted a send-side policy notices the no-op
+            // instead of assuming their receiver never blocks on reconnect.
+            warn!(
+                target: "tst_pipeline::reconnect",
+                "ReconnectMode::Background is send-side only; this receiver reconnects on the caller's thread",
+            );
+        }
         let inner_cancel: Arc<
             Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>,
         > = Arc::new(Mutex::new(inner.cancel_handle()));

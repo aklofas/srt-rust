@@ -373,9 +373,17 @@ calls the factory with the configured backoff until a fresh transport
 materialises or `max_attempts` is exhausted. On reconnect the gap
 buffer drains before the call returns.
 
-Reconnect runs synchronously on the calling thread — a single
-`send_bytes` call may block for the full reconnect window. Async
-reconnect is on the deferred-features list; see
+`ReconnectPolicy.mode` picks where that reconnect loop runs. The
+default, `ReconnectMode::Blocking`, runs it on the calling thread — a
+single `send_bytes` call may block for the full reconnect window.
+Opt in to `ReconnectMode::Background` and a per-outage worker thread
+owns the factory/backoff/drain loop instead: while it's active (or the
+gap buffer is non-empty) `send_bytes` enqueues under `overflow_policy`
+and returns immediately — `Ok(())` means *accepted*, not *delivered*.
+This is still a synchronous API, not an async runtime; see the
+[cookbook recipe](/docs/cookbook/operations/managed-transport-reconnect.md#background-mode-never-stall-the-producer)
+for when to reach for it. True async/reactor exposure remains on the
+deferred-features list; see
 [project/deferred-features.md](/docs/project/deferred-features.md).
 
 ## `ReconnectPolicy`
@@ -386,6 +394,7 @@ pub struct ReconnectPolicy {
     pub backoff: BackoffStrategy,
     pub gap_buffer_capacity: usize,
     pub overflow_policy: OverflowPolicy,
+    pub mode: ReconnectMode,
 }
 ```
 
@@ -398,6 +407,9 @@ Defaults (`ReconnectPolicy::default()`):
   see §11 for the actual variants.
 - `gap_buffer_capacity: 256` — messages.
 - `overflow_policy: OverflowPolicy::DropOldest` — see §12.
+- `mode: ReconnectMode::Blocking` — reconnect on the caller's thread.
+  Set to `ReconnectMode::Background` to run reconnect on a per-outage
+  worker thread instead; see the cookbook recipe linked above.
 
 ## `BackoffStrategy`
 

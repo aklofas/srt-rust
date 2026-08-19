@@ -45,3 +45,70 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Runnable: [examples/operations/managed_reconnect.rs](/examples/operations/managed_reconnect.rs).
+
+## Background mode: never stall the producer
+
+> **When to use this:** a single-threaded relay pump — one thread both
+> produces frames and calls `send_bytes`/`send_video` — where blocking
+> that thread through a whole reconnect window means the upstream
+> source backs up or drops frames on the floor anyway. If losing the
+> freshest frame is worse than losing an old one, "fresh beats
+> complete" is the right tradeoff, and `Background` mode is what makes
+> it possible: the producer thread never blocks on reconnect at all.
+
+By default (`ReconnectMode::Blocking`) a `send_bytes` call that hits a
+broken transport blocks the caller for the whole reconnect window.
+Set `mode: ReconnectMode::Background` and a per-outage worker thread
+takes over the factory/backoff/drain loop instead — `send_bytes`
+enqueues into the gap buffer under `overflow_policy` and returns
+immediately, whether or not the sink is currently reachable:
+
+```rust,ignore
+let policy = ReconnectPolicy {
+    mode: ReconnectMode::Background,
+    max_attempts: Some(20),
+    backoff: BackoffStrategy::Exponential {
+        base: Duration::from_millis(100),
+        max: Duration::from_secs(10),
+    },
+    gap_buffer_capacity: 256,
+    overflow_policy: OverflowPolicy::DropOldest,
+};
+let managed = ManagedTransport::new(initial, factory, policy);
+
+// Grab the stats handle BEFORE moving `managed` into the sender shell —
+// the shell takes ownership of `managed`, but the handle keeps reading
+// live counters (same pattern as `cancel_handle()`).
+let stats = managed.stats_handle();
+let sender = MuxSender::new(managed, MuxerConfig::default())?;
+```
+
+**`Ok(()) != delivered.`** Under the default `OverflowPolicy::DropOldest`,
+a `send_bytes` call that returns `Ok(())` while the worker is
+reconnecting only means the bytes were accepted into the gap buffer —
+if the outage outlasts `gap_buffer_capacity`, older queued messages
+(possibly including these) get silently evicted to make room. An
+integrator's single-threaded relay pump that only checks `is_ok()`
+will not notice frames going missing; poll `stats_handle()` if you
+need to know.
+
+**Visibility via `stats_handle()`.** `ManagedStatsHandle::stats()`
+returns `reconnecting` (a worker is currently active), `gap_len`
+(messages queued right now), and `gap_messages_dropped` /
+`gap_bytes_dropped` (cumulative eviction counts) — poll these from a
+separate thread or an occasional check in the producer loop to detect
+a flapping link or a growing backlog before it becomes a silent-loss
+incident.
+
+**Give-up reporting.** If the worker exhausts `max_attempts` for one
+continuous outage (the budget resets after every successful
+reconnect), the give-up surfaces exactly once: the *next* `send_bytes`
+call after the worker quits returns `TransportError::Broken` instead
+of the usual `Ok(())`. That call's own bytes are **not** queued — the
+caller sees the error and owns the resend decision. Set
+`max_attempts: None` to retry forever instead (only safe if your
+transport factory is itself rate-limited or backed by exponential
+backoff, otherwise a permanent peer outage produces a hot reconnect
+loop on the worker thread).
+
+Runnable: [examples/operations/managed_reconnect_background.rs](/examples/operations/managed_reconnect_background.rs).

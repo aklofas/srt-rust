@@ -11,19 +11,14 @@
 //!    pins the front message so a concurrent `DropOldest` eviction can't
 //!    pop the message in flight (clone-then-pop would desync the queue).
 
-#[allow(unused_imports)] // removed in a later task of this arc
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-#[allow(unused_imports)] // removed in a later task of this arc
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-#[allow(unused_imports)] // removed in a later task of this arc
 use tracing::{info, warn};
-#[allow(unused_imports)] // removed in a later task of this arc
 use tst_core::transport::{Transport, TransportError};
 
-#[allow(unused_imports)] // removed in a later task of this arc
 use super::{GapBuffer, ReconnectPolicy};
 
 /// Interruptible sleep. `wait_timeout(dur)` parks up to `dur`, returning
@@ -91,12 +86,179 @@ pub(crate) struct ManagedShared {
     pub(crate) bg_active: AtomicBool,
     /// Set by a worker that exhausted max_attempts; consumed (swap false)
     /// by the next send_bytes, which reports Broken exactly once.
-    #[allow(dead_code)] // written + read starting in a later task of this arc
     pub(crate) gave_up: AtomicBool,
     /// factory() invocations (either mode).
     pub(crate) reconnect_attempts: AtomicU64,
     /// Successful factory() installs (either mode).
     pub(crate) reconnect_successes: AtomicU64,
+}
+
+/// Backpressure retry cadence while draining on the worker — there is no
+/// caller to propagate to, so the worker absorbs it. Interruptible.
+const DRAIN_BACKPRESSURE_RETRY: Duration = Duration::from_millis(20);
+
+/// Everything the worker thread owns. All `Arc`s — the worker never
+/// borrows from `ManagedTransport`, so `Drop` can detach it safely.
+pub(crate) struct WorkerCtx<T: Transport> {
+    pub(crate) inner: Arc<Mutex<Option<T>>>,
+    pub(crate) factory: Arc<dyn Fn() -> Result<T, TransportError> + Send + Sync>,
+    pub(crate) gap: Arc<Mutex<GapBuffer>>,
+    pub(crate) closed: Arc<AtomicBool>,
+    pub(crate) shutdown: Arc<Shutdown>,
+    pub(crate) shared: Arc<ManagedShared>,
+    pub(crate) policy: ReconnectPolicy,
+}
+
+enum DrainStep {
+    Sent,
+    Empty,
+    Backpressure,
+    Broken,
+}
+
+/// Clear `bg_active` under the gap lock (invariant 2) on any exit path
+/// that didn't already clear it via the Empty protocol. Poisoned gap:
+/// clear anyway — a panic elsewhere is already unwinding the system.
+fn exit_clear_active<T: Transport>(ctx: &WorkerCtx<T>) {
+    let guard = ctx.gap.lock();
+    ctx.shared.bg_active.store(false, Ordering::Release);
+    drop(guard);
+}
+
+/// One outage's worth of reconnect + drain. Spawned on break, exits when
+/// the gap fully drains (Empty protocol), the budget exhausts (give-up),
+/// or shutdown is signaled.
+pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
+    // The budget covers ONE continuous outage: reset after each
+    // successful install. `max_attempts` bounds attempts per outage, not
+    // per transport lifetime — matching Blocking, where every
+    // `send_bytes` call ran a fresh `reconnect_and_drain` budget.
+    let mut attempt: u32 = 0;
+    'reconnect: loop {
+        if ctx.closed.load(Ordering::Acquire) {
+            return exit_clear_active(&ctx);
+        }
+        attempt += 1;
+        let Some(wait) = ctx.policy.next_delay(attempt) else {
+            let max = ctx.policy.max_attempts.unwrap_or(0);
+            warn!(
+                target: "tst_pipeline::reconnect",
+                attempts_made = attempt - 1,
+                max_attempts = max,
+                "background reconnect gave up — next send_bytes reports Broken",
+            );
+            // gave_up before clearing active: keeps the give-up cycle's
+            // report deterministic for the send path's swap-consume.
+            ctx.shared.gave_up.store(true, Ordering::Release);
+            return exit_clear_active(&ctx);
+        };
+        info!(
+            target: "tst_pipeline::reconnect",
+            attempt,
+            max_attempts = ctx.policy.max_attempts.unwrap_or(0),
+            backoff_ms = wait.as_millis() as u64,
+            "background reconnect attempt",
+        );
+        if ctx.shutdown.wait_timeout(wait) {
+            return exit_clear_active(&ctx);
+        }
+        ctx.shared
+            .reconnect_attempts
+            .fetch_add(1, Ordering::Relaxed);
+        let new_inner = match (ctx.factory)() {
+            Ok(t) => t,
+            Err(_) => continue 'reconnect,
+        };
+        {
+            let Ok(mut guard) = ctx.inner.lock() else {
+                // Inner lock poisoned — unrecoverable from a worker with
+                // no caller. Surface as give-up so the next send reports.
+                ctx.shared.gave_up.store(true, Ordering::Release);
+                return exit_clear_active(&ctx);
+            };
+            *guard = Some(new_inner);
+        }
+        ctx.shared
+            .reconnect_successes
+            .fetch_add(1, Ordering::Relaxed);
+        attempt = 0; // fresh budget for any subsequent break
+
+        // ---- drain phase ----
+        loop {
+            if ctx.closed.load(Ordering::Acquire) {
+                return exit_clear_active(&ctx);
+            }
+            // Per-message lock scope, order inner -> gap (invariant 1).
+            // The gap lock is held across this one send on purpose
+            // (invariant 4): it pins the front message so a concurrent
+            // DropOldest eviction can't pop the message in flight. The
+            // pump blocks on the gap lock for at most one inner send.
+            let step = {
+                let Ok(mut transport_guard) = ctx.inner.lock() else {
+                    ctx.shared.gave_up.store(true, Ordering::Release);
+                    return exit_clear_active(&ctx);
+                };
+                let mut gap = ctx
+                    .gap
+                    .lock()
+                    .expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
+                if gap.front().is_none() {
+                    // Empty protocol: clear active while STILL holding the
+                    // gap lock — the send gate checks bg_active under this
+                    // same lock, so it can never enqueue into a
+                    // worker-less buffer (invariant 2).
+                    ctx.shared.bg_active.store(false, Ordering::Release);
+                    DrainStep::Empty
+                } else if let Some(transport) = transport_guard.as_mut() {
+                    let msg = gap.front().expect("checked non-empty above");
+                    match transport.send_bytes(msg) {
+                        Ok(()) => {
+                            gap.pop_front();
+                            DrainStep::Sent
+                        }
+                        Err(TransportError::Backpressure { .. }) => DrainStep::Backpressure,
+                        Err(TransportError::TooLarge { len, max }) => {
+                            // The rebuilt inner's ceiling shrank below a
+                            // queued message. With no caller to bounce it
+                            // to, keeping it would wedge the drain forever
+                            // — drop it, count it, keep going.
+                            if let Some(dropped) = gap.pop_front() {
+                                gap.bytes_dropped += dropped.len() as u64;
+                                gap.messages_dropped += 1;
+                            }
+                            warn!(
+                                target: "tst_pipeline::reconnect",
+                                len,
+                                max,
+                                "dropping queued message larger than the reconnected transport's max_payload",
+                            );
+                            DrainStep::Sent
+                        }
+                        Err(_) => {
+                            // Broken / Closed / unknown-future — rebuild.
+                            // Front message stays queued for the retry.
+                            *transport_guard = None;
+                            DrainStep::Broken
+                        }
+                    }
+                } else {
+                    // Inner vanished (only the worker clears it — belt and
+                    // braces for future refactors): treat as broken.
+                    DrainStep::Broken
+                }
+            };
+            match step {
+                DrainStep::Sent => continue,
+                DrainStep::Empty => return, // active already cleared under the gap lock
+                DrainStep::Backpressure => {
+                    if ctx.shutdown.wait_timeout(DRAIN_BACKPRESSURE_RETRY) {
+                        return exit_clear_active(&ctx);
+                    }
+                }
+                DrainStep::Broken => continue 'reconnect,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

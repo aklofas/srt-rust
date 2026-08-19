@@ -14,7 +14,7 @@ mod gap_buffer;
 
 pub use gap_buffer::{GapBuffer, OverflowPolicy};
 
-use background::Shutdown;
+use background::{ManagedShared, Shutdown};
 
 use std::time::Duration;
 
@@ -119,6 +119,7 @@ impl ReconnectPolicy {
 
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 use tracing::{debug, info, warn};
 use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 use tst_core::transport::{Transport, TransportCancel, TransportError};
@@ -150,7 +151,7 @@ pub struct ManagedTransportStats {
 #[derive(Clone)]
 pub struct ManagedStatsHandle {
     gap: Arc<Mutex<GapBuffer>>,
-    shared: Arc<background::ManagedShared>,
+    shared: Arc<ManagedShared>,
 }
 
 impl ManagedStatsHandle {
@@ -230,7 +231,11 @@ pub struct ManagedTransport<T: Transport> {
     shutdown: Arc<Shutdown>,
     /// Reconnect/gap telemetry and background-worker coordination flags,
     /// read by any `ManagedStatsHandle` obtained via `stats_handle()`.
-    shared: Arc<background::ManagedShared>,
+    shared: Arc<ManagedShared>,
+    /// Most recent background worker, for `close()` to join. One worker
+    /// per outage — spawned on break, exits when the gap drains or the
+    /// budget exhausts.
+    bg_thread: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
 impl<T: Transport + 'static> ManagedTransport<T> {
@@ -246,7 +251,8 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             gap: Arc::new(Mutex::new(gap)),
             closed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             shutdown: Arc::new(Shutdown::new()),
-            shared: Arc::new(background::ManagedShared::default()),
+            shared: Arc::new(ManagedShared::default()),
+            bg_thread: Mutex::new(None),
         }
     }
 
@@ -281,6 +287,23 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         if self.closed.load(std::sync::atomic::Ordering::Acquire) {
             return Err(TransportError::Closed);
         }
+        if self.policy.mode == ReconnectMode::Background {
+            // Report a completed give-up cycle exactly once. This call's
+            // bytes are NOT queued — the caller saw the error and owns the
+            // resend decision. The report refers to the most recently
+            // exhausted cycle; the next call starts a fresh one.
+            if self
+                .shared
+                .gave_up
+                .swap(false, std::sync::atomic::Ordering::AcqRel)
+            {
+                let max = self.policy.max_attempts.unwrap_or(0);
+                return Err(TransportError::Broken {
+                    msg: format!("reconnect gave up after {max} attempts"),
+                    errno_code: None,
+                });
+            }
+        }
         // Pre-check size against inner before queuing — oversized messages
         // would otherwise sit in the gap buffer and fail every drain.
         //
@@ -302,6 +325,52 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 len: bytes.len(),
                 max,
             });
+        }
+
+        if self.policy.mode == ReconnectMode::Background {
+            // Background invariant: worker active or gap non-empty =>
+            // always enqueue, never touch inner. Preserves FIFO (a direct
+            // send would leapfrog queued bytes) and keeps send latency
+            // independent of reconnect/drain. Checked under the gap lock
+            // to linearize with the worker's Empty-exit (invariant 2).
+            let need_worker = {
+                let mut gap = self
+                    .gap
+                    .lock()
+                    .expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
+                let worker_active = self
+                    .shared
+                    .bg_active
+                    .load(std::sync::atomic::Ordering::Acquire);
+                if !worker_active && gap.is_empty() {
+                    None // fall through to the direct path below
+                } else {
+                    if let Err(gap_buffer::GapBufferError::Full) = gap.enqueue(bytes.to_vec()) {
+                        return Err(TransportError::Backpressure {
+                            msg: "gap buffer full".into(),
+                            errno_code: None,
+                        });
+                    }
+                    if worker_active {
+                        Some(false)
+                    } else {
+                        // Backlog with no worker (post-give-up): start a
+                        // fresh cycle. Flag set under the gap lock.
+                        self.shared
+                            .bg_active
+                            .store(true, std::sync::atomic::Ordering::Release);
+                        Some(true)
+                    }
+                }
+            }; // gap lock dropped — never spawn while holding it (invariant 3)
+            match need_worker {
+                Some(true) => {
+                    self.spawn_worker();
+                    return Ok(());
+                }
+                Some(false) => return Ok(()),
+                None => {} // direct path
+            }
         }
 
         // Drain any queued bytes first. If drain breaks the transport
@@ -399,6 +468,17 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                     errno_code: None,
                 });
             }
+            if self.policy.mode == ReconnectMode::Background {
+                // Under the gap lock (invariant 2); spawn happens after
+                // the lock drops (invariant 3).
+                self.shared
+                    .bg_active
+                    .store(true, std::sync::atomic::Ordering::Release);
+            }
+        }
+        if self.policy.mode == ReconnectMode::Background {
+            self.spawn_worker();
+            return Ok(());
         }
         self.reconnect_and_drain()
     }
@@ -540,6 +620,31 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             }
         }
     }
+
+    /// Spawn the per-outage worker. Callers must NOT hold the gap lock
+    /// (invariant 3) and must have set `bg_active` under it already.
+    fn spawn_worker(&self) {
+        let mut slot = self
+            .bg_thread
+            .lock()
+            .expect("BUG: bg_thread lock poisoned — held only across spawn/join bookkeeping");
+        if let Some(prev) = slot.take() {
+            // A previous worker cleared bg_active before exiting (that is
+            // the only way we got here), so it is exiting or exited —
+            // this join is bounded to its final instructions.
+            let _ = prev.join();
+        }
+        let ctx = background::WorkerCtx {
+            inner: Arc::clone(&self.inner),
+            factory: Arc::clone(&self.factory),
+            gap: Arc::clone(&self.gap),
+            closed: Arc::clone(&self.closed),
+            shutdown: Arc::clone(&self.shutdown),
+            shared: Arc::clone(&self.shared),
+            policy: self.policy.clone(),
+        };
+        *slot = Some(thread::spawn(move || background::worker_run(ctx)));
+    }
 }
 
 impl<T: Transport + 'static> Transport for ManagedTransport<T> {
@@ -563,6 +668,13 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     }
 
     fn is_alive(&self) -> bool {
+        if self
+            .shared
+            .bg_active
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return true; // background reconnect in progress — recovering, not dead
+        }
         // Mutex-poisoning policy (safe-default on poison): false matches the
         // "no live inner transport" answer (already the unwrap_or default).
         self.inner
@@ -576,6 +688,14 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
         self.closed
             .store(true, std::sync::atomic::Ordering::Release);
         self.shutdown.signal();
+        // Join an active worker. Bounded: it exits at its next shutdown
+        // check; an in-flight factory() call must return first — connect
+        // timeouts are the factory's own knob.
+        if let Ok(mut slot) = self.bg_thread.lock() {
+            if let Some(h) = slot.take() {
+                let _ = h.join();
+            }
+        }
         // Mutex-poisoning policy (silent no-op on poison): close on a poisoned
         // state is naturally a no-op — the inner transport is already in an
         // unknown state and close-attempt would compound the problem. The
@@ -609,6 +729,19 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
             .lock()
             .ok()
             .and_then(|g| g.as_ref().and_then(|t| t.socket_stats()))
+    }
+}
+
+impl<T: Transport> Drop for ManagedTransport<T> {
+    fn drop(&mut self) {
+        // Signal-and-detach — Drop must never block. The worker owns Arcs
+        // to everything it touches, observes the signal at its next
+        // check (backoff waits are interruptible), and exits on its own.
+        // Without this, a max_attempts: None worker would retry forever
+        // after the transport is gone.
+        self.closed
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.shutdown.signal();
     }
 }
 

@@ -247,3 +247,67 @@ fn background_dropoldest_evicts_and_counts_deterministically() {
     );
     assert_eq!(s.gap_len, 0);
 }
+
+/// Fix round 1 (review finding I1): a worker that unwinds — e.g. a
+/// user-supplied `factory()` that panics on `unwrap()` during DNS/socket
+/// setup — must not leave `bg_active` stuck true. Pre-fix that would wedge
+/// every future send into the enqueue-and-return-Ok branch forever, with
+/// no replacement worker ever able to spawn: unbounded silent loss
+/// reported as healthy. The panic below is expected to print to captured
+/// test output.
+#[test]
+fn background_worker_panic_recovers_via_abnormal_give_up() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken); // msg 0's send breaks the inner -> worker spawns
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(10)));
+
+    // Custom factory (not rig.factory(), which never panics): first call
+    // panics — simulating e.g. an `unwrap()` on DNS/socket setup — every
+    // later call succeeds with a normal working transport.
+    let calls = Arc::clone(&rig.factory_calls);
+    let script = Arc::clone(&rig.script);
+    let sent = Arc::clone(&rig.sent);
+    let factory = move || -> Result<ScriptedTransport, TransportError> {
+        let n = calls.fetch_add(1, Ordering::SeqCst);
+        if n == 0 {
+            panic!("test factory panic");
+        }
+        Ok(ScriptedTransport {
+            script: Arc::clone(&script),
+            sent: Arc::clone(&sent),
+            max_payload: 1316,
+            alive: true,
+        })
+    };
+
+    let mut managed = ManagedTransport::new(rig.transport(), factory, policy);
+    let stats = managed.stats_handle();
+
+    managed.send_bytes(&[0]).unwrap(); // breaks the inner; enqueued; worker spawns and panics
+    wait_until(Duration::from_secs(10), || {
+        !stats.stats().unwrap().reconnecting
+    });
+
+    // Report-once: the next send surfaces the abnormal give-up, and its
+    // own bytes are NOT queued (same contract as a normal give-up).
+    match managed.send_bytes(&[1]).unwrap_err() {
+        TransportError::Broken { msg, .. } => {
+            assert!(
+                msg.contains("aborted"),
+                "expected an abnormal give-up message, got: {msg}"
+            );
+        }
+        other => panic!("expected Broken, got {other:?}"),
+    }
+
+    // The give-up is consumed — this send starts a fresh cycle instead of
+    // repeating the abnormal error, and the factory's 2nd call succeeds.
+    managed.send_bytes(&[2]).unwrap();
+    wait_until(Duration::from_secs(10), || rig.sent_snapshot().len() == 2);
+    assert_eq!(
+        rig.sent_snapshot(),
+        vec![vec![0], vec![2]],
+        "msg 0 (queued through the crash) then msg 2, in order; msg 1 was never queued"
+    );
+    assert!(stats.stats().unwrap().reconnect_successes >= 1);
+}

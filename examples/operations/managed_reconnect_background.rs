@@ -71,8 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     //   round 0: accept -> drain 5 messages -> drop socket -> drop listener
     //            (releases the port) -> sleep ~300ms (the sender's factory
-    //            gets ECONNREFUSED-shaped failures here and the background
-    //            worker backs off and retries on its own thread)
+    //            call blocks in-flight for the duration of the outage —
+    //            see the factory closure comment below for why)
     //   round 1: rebind -> accept -> drain to clean close (let the sender
     //            finish)
     // ---------------------------------------------------------------------

@@ -93,12 +93,19 @@ will not notice frames going missing; poll `stats_handle()` if you
 need to know.
 
 **Visibility via `stats_handle()`.** `ManagedStatsHandle::stats()`
-returns `reconnecting` (a worker is currently active), `gap_len`
+returns `Option<ManagedTransportStats>` — `None` only if the
+gap-buffer lock was poisoned by a prior panic (same precedent as
+`socket_stats()`); a healthy pipeline always gets `Some`. The snapshot
+carries `reconnecting` (a worker is currently active), `gap_len`
 (messages queued right now), and `gap_messages_dropped` /
-`gap_bytes_dropped` (cumulative eviction counts) — poll these from a
+`gap_bytes_dropped` (cumulative loss counts) — poll these from a
 separate thread or an occasional check in the producer loop to detect
 a flapping link or a growing backlog before it becomes a silent-loss
-incident.
+incident. `gap_messages_dropped` isn't only `DropOldest` eviction: it
+also counts a queued message that no longer fits the *rebuilt*
+transport's `max_payload` (dropped during drain rather than wedging it
+forever) — under `Blocking` mode the same oversized message would
+instead surface synchronously to the caller as `TooLarge`.
 
 **Give-up reporting.** If the worker exhausts `max_attempts` for one
 continuous outage (the budget resets after every successful

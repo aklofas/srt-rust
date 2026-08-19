@@ -211,8 +211,12 @@ impl ManagedStatsHandle {
 ///   immediately. **`Ok(())` in this mode means the bytes were
 ///   *accepted* into the gap buffer, not that they were *delivered*** —
 ///   pair `Background` with [`Self::stats_handle`] to observe
-///   `reconnecting` / `gap_len` / `gap_messages_dropped`. `max_attempts`
-///   bounds one continuous outage (the budget resets after every
+///   `reconnecting` / `gap_len` / `gap_messages_dropped`. That counter
+///   also counts a queued message that no longer fits the *rebuilt*
+///   transport's `max_payload` — dropped during drain rather than
+///   wedging it forever; `Blocking` mode would instead return
+///   `TooLarge` synchronously to the caller for that same message.
+///   `max_attempts` bounds one continuous outage (the budget resets after every
 ///   successful reconnect, exactly as it does per-call in `Blocking`
 ///   mode). If the worker exhausts that budget — or terminates
 ///   abnormally (an unwind inside the factory, or an unrecoverable

@@ -396,3 +396,68 @@ fn flap_cycles_never_wedge_or_hang() {
         "expected at least one successful reconnect per flap cycle"
     );
 }
+
+#[test]
+fn background_give_up_reports_broken_once_then_restarts_budget() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    let policy = bg_policy(
+        Some(2),
+        BackoffStrategy::Constant(Duration::from_millis(10)),
+    );
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(u32::MAX), policy);
+    let stats = managed.stats_handle();
+
+    managed.send_bytes(&[0]).unwrap(); // break -> worker starts, 2 attempts, gives up
+    wait_until(Duration::from_secs(10), || {
+        !stats.stats().unwrap().reconnecting
+    });
+    assert!(!managed.is_alive(), "gave up + inner gone => not alive");
+    assert_eq!(
+        stats.stats().unwrap().gap_len,
+        1,
+        "backlog retained across give-up"
+    );
+
+    // First send after give-up: the one-shot Broken report. Its bytes are
+    // NOT queued — the caller saw the error and owns the resend.
+    let err = managed.send_bytes(&[1]).unwrap_err();
+    match err {
+        tst_core::transport::TransportError::Broken { msg, .. } => {
+            assert!(msg.contains("gave up after 2 attempts"), "got: {msg}");
+        }
+        other => panic!("expected Broken give-up report, got {other:?}"),
+    }
+    assert_eq!(
+        stats.stats().unwrap().gap_len,
+        1,
+        "reported call's bytes not queued"
+    );
+
+    // Next send starts a fresh cycle with a fresh budget.
+    managed.send_bytes(&[2]).unwrap();
+    let s = stats.stats().unwrap();
+    assert!(
+        s.reconnecting || s.gap_len >= 2,
+        "fresh worker cycle started with the backlog: {s:?}"
+    );
+}
+
+#[test]
+fn background_none_budget_never_gives_up() {
+    let rig = Rig::new();
+    rig.push_outcome(SendOutcome::Broken);
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(5)));
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(u32::MAX), policy);
+    let stats = managed.stats_handle();
+    managed.send_bytes(&[0]).unwrap();
+    wait_until(Duration::from_secs(10), || {
+        stats.stats().unwrap().reconnect_attempts >= 10
+    });
+    let s = stats.stats().unwrap();
+    assert!(s.reconnecting, "still retrying, never gave up: {s:?}");
+    assert!(
+        managed.send_bytes(&[1]).is_ok(),
+        "no give-up report with None budget"
+    );
+}

@@ -6866,13 +6866,81 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::reconnect::GapBuffer"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# background-reconnect arc, 2026-08-19 — ManagedStatsHandle mirrors cancel_handle()'s
+# cloneable-observer pattern; owning test is the stats-asserting battery in
+# reconnect_background.rs.
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::reconnect::ManagedStatsHandle"
+owning_tests = ["crates/tst-pipeline/tests/reconnect_background.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::ManagedStatsHandle"
+owning_tests = ["crates/tst-pipeline/tests/reconnect_background.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::reconnect::ManagedStatsHandle::stats"
+owning_tests = ["crates/tst-pipeline/tests/reconnect_background.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ManagedStatsHandle::clone"
+reason = "derive impl for ManagedStatsHandle, mirroring cancel_handle()'s cloneable-observer contract; not yet invoked by an in-tree .clone() call — interim exemption, graduate alongside a future multi-consumer stats test"
+
 [[exempt]]
 item = "tst_pipeline::reconnect::ManagedTransport"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# background-reconnect arc, 2026-08-19 — ManagedTransportStats is the stats()
+# snapshot type; clone is present but unexercised in-tree, fmt(Debug) backs the
+# {s:?} diagnostics in reconnect_background.rs's assertion messages.
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ManagedTransportStats::clone"
+reason = "derive impl for ManagedTransportStats (the stats() snapshot type); not yet invoked by an in-tree .clone() call — interim exemption, graduate alongside a future multi-consumer stats test"
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ManagedTransportStats::fmt"
+reason = "derive impl for ManagedTransportStats; Debug bound required by the {s:?} diagnostic format strings in reconnect_background.rs's assertions"
+
 [[exempt]]
 item = "tst_pipeline::reconnect::OverflowPolicy"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+# background-reconnect arc, 2026-08-19 — ReconnectMode's default/eq are directly
+# asserted by reconnect_policy_default_mode_is_blocking (mod.rs unit test); clone
+# is exercised transitively via ReconnectPolicy::clone() in spawn_worker()
+# (mod.rs:716), which every Background-mode reconnect_background.rs test invokes.
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ReconnectMode::clone"
+reason = "derive impl for ReconnectMode; exercised transitively via ReconnectPolicy::clone() in spawn_worker() (mod.rs:716), invoked on every Background-mode reconnect_background.rs test"
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ReconnectMode::default"
+reason = "derive impl for ReconnectMode; covered by reconnect_policy_default_mode_is_blocking (mod.rs unit test)"
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ReconnectMode::eq"
+reason = "derive impl for ReconnectMode; covered by reconnect_policy_default_mode_is_blocking (mod.rs unit test) plus pervasive mode-gating comparisons in reconnect_background.rs"
+
+[[exempt]]
+item = "tst_pipeline::reconnect::ReconnectMode::fmt"
+reason = "derive impl for ReconnectMode; Debug bound required by reconnect_policy_default_mode_is_blocking's assert_eq (mod.rs)"
 
 [[exempt]]
 item = "tst_pipeline::reconnect::ReconnectPolicy"

@@ -87,6 +87,12 @@ pub(crate) struct ManagedShared {
     /// Set by a worker that exhausted max_attempts; consumed (swap false)
     /// by the next send_bytes, which reports Broken exactly once.
     pub(crate) gave_up: AtomicBool,
+    /// Set alongside `gave_up` when the worker terminated abnormally
+    /// (unwind, or a poisoned lock it can't recover from) rather than via
+    /// the normal budget-exhausted path. Consumed the same way, and
+    /// changes the reported message so a `max_attempts: None` policy
+    /// doesn't claim "gave up after 0 attempts" for a crash.
+    pub(crate) gave_up_abnormal: AtomicBool,
     /// factory() invocations (either mode).
     pub(crate) reconnect_attempts: AtomicU64,
     /// Successful factory() installs (either mode).
@@ -116,19 +122,61 @@ enum DrainStep {
     Broken,
 }
 
-/// Clear `bg_active` under the gap lock (invariant 2) on any exit path
-/// that didn't already clear it via the Empty protocol. Poisoned gap:
-/// clear anyway — a panic elsewhere is already unwinding the system.
-fn exit_clear_active<T: Transport>(ctx: &WorkerCtx<T>) {
-    let guard = ctx.gap.lock();
-    ctx.shared.bg_active.store(false, Ordering::Release);
-    drop(guard);
+/// Clears `bg_active` (invariant 2) when `worker_run` exits — including an
+/// **unwind**: a user-supplied `factory()` panicking (e.g. `unwrap()` on
+/// DNS/socket setup), or the drain phase's poisoned-gap `.expect()`.
+///
+/// Without this, a panicking worker leaves `bg_active` stuck `true`
+/// forever: every subsequent `send_bytes` takes the send gate's
+/// worker-active branch (enqueue, return `Ok`) forever, no replacement
+/// worker can ever spawn (`spawn_worker` requires `!bg_active`), and
+/// `is_alive()` reports `true` unconditionally — with `DropOldest` the
+/// gap buffer never fills, so this is unbounded silent loss reported as
+/// healthy, exactly the class of stall this feature exists to eliminate.
+///
+/// Constructed once at the top of `worker_run` so it covers every exit
+/// path (normal `return` or unwind) via `Drop`. The Empty-protocol exit
+/// (drain phase, gap goes empty) still clears `bg_active` in place under
+/// the gap lock it's already holding, for the same-critical-section
+/// linearization with the send gate (invariant 2) — this guard's later
+/// clear on top of that is idempotent and harmless.
+struct ActiveClearGuard {
+    gap: Arc<Mutex<GapBuffer>>,
+    shared: Arc<ManagedShared>,
+}
+
+impl Drop for ActiveClearGuard {
+    fn drop(&mut self) {
+        // Take the gap lock purely to linearize this clear with the send
+        // gate (invariant 2) — the store below doesn't touch the gap
+        // buffer, so this reads like an unlocked store, but `guard`
+        // staying alive through the whole body is what makes it safe.
+        // Poisoned gap: acquire anyway (the Result's poisoned arm still
+        // embeds — and holds — the underlying MutexGuard) and clear
+        // regardless; a panic elsewhere is already unwinding the system.
+        let guard = self.gap.lock();
+        if std::thread::panicking() {
+            // Unwinding: no normal exit path ran, so nobody reported a
+            // give-up. Report an abnormal one so the next send_bytes
+            // surfaces Broken instead of silently queuing forever.
+            self.shared.gave_up_abnormal.store(true, Ordering::Release);
+            self.shared.gave_up.store(true, Ordering::Release);
+        }
+        self.shared.bg_active.store(false, Ordering::Release);
+        drop(guard);
+    }
 }
 
 /// One outage's worth of reconnect + drain. Spawned on break, exits when
 /// the gap fully drains (Empty protocol), the budget exhausts (give-up),
 /// or shutdown is signaled.
 pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
+    // Cleared on every exit path via Drop — including an unwind. See
+    // ActiveClearGuard's doc comment for why that matters.
+    let _active_guard = ActiveClearGuard {
+        gap: Arc::clone(&ctx.gap),
+        shared: Arc::clone(&ctx.shared),
+    };
     // The budget covers ONE continuous outage: reset after each
     // successful install. `max_attempts` bounds attempts per outage, not
     // per transport lifetime — matching Blocking, where every
@@ -136,7 +184,7 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
     let mut attempt: u32 = 0;
     'reconnect: loop {
         if ctx.closed.load(Ordering::Acquire) {
-            return exit_clear_active(&ctx);
+            return;
         }
         attempt += 1;
         let Some(wait) = ctx.policy.next_delay(attempt) else {
@@ -147,10 +195,11 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
                 max_attempts = max,
                 "background reconnect gave up — next send_bytes reports Broken",
             );
-            // gave_up before clearing active: keeps the give-up cycle's
-            // report deterministic for the send path's swap-consume.
+            // gave_up before returning: keeps the give-up cycle's report
+            // deterministic for the send path's swap-consume (the guard
+            // clears bg_active afterward, on the way out).
             ctx.shared.gave_up.store(true, Ordering::Release);
-            return exit_clear_active(&ctx);
+            return;
         };
         info!(
             target: "tst_pipeline::reconnect",
@@ -160,7 +209,7 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
             "background reconnect attempt",
         );
         if ctx.shutdown.wait_timeout(wait) {
-            return exit_clear_active(&ctx);
+            return;
         }
         ctx.shared
             .reconnect_attempts
@@ -172,9 +221,11 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
         {
             let Ok(mut guard) = ctx.inner.lock() else {
                 // Inner lock poisoned — unrecoverable from a worker with
-                // no caller. Surface as give-up so the next send reports.
+                // no caller. Surface as an abnormal give-up so the next
+                // send reports Broken instead of queuing forever.
                 ctx.shared.gave_up.store(true, Ordering::Release);
-                return exit_clear_active(&ctx);
+                ctx.shared.gave_up_abnormal.store(true, Ordering::Release);
+                return;
             };
             *guard = Some(new_inner);
         }
@@ -186,7 +237,7 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
         // ---- drain phase ----
         loop {
             if ctx.closed.load(Ordering::Acquire) {
-                return exit_clear_active(&ctx);
+                return;
             }
             // Per-message lock scope, order inner -> gap (invariant 1).
             // The gap lock is held across this one send on purpose
@@ -195,8 +246,11 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
             // pump blocks on the gap lock for at most one inner send.
             let step = {
                 let Ok(mut transport_guard) = ctx.inner.lock() else {
+                    // Inner lock poisoned mid-drain — same abnormal
+                    // give-up as the reconnect-phase poison path above.
                     ctx.shared.gave_up.store(true, Ordering::Release);
-                    return exit_clear_active(&ctx);
+                    ctx.shared.gave_up_abnormal.store(true, Ordering::Release);
+                    return;
                 };
                 let mut gap = ctx
                     .gap
@@ -252,7 +306,7 @@ pub(crate) fn worker_run<T: Transport>(ctx: WorkerCtx<T>) {
                 DrainStep::Empty => return, // active already cleared under the gap lock
                 DrainStep::Backpressure => {
                     if ctx.shutdown.wait_timeout(DRAIN_BACKPRESSURE_RETRY) {
-                        return exit_clear_active(&ctx);
+                        return;
                     }
                 }
                 DrainStep::Broken => continue 'reconnect,

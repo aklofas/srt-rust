@@ -297,9 +297,23 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 .gave_up
                 .swap(false, std::sync::atomic::Ordering::AcqRel)
             {
-                let max = self.policy.max_attempts.unwrap_or(0);
+                // Abnormal (worker unwound, or hit an unrecoverable inner
+                // poison) vs. the normal budget-exhausted give-up: a
+                // max_attempts: None policy can still abnormally give up
+                // (a panic ignores the budget entirely), so this must not
+                // default to the budget-phrased message.
+                let abnormal = self
+                    .shared
+                    .gave_up_abnormal
+                    .swap(false, std::sync::atomic::Ordering::AcqRel);
+                let msg = if abnormal {
+                    "background reconnect aborted (worker terminated abnormally)".to_string()
+                } else {
+                    let max = self.policy.max_attempts.unwrap_or(0);
+                    format!("reconnect gave up after {max} attempts")
+                };
                 return Err(TransportError::Broken {
-                    msg: format!("reconnect gave up after {max} attempts"),
+                    msg,
                     errno_code: None,
                 });
             }

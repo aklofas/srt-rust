@@ -9,9 +9,11 @@
 //!   Blocking (the default): a `send_*` call that hits a broken transport
 //!   blocks the caller until reconnect succeeds or `max_attempts` runs out.
 //!   Background: a dedicated worker thread owns the factory/backoff/drain
-//!   loop; `send_*` never blocks on reconnect — it enqueues into the gap
-//!   buffer and returns immediately, whether or not the link is currently
-//!   up.
+//!   loop; `send_*` never waits on backoff or a factory call — it
+//!   enqueues into the gap buffer and returns, whether or not the link
+//!   is currently up. (It can still block briefly on internal lock
+//!   contention while the worker is mid-drain — bounded to at most one
+//!   in-flight inner send.)
 //!
 //!   cargo run -p tst-examples --example managed_reconnect_background
 //!
@@ -66,8 +68,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // demo: closing only the socket leaves the port bound and accepting, so
     // a reconnecting client could complete a new handshake almost
     // instantly, and the whole point of this example is to show
-    // `send_bytes` staying non-blocking across a *real*, sustained outage
-    // where the sink is genuinely unreachable — not just a fast blip.
+    // `send_bytes` staying decoupled from the reconnect backoff across a
+    // *real*, sustained outage where the sink is genuinely unreachable —
+    // not just a fast blip.
     //
     //   round 0: accept -> drain 5 messages -> drop socket -> drop listener
     //            (releases the port) -> sleep ~300ms (the sender's factory
@@ -181,11 +184,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   mode: ReconnectMode::Background
     //     Reconnect runs on a dedicated worker thread instead of the
     //     caller's. `send_video`/`send_klv` (which call down to
-    //     `send_bytes` on the wrapped transport) never block waiting for
-    //     the link to come back — while the worker is reconnecting they
-    //     enqueue into the gap buffer under `overflow_policy` and return
-    //     immediately. Reach for this in a single-threaded relay pump —
-    //     one thread both produces frames and calls `send_bytes` — where
+    //     `send_bytes` on the wrapped transport) never wait for the link
+    //     to come back — while the worker is reconnecting they enqueue
+    //     into the gap buffer under `overflow_policy` and return (a send
+    //     can still block briefly on lock contention while the worker is
+    //     mid-drain, bounded to one in-flight inner send). Reach for
+    //     this in a single-threaded relay pump — one thread both
+    //     produces frames and calls `send_bytes` — where
     //     blocking that thread through a whole reconnect window means the
     //     upstream source backs up or drops frames on the floor anyway.
     //     Prefer the default `Blocking` instead for batch/file senders,

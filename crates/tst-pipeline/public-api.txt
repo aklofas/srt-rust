@@ -917,6 +917,27 @@ impl core::marker::Unpin for tst_pipeline::OverflowPolicy
 impl core::marker::UnsafeUnpin for tst_pipeline::OverflowPolicy
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::OverflowPolicy
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::OverflowPolicy
+#[non_exhaustive] pub enum tst_pipeline::reconnect::ReconnectMode
+pub tst_pipeline::reconnect::ReconnectMode::Background
+pub tst_pipeline::reconnect::ReconnectMode::Blocking
+impl core::clone::Clone for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::clone(&self) -> tst_pipeline::reconnect::ReconnectMode
+impl core::cmp::Eq for tst_pipeline::reconnect::ReconnectMode
+impl core::cmp::PartialEq for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::eq(&self, &tst_pipeline::reconnect::ReconnectMode) -> bool
+impl core::default::Default for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::default() -> tst_pipeline::reconnect::ReconnectMode
+impl core::fmt::Debug for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::StructuralPartialEq for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Freeze for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Send for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Sync for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Unpin for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::UnsafeUnpin for tst_pipeline::reconnect::ReconnectMode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ReconnectMode
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ReconnectMode
 pub struct tst_pipeline::reconnect::GapBuffer
 pub tst_pipeline::reconnect::GapBuffer::bytes_dropped: u64
 pub tst_pipeline::reconnect::GapBuffer::messages_dropped: u64
@@ -934,9 +955,22 @@ impl core::marker::Unpin for tst_pipeline::GapBuffer
 impl core::marker::UnsafeUnpin for tst_pipeline::GapBuffer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::GapBuffer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::GapBuffer
+pub struct tst_pipeline::reconnect::ManagedStatsHandle
+impl tst_pipeline::reconnect::ManagedStatsHandle
+pub fn tst_pipeline::reconnect::ManagedStatsHandle::stats(&self) -> core::option::Option<tst_pipeline::reconnect::ManagedTransportStats>
+impl core::clone::Clone for tst_pipeline::reconnect::ManagedStatsHandle
+pub fn tst_pipeline::reconnect::ManagedStatsHandle::clone(&self) -> tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Freeze for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Send for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Sync for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Unpin for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedStatsHandle
 pub struct tst_pipeline::reconnect::ManagedTransport<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport + 'static> tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(T, F, tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::stats_handle(&self) -> tst_pipeline::reconnect::ManagedStatsHandle
 impl<T: tst_core::transport::Transport + 'static> tst_core::transport::Transport for tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::close(&mut self)
@@ -944,17 +978,38 @@ pub fn tst_pipeline::reconnect::ManagedTransport<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::max_payload(&self) -> usize
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
-impl<T> core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
+impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::reconnect::ManagedTransport<T>
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::drop(&mut self)
+impl<T> !core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Send for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Sync for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Unpin for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
+#[non_exhaustive] pub struct tst_pipeline::reconnect::ManagedTransportStats
+pub tst_pipeline::reconnect::ManagedTransportStats::gap_bytes_dropped: u64
+pub tst_pipeline::reconnect::ManagedTransportStats::gap_len: u64
+pub tst_pipeline::reconnect::ManagedTransportStats::gap_messages_dropped: u64
+pub tst_pipeline::reconnect::ManagedTransportStats::reconnect_attempts: u64
+pub tst_pipeline::reconnect::ManagedTransportStats::reconnect_successes: u64
+pub tst_pipeline::reconnect::ManagedTransportStats::reconnecting: bool
+impl core::clone::Clone for tst_pipeline::reconnect::ManagedTransportStats
+pub fn tst_pipeline::reconnect::ManagedTransportStats::clone(&self) -> tst_pipeline::reconnect::ManagedTransportStats
+impl core::fmt::Debug for tst_pipeline::reconnect::ManagedTransportStats
+pub fn tst_pipeline::reconnect::ManagedTransportStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::Send for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::Sync for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::Unpin for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedTransportStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedTransportStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedTransportStats
 pub struct tst_pipeline::reconnect::ReconnectPolicy
 pub tst_pipeline::reconnect::ReconnectPolicy::backoff: tst_pipeline::reconnect::BackoffStrategy
 pub tst_pipeline::reconnect::ReconnectPolicy::gap_buffer_capacity: usize
 pub tst_pipeline::reconnect::ReconnectPolicy::max_attempts: core::option::Option<u32>
+pub tst_pipeline::reconnect::ReconnectPolicy::mode: tst_pipeline::reconnect::ReconnectMode
 pub tst_pipeline::reconnect::ReconnectPolicy::overflow_policy: tst_pipeline::OverflowPolicy
 impl tst_pipeline::reconnect::ReconnectPolicy
 pub fn tst_pipeline::reconnect::ReconnectPolicy::next_delay(&self, u32) -> core::option::Option<core::time::Duration>
@@ -1343,6 +1398,27 @@ impl core::marker::Unpin for tst_pipeline::receiver::ReceiverErrorSource
 impl core::marker::UnsafeUnpin for tst_pipeline::receiver::ReceiverErrorSource
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::receiver::ReceiverErrorSource
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::ReceiverErrorSource
+#[non_exhaustive] pub enum tst_pipeline::ReconnectMode
+pub tst_pipeline::ReconnectMode::Background
+pub tst_pipeline::ReconnectMode::Blocking
+impl core::clone::Clone for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::clone(&self) -> tst_pipeline::reconnect::ReconnectMode
+impl core::cmp::Eq for tst_pipeline::reconnect::ReconnectMode
+impl core::cmp::PartialEq for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::eq(&self, &tst_pipeline::reconnect::ReconnectMode) -> bool
+impl core::default::Default for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::default() -> tst_pipeline::reconnect::ReconnectMode
+impl core::fmt::Debug for tst_pipeline::reconnect::ReconnectMode
+pub fn tst_pipeline::reconnect::ReconnectMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::StructuralPartialEq for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Freeze for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Send for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Sync for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::Unpin for tst_pipeline::reconnect::ReconnectMode
+impl core::marker::UnsafeUnpin for tst_pipeline::reconnect::ReconnectMode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ReconnectMode
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ReconnectMode
 #[non_exhaustive] pub enum tst_pipeline::SenderErrorSource
 pub tst_pipeline::SenderErrorSource::Framing(tst_pipeline::sender::TsFramingError)
 pub tst_pipeline::SenderErrorSource::Transport(tst_core::transport::TransportError)
@@ -1562,9 +1638,22 @@ impl<R> core::marker::Unpin for tst_pipeline::managed_receive::ManagedRecvTransp
 impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::UnsafeUnpin
 impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+pub struct tst_pipeline::ManagedStatsHandle
+impl tst_pipeline::reconnect::ManagedStatsHandle
+pub fn tst_pipeline::reconnect::ManagedStatsHandle::stats(&self) -> core::option::Option<tst_pipeline::reconnect::ManagedTransportStats>
+impl core::clone::Clone for tst_pipeline::reconnect::ManagedStatsHandle
+pub fn tst_pipeline::reconnect::ManagedStatsHandle::clone(&self) -> tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Freeze for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Send for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Sync for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::Unpin for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedStatsHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedStatsHandle
 pub struct tst_pipeline::ManagedTransport<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport + 'static> tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(T, F, tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::stats_handle(&self) -> tst_pipeline::reconnect::ManagedStatsHandle
 impl<T: tst_core::transport::Transport + 'static> tst_core::transport::Transport for tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::close(&mut self)
@@ -1572,13 +1661,33 @@ pub fn tst_pipeline::reconnect::ManagedTransport<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::max_payload(&self) -> usize
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
-impl<T> core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
+impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::reconnect::ManagedTransport<T>
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::drop(&mut self)
+impl<T> !core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Send for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Sync for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Unpin for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
+#[non_exhaustive] pub struct tst_pipeline::ManagedTransportStats
+pub tst_pipeline::ManagedTransportStats::gap_bytes_dropped: u64
+pub tst_pipeline::ManagedTransportStats::gap_len: u64
+pub tst_pipeline::ManagedTransportStats::gap_messages_dropped: u64
+pub tst_pipeline::ManagedTransportStats::reconnect_attempts: u64
+pub tst_pipeline::ManagedTransportStats::reconnect_successes: u64
+pub tst_pipeline::ManagedTransportStats::reconnecting: bool
+impl core::clone::Clone for tst_pipeline::reconnect::ManagedTransportStats
+pub fn tst_pipeline::reconnect::ManagedTransportStats::clone(&self) -> tst_pipeline::reconnect::ManagedTransportStats
+impl core::fmt::Debug for tst_pipeline::reconnect::ManagedTransportStats
+pub fn tst_pipeline::reconnect::ManagedTransportStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::Send for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::Sync for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::Unpin for tst_pipeline::reconnect::ManagedTransportStats
+impl core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedTransportStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedTransportStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedTransportStats
 pub struct tst_pipeline::MuxPublisher<P: tst_core::publisher::Publisher>
 impl<P: tst_core::publisher::Publisher> tst_pipeline::mux_publisher::MuxPublisher<P>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::cut_segment(&self) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
@@ -1949,6 +2058,7 @@ pub struct tst_pipeline::ReconnectPolicy
 pub tst_pipeline::ReconnectPolicy::backoff: tst_pipeline::reconnect::BackoffStrategy
 pub tst_pipeline::ReconnectPolicy::gap_buffer_capacity: usize
 pub tst_pipeline::ReconnectPolicy::max_attempts: core::option::Option<u32>
+pub tst_pipeline::ReconnectPolicy::mode: tst_pipeline::reconnect::ReconnectMode
 pub tst_pipeline::ReconnectPolicy::overflow_policy: tst_pipeline::OverflowPolicy
 impl tst_pipeline::reconnect::ReconnectPolicy
 pub fn tst_pipeline::reconnect::ReconnectPolicy::next_delay(&self, u32) -> core::option::Option<core::time::Duration>

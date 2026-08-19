@@ -9,9 +9,12 @@
 //! configurable backoff. On reconnect success, drains the gap buffer
 //! before resuming new sends.
 
+mod background;
 mod gap_buffer;
 
 pub use gap_buffer::{GapBuffer, OverflowPolicy};
+
+use background::Shutdown;
 
 use std::time::Duration;
 
@@ -116,7 +119,6 @@ impl ReconnectPolicy {
 
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::thread;
 use tracing::{debug, info, warn};
 use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 use tst_core::transport::{Transport, TransportCancel, TransportError};
@@ -174,6 +176,10 @@ pub struct ManagedTransport<T: Transport> {
     /// reconnect loop checks this each iteration so a cancel mid-retry
     /// breaks out instead of waiting through the full backoff budget.
     closed: Arc<std::sync::atomic::AtomicBool>,
+    /// Wakes any backoff wait (blocking loop or background worker) when
+    /// `close()` / `cancel()` / `Drop` latch shutdown. `closed` stays the
+    /// semantic flag; this is the wakeup channel.
+    shutdown: Arc<Shutdown>,
 }
 
 impl<T: Transport + 'static> ManagedTransport<T> {
@@ -188,6 +194,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             policy,
             gap: Arc::new(Mutex::new(gap)),
             closed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            shutdown: Arc::new(Shutdown::new()),
         }
     }
 
@@ -437,7 +444,11 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                     "backoff before next attempt",
                 );
             }
-            thread::sleep(wait);
+            if self.shutdown.wait_timeout(wait) {
+                // close()/cancel() latched during the backoff wait — same
+                // exit as the loop-top closed check, just prompt.
+                return Err(TransportError::Closed);
+            }
             match (self.factory)() {
                 Ok(new_inner) => {
                     // Plan B mutex sweep (recoverable path): poisoned inner
@@ -495,6 +506,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     fn close(&mut self) {
         self.closed
             .store(true, std::sync::atomic::Ordering::Release);
+        self.shutdown.signal();
         // Mutex-poisoning policy (silent no-op on poison): close on a poisoned
         // state is naturally a no-op — the inner transport is already in an
         // unknown state and close-attempt would compound the problem. The
@@ -510,7 +522,12 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         let inner = self.inner.clone();
         let closed = self.closed.clone();
-        Some(Arc::new(ManagedCancel { inner, closed }))
+        let shutdown = self.shutdown.clone();
+        Some(Arc::new(ManagedCancel {
+            inner,
+            closed,
+            shutdown,
+        }))
     }
 
     fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
@@ -529,6 +546,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
 struct ManagedCancel<T: Transport + 'static> {
     inner: Arc<Mutex<Option<T>>>,
     closed: Arc<std::sync::atomic::AtomicBool>,
+    shutdown: Arc<Shutdown>,
 }
 
 impl<T: Transport + 'static> TransportCancel for ManagedCancel<T> {
@@ -536,6 +554,7 @@ impl<T: Transport + 'static> TransportCancel for ManagedCancel<T> {
         // Latch closed first so the reconnect loop exits next iteration.
         self.closed
             .store(true, std::sync::atomic::Ordering::Release);
+        self.shutdown.signal();
         // Then cancel the current inner if any. We re-acquire the inner
         // mutex briefly to grab a cancel-handle from it, then release;
         // we do NOT hold the inner mutex while invoking cancel (which
@@ -730,5 +749,62 @@ mod cancel_tests {
     fn reconnect_policy_default_mode_is_blocking() {
         assert_eq!(ReconnectPolicy::default().mode, ReconnectMode::Blocking);
         assert_eq!(ReconnectMode::default(), ReconnectMode::Blocking);
+    }
+
+    /// Inner that always reports Broken, forcing the reconnect path.
+    struct BrokenT;
+    impl Transport for BrokenT {
+        fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+            Err(TransportError::Broken {
+                msg: "always broken".into(),
+                errno_code: None,
+            })
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn is_alive(&self) -> bool {
+            false
+        }
+        fn close(&mut self) {}
+    }
+
+    #[test]
+    fn blocking_cancel_interrupts_backoff_wait() {
+        // Pre-fix, the reconnect loop slept the full backoff period even
+        // after cancel latched; with the interruptible wait, cancel from a
+        // sibling thread bounces send_bytes out orders of magnitude sooner
+        // than the 30s backoff.
+        let factory = || -> Result<BrokenT, TransportError> {
+            Err(TransportError::Broken {
+                msg: "factory down".into(),
+                errno_code: None,
+            })
+        };
+        let policy = ReconnectPolicy {
+            max_attempts: Some(3),
+            backoff: BackoffStrategy::Constant(std::time::Duration::from_secs(30)),
+            ..Default::default()
+        };
+        let mut managed = ManagedTransport::new(BrokenT, factory, policy);
+        let cancel = managed
+            .cancel_handle()
+            .expect("managed always has a handle");
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            cancel.cancel();
+        });
+        let t0 = std::time::Instant::now();
+        let err = managed.send_bytes(b"x").unwrap_err();
+        assert!(
+            t0.elapsed() < std::time::Duration::from_secs(10),
+            "cancel must interrupt the 30s backoff wait, took {:?}",
+            t0.elapsed()
+        );
+        assert!(matches!(
+            err,
+            TransportError::Broken { .. } | TransportError::Closed
+        ));
+        canceller.join().unwrap();
     }
 }

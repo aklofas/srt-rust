@@ -143,7 +143,8 @@ pub use raw_sender::{
 pub use receiver::{Receiver, ReceiverConfig, ReceiverError, ReceiverErrorSource, ReceiverStats};
 #[cfg(feature = "std")]
 pub use reconnect::{
-    BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectMode, ReconnectPolicy,
+    BackoffStrategy, GapBuffer, ManagedStatsHandle, ManagedTransport, ManagedTransportStats,
+    OverflowPolicy, ReconnectMode, ReconnectPolicy,
 };
 pub use sender::{
     Sender, SenderConfig, SenderError, SenderErrorSource, SenderStats, TsFramingMode,

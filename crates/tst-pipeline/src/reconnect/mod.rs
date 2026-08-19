@@ -123,6 +123,54 @@ use tracing::{debug, info, warn};
 use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 use tst_core::transport::{Transport, TransportCancel, TransportError};
 
+/// Snapshot of `ManagedTransport`'s reconnect/gap telemetry.
+///
+/// **Stability: Stable** — see the
+/// [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ManagedTransportStats {
+    /// Total `factory()` invocations across all reconnect cycles.
+    pub reconnect_attempts: u64,
+    /// Successful reconnects (factory returned a transport that was installed).
+    pub reconnect_successes: u64,
+    /// Messages currently queued in the gap buffer.
+    pub gap_len: usize,
+    /// Messages lost to `DropOldest` eviction (plus oversized-after-reconnect drops).
+    pub gap_messages_dropped: u64,
+    /// Bytes lost to the same.
+    pub gap_bytes_dropped: u64,
+    /// True while a background reconnect worker is active (`ReconnectMode::Background` only).
+    pub reconnecting: bool,
+}
+
+/// Cloneable, `Send + Sync` observer for [`ManagedTransportStats`].
+/// Obtain via [`ManagedTransport::stats_handle`] **before** moving the
+/// transport into a sender shell (mirrors the `cancel_handle()` pattern).
+#[derive(Clone)]
+pub struct ManagedStatsHandle {
+    gap: Arc<Mutex<GapBuffer>>,
+    shared: Arc<background::ManagedShared>,
+}
+
+impl ManagedStatsHandle {
+    /// Snapshot. Returns `None` only if the gap-buffer lock is poisoned
+    /// (matches `socket_stats`'s None-on-poison shape — a read-only
+    /// telemetry path must not panic).
+    pub fn stats(&self) -> Option<ManagedTransportStats> {
+        use std::sync::atomic::Ordering;
+        let gap = self.gap.lock().ok()?;
+        Some(ManagedTransportStats {
+            reconnect_attempts: self.shared.reconnect_attempts.load(Ordering::Relaxed),
+            reconnect_successes: self.shared.reconnect_successes.load(Ordering::Relaxed),
+            gap_len: gap.len(),
+            gap_messages_dropped: gap.messages_dropped,
+            gap_bytes_dropped: gap.bytes_dropped,
+            reconnecting: self.shared.bg_active.load(Ordering::Acquire),
+        })
+    }
+}
+
 /// Decorator that wraps an inner `Transport` with reconnect + gap-buffer
 /// behavior.
 ///
@@ -180,6 +228,9 @@ pub struct ManagedTransport<T: Transport> {
     /// `close()` / `cancel()` / `Drop` latch shutdown. `closed` stays the
     /// semantic flag; this is the wakeup channel.
     shutdown: Arc<Shutdown>,
+    /// Reconnect/gap telemetry and background-worker coordination flags,
+    /// read by any `ManagedStatsHandle` obtained via `stats_handle()`.
+    shared: Arc<background::ManagedShared>,
 }
 
 impl<T: Transport + 'static> ManagedTransport<T> {
@@ -195,6 +246,18 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             gap: Arc::new(Mutex::new(gap)),
             closed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             shutdown: Arc::new(Shutdown::new()),
+            shared: Arc::new(background::ManagedShared::default()),
+        }
+    }
+
+    /// Obtain a cloneable stats observer. Call **before** moving this
+    /// transport into `MuxSender`/`Sender`/`RawSender` — the shell takes
+    /// ownership, but the handle keeps reading live counters (same
+    /// pattern as `cancel_handle()`).
+    pub fn stats_handle(&self) -> ManagedStatsHandle {
+        ManagedStatsHandle {
+            gap: Arc::clone(&self.gap),
+            shared: Arc::clone(&self.shared),
         }
     }
 
@@ -449,6 +512,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 // exit as the loop-top closed check, just prompt.
                 return Err(TransportError::Closed);
             }
+            self.shared
+                .reconnect_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             match (self.factory)() {
                 Ok(new_inner) => {
                     // Plan B mutex sweep (recoverable path): poisoned inner
@@ -462,6 +528,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                     })?;
                     *guard = Some(new_inner);
                     drop(guard);
+                    self.shared
+                        .reconnect_successes
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     // Drain gap buffer.
                     return self.drain_gap_if_alive();
                 }
@@ -806,5 +875,53 @@ mod cancel_tests {
             TransportError::Broken { .. } | TransportError::Closed
         ));
         canceller.join().unwrap();
+    }
+
+    #[test]
+    fn stats_handle_counts_blocking_reconnect_cycle() {
+        // Inner is a CancellableMock (defined above in this module): it
+        // sends fine until its `cancelled` flag flips, then reports
+        // Broken — which forces the reconnect path. The factory fails
+        // twice, then produces a fresh, alive mock.
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let inner = CancellableMock {
+            cancelled: cancelled.clone(),
+            cancel_calls: Arc::new(AtomicU32::new(0)),
+        };
+        let calls = Arc::new(AtomicU32::new(0));
+        let calls_cl = calls.clone();
+        let factory = move || -> Result<CancellableMock, TransportError> {
+            let n = calls_cl.fetch_add(1, Ordering::SeqCst);
+            if n < 2 {
+                Err(TransportError::Broken {
+                    msg: "factory down".into(),
+                    errno_code: None,
+                })
+            } else {
+                Ok(CancellableMock {
+                    cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    cancel_calls: Arc::new(AtomicU32::new(0)),
+                })
+            }
+        };
+        let policy = ReconnectPolicy {
+            max_attempts: Some(10),
+            backoff: BackoffStrategy::Constant(std::time::Duration::from_millis(0)),
+            ..Default::default()
+        };
+        let mut managed = ManagedTransport::new(inner, factory, policy);
+        let stats = managed.stats_handle();
+        let s0 = stats.stats().expect("no poison");
+        assert_eq!((s0.reconnect_attempts, s0.reconnect_successes), (0, 0));
+        assert!(!s0.reconnecting);
+
+        cancelled.store(true, Ordering::SeqCst); // inner now reports Broken
+        managed
+            .send_bytes(b"x")
+            .expect("blocking reconnect succeeds on the 3rd factory call");
+        let s1 = stats.stats().expect("no poison");
+        assert_eq!(s1.reconnect_attempts, 3, "two failures + one success");
+        assert_eq!(s1.reconnect_successes, 1);
+        assert_eq!(s1.gap_len, 0, "gap drained by the successful reconnect");
     }
 }

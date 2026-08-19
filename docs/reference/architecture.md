@@ -292,7 +292,11 @@ is the runnable companion.
 The public API is sync blocking. `Socket::send` and `Socket::recv` block
 the calling thread; `MuxSender::send_video` blocks until the underlying
 SRT socket has accepted the bytes; reconnect inside `ManagedTransport`
-runs on the caller's thread.
+runs on the caller's thread by default. This isn't an async runtime —
+`ManagedTransport` also offers an opt-in `ReconnectMode::Background`
+where a dedicated per-outage worker thread owns the reconnect loop so
+`send_bytes` itself stays non-blocking, but that's a second thread the
+caller doesn't manage, not cooperative scheduling.
 
 Sync was chosen for three reasons. First, the target deployment shape
 is small — a process talks to ≤10 SRT peers, so the thread-per-

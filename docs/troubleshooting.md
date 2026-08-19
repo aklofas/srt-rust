@@ -226,11 +226,17 @@ The gap buffer overflowed during the disconnect window. With the default `Overfl
 
 Fix: size `gap_buffer_capacity` to your worst-case disconnect window times your send rate. The default of 256 messages is fine for a 1 Hz KLV stream over a 4-minute outage; for higher-rate video you'll want to budget more aggressively. See [guides/pipeline.md](/docs/guides/pipeline.md) for the sizing math.
 
-**`max_attempts` exhausted; subsequent sends return `TransportError::Closed`**
+**`max_attempts` exhausted; a send returns `TransportError::Broken`**
 
-The policy's retry budget is spent and the managed transport is now a dead end.
+The policy's retry budget for this outage is spent. On the send side (`ManagedTransport`) this is not a dead end: the wrapper doesn't latch closed, so the very next `send_bytes` call starts a fresh reconnect cycle (with a fresh attempt budget) against the still-queued backlog. Under `ReconnectMode::Background`, the give-up itself surfaces exactly once — as a `Broken` on the *following* `send_bytes` call after the worker quits, and that call's own bytes are not queued. (The receive side behaves differently: `ManagedRecvTransport` has no gap buffer to retry against, so give-up latches the decorator closed and every subsequent `recv_bytes` returns `TransportError::Closed`.)
 
 Fix: increase `max_attempts`, or set it to `None` to retry forever — only safe if your transport factory is itself rate-limited, otherwise a permanent peer outage produces a hot reconnect loop. The default is `Some(10)` which gives roughly 10 attempts with exponential backoff, on the order of a few minutes of real time before giving up.
+
+**Sends succeed but nothing arrives (Background mode)**
+
+Under `ReconnectMode::Background`, `send_bytes` returns `Ok(())` the instant the worker accepts bytes into the gap buffer — that is not confirmation the sink received them. If the sink stays down long enough for the outage to outlast `gap_buffer_capacity`, the default `OverflowPolicy::DropOldest` silently evicts queued messages to make room for new ones.
+
+Fix: poll `ManagedTransport::stats_handle()`. `reconnecting: true` means a worker is actively trying to reconnect right now; a rising `gap_messages_dropped` / `gap_bytes_dropped` confirms bytes are being lost to eviction, not just delayed. If `max_attempts` is finite and the worker gave up, the next `send_bytes` call after that surfaces a one-shot `TransportError::Broken` (see the entry above) — that's the signal the outage outlasted the retry budget, not a normal `Ok`.
 
 ## Build-script behaviors
 

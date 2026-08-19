@@ -311,3 +311,88 @@ fn background_worker_panic_recovers_via_abnormal_give_up() {
     );
     assert!(stats.stats().unwrap().reconnect_successes >= 1);
 }
+
+/// Fix round 2 (review finding B): `ActiveClearGuard`'s `Drop` must not
+/// unconditionally re-clear `bg_active` after the Empty-exit already
+/// cleared it in place under the gap lock. If a worker's `Drop` runs
+/// *after* a fresh cycle has already spawned a replacement (bg_active =
+/// true again), an unconditional re-clear would clobber that fresh
+/// cycle's ownership: the newer worker ends up "unowned", a later
+/// `send_bytes` sees `!bg_active` with a non-empty gap and spawns YET
+/// ANOTHER worker on top of it, and that `spawn_worker`'s `prev.join()`
+/// blocks on the still-live worker — under `max_attempts: None` and a
+/// persisting outage, forever.
+///
+/// This drives many drain-empty-then-break-again flaps back to back —
+/// exactly the window the clobber lives in — with every `send_bytes` call
+/// deadline-asserted so a wedge fails the test instead of hanging the
+/// process. Note: the clobber needs specific cross-thread timing to land
+/// (see the fix report for why a deterministic red run isn't attempted
+/// here — this is a soak against the race, not a targeted repro).
+#[test]
+fn flap_cycles_never_wedge_or_hang() {
+    let rig = Rig::new();
+    let policy = bg_policy(None, BackoffStrategy::Constant(Duration::from_millis(1)));
+    // fail_first: 0 -> every reconnect attempt succeeds on the first try,
+    // so each cycle is a fast break -> queue -> reconnect -> drain -> empty
+    // flap.
+    let mut managed = ManagedTransport::new(rig.transport(), rig.factory(0), policy);
+    let stats = managed.stats_handle();
+
+    // u32 index encoding: each message's payload is its 4-byte LE global
+    // send index, so FIFO/subsequence checking across 30 cycles is
+    // unambiguous regardless of total message count.
+    let mut next_idx: u32 = 0;
+    let mut all_sent: Vec<u32> = Vec::new();
+    for _ in 0..30 {
+        rig.push_outcome(SendOutcome::Broken); // breaks the inner on this cycle's first send
+        for _ in 0..5 {
+            let idx = next_idx;
+            next_idx += 1;
+            let t0 = Instant::now();
+            managed
+                .send_bytes(&idx.to_le_bytes())
+                .expect("background mode always accepts, direct or into the gap");
+            assert!(
+                t0.elapsed() < Duration::from_secs(1),
+                "send_bytes blocked for {:?} on message {idx} — possible join() wedge (Finding B)",
+                t0.elapsed()
+            );
+            all_sent.push(idx);
+        }
+        wait_until(Duration::from_secs(10), || {
+            let s = stats.stats().unwrap();
+            !s.reconnecting && s.gap_len == 0
+        });
+    }
+
+    let delivered: Vec<u32> = rig
+        .sent_snapshot()
+        .into_iter()
+        .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("4-byte u32 index")))
+        .collect();
+
+    // Strictly increasing (FIFO — no reorder, no double-send) and a
+    // subsequence of everything sent (DropOldest could in principle evict
+    // some, though capacity 64 >> the 5-message bursts here).
+    let mut send_iter = all_sent.into_iter().peekable();
+    let mut prev: Option<u32> = None;
+    for idx in &delivered {
+        if let Some(p) = prev {
+            assert!(*idx > p, "delivered log out of order: {p} then {idx}");
+        }
+        while send_iter.peek().is_some_and(|s| s != idx) {
+            send_iter.next();
+        }
+        assert!(
+            send_iter.next().is_some(),
+            "delivered index {idx} is not a subsequence of what was sent"
+        );
+        prev = Some(*idx);
+    }
+
+    assert!(
+        stats.stats().unwrap().reconnect_successes >= 30,
+        "expected at least one successful reconnect per flap cycle"
+    );
+}

@@ -12,7 +12,8 @@
 //!    pop the message in flight (clone-then-pop would desync the queue).
 
 #[allow(unused_imports)] // removed in a later task of this arc
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 #[allow(unused_imports)] // removed in a later task of this arc
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -79,6 +80,23 @@ impl Shutdown {
         }
         true
     }
+}
+
+/// State shared between `ManagedTransport`, its `ManagedStatsHandle`
+/// observers, and any spawned background worker (later task in this arc).
+#[derive(Debug, Default)]
+pub(crate) struct ManagedShared {
+    /// True while a background worker owns reconnect+drain.
+    /// Transitions happen under the gap lock (invariant 2).
+    pub(crate) bg_active: AtomicBool,
+    /// Set by a worker that exhausted max_attempts; consumed (swap false)
+    /// by the next send_bytes, which reports Broken exactly once.
+    #[allow(dead_code)] // written + read starting in a later task of this arc
+    pub(crate) gave_up: AtomicBool,
+    /// factory() invocations (either mode).
+    pub(crate) reconnect_attempts: AtomicU64,
+    /// Successful factory() installs (either mode).
+    pub(crate) reconnect_successes: AtomicU64,
 }
 
 #[cfg(test)]

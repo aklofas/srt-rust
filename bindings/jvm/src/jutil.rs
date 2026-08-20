@@ -270,6 +270,14 @@ pub fn read_byte_buffer(env: &mut JNIEnv, buf: &JObject) -> jni::errors::Result<
 /// that maps reader errors to a bare `return null` therefore turns a
 /// caller's null argument into a silent null result with no diagnostic at
 /// all. Call this FIRST, before any accessor call on the object.
+///
+/// The `throw_new` result is deliberately ignored (the module-wide idiom —
+/// every throw site in these bindings does the same): throwing
+/// `java/lang/NullPointerException` can only fail if the class lookup on a
+/// core JDK class fails or an exception is already pending, and this guard
+/// runs first in the entry point so nothing is pending. If the JNI env is
+/// that broken, a fallback throw would fail through the identical
+/// mechanism; `panic::jni_catch` remains the outer backstop.
 pub fn require_non_null(env: &mut JNIEnv, obj: &JObject, what: &str) -> jni::errors::Result<()> {
     if obj.is_null() {
         let _ = env.throw_new(

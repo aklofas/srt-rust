@@ -8461,6 +8461,10 @@ tier = "A"
 item = "tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::clone"
 reason = "derived Clone on the public handle type; no test clones a StreamEndReasonHandle value directly (the underlying EndReasonSlot::clone it wraps is exercised via clone_shares_the_same_cell in end_reason.rs)"
 
+[[exempt]]
+item = "tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::fmt"
+reason = "derived Debug on the public handle type; no test formats a StreamEndReasonHandle value directly"
+
 # StreamEndReasonHandle::get: exercised in end_reason.rs directly and via
 # RtpRecvTransport::end_reason_handle's own tests in transport.rs.
 [[surface]]

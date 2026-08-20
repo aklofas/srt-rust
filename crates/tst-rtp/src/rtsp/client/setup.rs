@@ -174,7 +174,7 @@ impl RtspClient {
                 let (rtp, rtcp, _port) = local_udp.ok_or(RtspError::BadResponse {
                     detail: "server replied UDP but we sent TCP-interleaved",
                 })?;
-                RtspSession::new_udp(sid, rtp, rtcp, transport, self.peer)
+                RtspSession::new_udp(sid, rtp, rtcp, transport, self.peer, self.url.recv_timeout)
             }
             RtspTransportKind::TcpInterleaved => {
                 // Spawn the interleaved producer thread NOW (before
@@ -194,7 +194,13 @@ impl RtspClient {
                     rtcp: rtcp_ch,
                 };
                 let (data_rx, rtcp_rx) = self.activate_interleaved_pump(channels)?;
-                RtspSession::new_interleaved_with_data_rx(sid, transport, data_rx, rtcp_rx)
+                RtspSession::new_interleaved_with_data_rx(
+                    sid,
+                    transport,
+                    data_rx,
+                    rtcp_rx,
+                    self.url.recv_timeout,
+                )
             }
         };
         Ok(session)

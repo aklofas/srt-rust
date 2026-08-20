@@ -11,6 +11,7 @@
 
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc;
+use std::time::Duration;
 
 use bytes::Bytes;
 
@@ -49,6 +50,13 @@ pub struct RtspSession {
     /// closes the pump's `mpsc::Sender` side and lets the pump observe
     /// `SendError` once the consumer goes away.
     pub(crate) rtcp_rx: Option<mpsc::Receiver<Bytes>>,
+    /// The `?recv_timeout=` value parsed from the `RtspUrl` at connect
+    /// time (see `RtspClient::attempt_setup`). Applied to the transport
+    /// / receiver built by [`Self::into_recv_transport`] /
+    /// [`Self::into_h264_receiver`] via their `set_recv_timeout` setters
+    /// — the session itself never blocks on I/O, so there is nothing to
+    /// apply the deadline to before conversion.
+    pub(crate) recv_timeout: Option<Duration>,
 }
 
 impl RtspSession {
@@ -58,6 +66,7 @@ impl RtspSession {
         rtcp: UdpSocket,
         transport: TransportResponse,
         peer: SocketAddr,
+        recv_timeout: Option<Duration>,
     ) -> Self {
         Self {
             session_id: sid,
@@ -67,6 +76,7 @@ impl RtspSession {
             peer_addr: Some(peer),
             data_rx: None,
             rtcp_rx: None,
+            recv_timeout,
         }
     }
 
@@ -80,6 +90,7 @@ impl RtspSession {
         transport: TransportResponse,
         data_rx: mpsc::Receiver<Bytes>,
         rtcp_rx: mpsc::Receiver<Bytes>,
+        recv_timeout: Option<Duration>,
     ) -> Self {
         Self {
             session_id: sid,
@@ -89,6 +100,7 @@ impl RtspSession {
             peer_addr: None,
             data_rx: Some(data_rx),
             rtcp_rx: Some(rtcp_rx),
+            recv_timeout,
         }
     }
 
@@ -128,7 +140,7 @@ impl RtspSession {
     /// `socket_stats().packets_lost_send` from RR + SR frames arriving
     /// on RFC 7826 §14 channel 1.
     pub fn into_recv_transport(mut self) -> RtpRecvTransport {
-        match self.kind {
+        let mut transport = match self.kind {
             RtspTransportKind::Udp => {
                 let (rtp, _rtcp) = self.udp_sockets.expect("UDP session has sockets");
                 RtpRecvTransport::from_udp_socket(rtp).expect("from_udp_socket")
@@ -144,7 +156,9 @@ impl RtspSession {
                     .expect("TcpInterleaved session has a pump rtcp_rx");
                 RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx)
             }
-        }
+        };
+        transport.set_recv_timeout(self.recv_timeout);
+        transport
     }
 
     /// Consume the session and return an [`H264Receiver`] wired to the
@@ -178,7 +192,7 @@ impl RtspSession {
     /// order at compile time or runtime, so this is a documented usage
     /// contract, not a checked one.
     pub fn into_h264_receiver(mut self, config: H264DepayConfig) -> H264Receiver {
-        match self.kind {
+        let mut receiver = match self.kind {
             RtspTransportKind::Udp => {
                 let (rtp, _rtcp) = self.udp_sockets.expect("UDP session has sockets");
                 H264Receiver::from_udp_socket_with(rtp, config).expect("from_udp_socket_with")
@@ -198,6 +212,8 @@ impl RtspSession {
                 // causing the pump to exit and triggering a false clean-EOS.
                 H264Receiver::from_mpsc_with_rtcp_drain(data_rx, rtcp_rx, config)
             }
-        }
+        };
+        receiver.set_recv_timeout(self.recv_timeout);
+        receiver
     }
 }

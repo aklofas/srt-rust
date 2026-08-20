@@ -36,11 +36,15 @@ fn udp_buffer_sizes_round_trip() {
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _ = accept.join();
+    // Keep the accepted peer alive across the option reads — same race as
+    // srt_buf_bytes.rs: a dropped peer closes the far side and getsockopt
+    // starts failing once libsrt notices (first hit under ASan timing).
+    let peer = accept.join();
 
     let handle = socket.raw_handle();
     let rcv = read_u32(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF).expect("read RCVBUF");
     let snd = read_u32(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_SNDBUF).expect("read SNDBUF");
+    drop(peer);
 
     // Kernel may clamp to net.core.{r,w}mem_max; verify it's well above
     // OS default (~208 KB on Linux). Use 1 MB as conservative floor.

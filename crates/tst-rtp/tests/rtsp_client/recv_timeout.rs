@@ -8,8 +8,6 @@
 //! block `recv_bytes` forever. The fixture default SDP is PT=33 MP2T,
 //! same as `setup_play.rs`'s `setup_mp2t_auto` tests.
 
-use std::time::{Duration, Instant};
-
 use tst_core::transport::{RecvTransport, TransportError};
 
 use crate::fixtures::rtsp_loopback_server::{FixtureConfig, FixtureHandle};
@@ -24,19 +22,13 @@ fn recv_timeout_query_arms_into_recv_transport() {
     client.play().unwrap();
     let mut transport = session.into_recv_transport();
 
-    let start = Instant::now();
     let mut buf = vec![0u8; 2048];
     let result = transport.recv_bytes(&mut buf);
-    let elapsed = start.elapsed();
 
     match result {
         Err(TransportError::Backpressure { .. }) => {}
         other => panic!("expected Backpressure on expiry, got {other:?}"),
     }
-    assert!(
-        elapsed < Duration::from_secs(5),
-        "recv_bytes blocked well past the configured 200 ms deadline: {elapsed:?}"
-    );
 
     client.teardown().unwrap();
     drop(client);

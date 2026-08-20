@@ -120,6 +120,11 @@ pub struct H264Receiver {
     malformed_packets: u64,
     local_addr: Option<SocketAddr>,
     eos: bool,
+    /// Persistent deadline for [`Self::recv_au`], set via
+    /// [`Self::set_recv_timeout`]. `None` (the default) blocks
+    /// indefinitely. [`Self::recv_au_timeout`] ignores this field — its
+    /// explicit argument always wins for that call.
+    recv_timeout: Option<Duration>,
     /// For TCP-interleaved sessions: the pump's RTCP channel (`rtcp_rx` from
     /// `RtspSession`). RTCP is not processed on the H.264 path (v1 decision;
     /// see `docs/project/deferred-features.md`), but if this receiver is
@@ -197,6 +202,7 @@ impl H264Receiver {
             malformed_packets: 0,
             local_addr,
             eos: false,
+            recv_timeout: None,
             rtcp_drain: None,
         })
     }
@@ -234,6 +240,7 @@ impl H264Receiver {
             malformed_packets: 0,
             local_addr: None,
             eos: false,
+            recv_timeout: None,
             rtcp_drain: rtcp_rx,
         }
     }
@@ -245,9 +252,41 @@ impl H264Receiver {
     /// `Err(TransportError::Broken {..})` on a hard I/O error.
     ///
     /// Blocks the calling thread. See the [struct-level doc](Self) for the
-    /// full loop contract.
+    /// full loop contract. Honors a persistent deadline configured via
+    /// [`Self::set_recv_timeout`] — see that method for the full contract.
     pub fn recv_au(&mut self) -> Result<Option<H264Au>, TransportError> {
-        self.recv_au_inner(None)
+        // checked_add mirrors `RtpRecvTransport::recv_bytes`'s saturation:
+        // a configured timeout too large to represent as an `Instant`
+        // (e.g. `Duration::MAX`) means "no deadline" rather than a panic
+        // on a public input.
+        let deadline = self
+            .recv_timeout
+            .and_then(|t| Instant::now().checked_add(t));
+        self.recv_au_inner(deadline)
+    }
+
+    /// Configure a persistent receive deadline for [`Self::recv_au`].
+    ///
+    /// With `Some(timeout)`, a `recv_au` call that assembles no complete
+    /// AU within `timeout` returns [`TransportError::Backpressure`]; the
+    /// session stays valid — no eos latch, no depacketizer flush, exactly
+    /// as [`Self::recv_au_timeout`]'s expiry behaves — and the next call
+    /// starts a fresh deadline. This is the configured-knob mirror of
+    /// [`Self::recv_au_timeout`]'s one-shot deadline, aligned with
+    /// `RtpRecvTransport::set_recv_timeout`: it makes a deadline-driven
+    /// stall watchdog possible with no cancel thread — a stalled-but-
+    /// healthy session (peer stops sending; no error, no EOS) hands
+    /// control back to the caller every `timeout`.
+    ///
+    /// `None` (the default) restores the indefinite-block behavior.
+    ///
+    /// Deadline granularity is the internal cancel-poll interval
+    /// (~100 ms). A `timeout` too large to represent as a deadline (e.g.
+    /// `Duration::MAX`) saturates to "no deadline". [`Self::recv_au_timeout`]
+    /// ignores this setting — its explicit argument always wins for that
+    /// call.
+    pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) {
+        self.recv_timeout = timeout;
     }
 
     /// [`Self::recv_au`] with a deadline. Returns
@@ -599,5 +638,83 @@ mod tests {
             r.recv_au_timeout(std::time::Duration::MAX),
             Ok(None)
         ));
+    }
+
+    /// The persistent `set_recv_timeout` knob applies to `recv_au()`: a
+    /// silent source expires with `Backpressure` (no eos, no depacketizer
+    /// flush), and the session stays usable afterward — a subsequent
+    /// `recv_au_timeout` against a now-sending source still yields the AU.
+    #[test]
+    fn recv_au_honors_knob_then_session_recovers() {
+        use crate::packet::RTP_HEADER_LEN;
+        use bytes::Bytes;
+
+        let (tx, rx) = std::sync::mpsc::channel::<Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        r.set_recv_timeout(Some(Duration::from_millis(150)));
+
+        // Silent source: recv_au() (no explicit timeout arg) must honor
+        // the configured knob and expire, not block forever.
+        let res = r.recv_au();
+        assert!(
+            matches!(res, Err(TransportError::Backpressure { .. })),
+            "got {res:?}"
+        );
+
+        // Session stayed valid: send an AU and confirm the one-shot
+        // recv_au_timeout still receives it normally.
+        let mut pkt = vec![0u8; RTP_HEADER_LEN];
+        let mut hdr = crate::packet::RtpHeader::new(1, 9000, 0xABCD);
+        hdr.marker = true;
+        hdr.payload_type = 96;
+        hdr.encode_into(&mut pkt);
+        pkt.extend_from_slice(&[0x65u8, 0xEF]);
+        tx.send(Bytes::from(pkt)).unwrap();
+        let au = r
+            .recv_au_timeout(Duration::from_secs(2))
+            .unwrap()
+            .expect("AU expected after knob expiry");
+        assert_eq!(au.annexb, [0, 0, 0, 1, 0x65, 0xEF]);
+    }
+
+    /// `set_recv_timeout(Some(Duration::MAX))` must not panic (the
+    /// `checked_add` saturation idiom), and must not be mistaken for an
+    /// instant expiry: a disconnect-driven `recv_au()` call under the MAX
+    /// knob still resolves via clean EOS (not a hang, not a panic). The
+    /// one-shot `recv_au_timeout` with a short duration still expires
+    /// promptly — proving the MAX knob didn't leak into its own deadline.
+    #[test]
+    fn set_recv_timeout_max_saturates_no_deadline() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        r.set_recv_timeout(Some(Duration::MAX));
+
+        // Per-call still ignores the knob and expires on its own short
+        // duration.
+        let res = r.recv_au_timeout(Duration::from_millis(50));
+        assert!(
+            matches!(res, Err(TransportError::Backpressure { .. })),
+            "got {res:?}"
+        );
+
+        // recv_au() under the MAX (no-deadline) knob doesn't hang or
+        // panic — a clean disconnect still resolves it via EOS.
+        drop(tx);
+        assert!(matches!(r.recv_au(), Ok(None)));
+    }
+
+    /// `recv_au_timeout`'s explicit argument always wins over a configured
+    /// knob — a long knob does not stretch a short one-shot call.
+    #[test]
+    fn recv_au_timeout_ignores_knob() {
+        let (tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        r.set_recv_timeout(Some(Duration::from_secs(10)));
+        let res = r.recv_au_timeout(Duration::from_millis(50));
+        assert!(
+            matches!(res, Err(TransportError::Backpressure { .. })),
+            "got {res:?}"
+        );
+        drop(tx);
     }
 }

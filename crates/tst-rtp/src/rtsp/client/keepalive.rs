@@ -23,6 +23,7 @@ use std::time::Duration;
 
 use secrecy::SecretString;
 
+use crate::rtsp::client::end_reason::{EndReasonSlot, StreamEndReason};
 use crate::rtsp::client::{AuthState, Stream};
 use crate::rtsp::message::{RtspMethod, RtspRequest};
 use crate::url::RtspVersion;
@@ -57,6 +58,7 @@ pub(crate) fn handle_keepalive_response(
     resp: &crate::rtsp::message::RtspResponse,
     auth: &Mutex<AuthState>,
     session_dead: Option<&AtomicBool>,
+    end_reason: &EndReasonSlot,
 ) {
     match resp.status {
         401 => {
@@ -76,6 +78,7 @@ pub(crate) fn handle_keepalive_response(
             if let Some(flag) = session_dead {
                 flag.store(true, Ordering::Relaxed);
             }
+            end_reason.record(StreamEndReason::SessionExpired);
         }
         _ => {}
     }
@@ -126,6 +129,7 @@ pub(crate) fn spawn(
     username: Option<String>,
     password: Option<SecretString>,
     write_gate: Arc<AtomicUsize>,
+    end_reason: EndReasonSlot,
 ) -> std::io::Result<JoinHandle<()>> {
     std::thread::Builder::new()
         .name("rtsp-keepalive".to_string())
@@ -203,9 +207,20 @@ pub(crate) fn spawn(
                 // session id is server-issued, so this should never fail; if
                 // it somehow does, treat the session as dead rather than
                 // smuggling bytes onto the wire.
-                let Ok(bytes) = req.encode_checked() else {
-                    session_dead.store(true, Ordering::Relaxed);
-                    return;
+                let bytes = match req.encode_checked() {
+                    Ok(b) => b,
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "tst_rtp::client::keepalive",
+                            error = %e,
+                            "keepalive ping failed the header-injection guard; marking session dead"
+                        );
+                        session_dead.store(true, Ordering::Relaxed);
+                        end_reason.record(StreamEndReason::KeepaliveFailed {
+                            msg: format!("keepalive ping failed to encode: {e}"),
+                        });
+                        return;
+                    }
                 };
                 // Announce this write on the hand-off gate so an active
                 // interleaved pump yields the stream mutex promptly —
@@ -226,8 +241,16 @@ pub(crate) fn spawn(
                     let mut g = crate::rtsp::client::lock_unpoisoned(&write_half);
                     g.write_all(&bytes)
                 };
-                if write_result.is_err() {
+                if let Err(e) = write_result {
+                    tracing::warn!(
+                        target: "tst_rtp::client::keepalive",
+                        error = %e,
+                        "keepalive ping write failed; marking session dead"
+                    );
                     session_dead.store(true, Ordering::Relaxed);
+                    end_reason.record(StreamEndReason::KeepaliveFailed {
+                        msg: format!("control TCP write failed: {e}"),
+                    });
                     return;
                 }
                 // The response is consumed wherever reads happen in the

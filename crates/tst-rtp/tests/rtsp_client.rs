@@ -30,6 +30,8 @@ mod keepalive_retune;
 mod recv_timeout;
 #[path = "rtsp_client/setup_play.rs"]
 mod setup_play;
+#[path = "rtsp_client/stream_end_reason.rs"]
+mod stream_end_reason;
 #[path = "rtsp_client/teardown.rs"]
 mod teardown;
 #[path = "rtsp_client/tls.rs"]

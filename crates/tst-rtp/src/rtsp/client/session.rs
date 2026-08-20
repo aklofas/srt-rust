@@ -17,6 +17,7 @@ use bytes::Bytes;
 
 use crate::h264::depacketizer::H264DepayConfig;
 use crate::h264::receiver::H264Receiver;
+use crate::rtsp::client::end_reason::EndReasonSlot;
 use crate::rtsp::client::transport_negotiation::{RtspTransportKind, TransportResponse};
 use crate::transport::RtpRecvTransport;
 
@@ -57,6 +58,13 @@ pub struct RtspSession {
     /// — the session itself never blocks on I/O, so there is nothing to
     /// apply the deadline to before conversion.
     pub(crate) recv_timeout: Option<Duration>,
+    /// Clone of the owning [`crate::rtsp::client::RtspClient`]'s
+    /// [`EndReasonSlot`] — carried forward into
+    /// [`Self::into_recv_transport`] / [`Self::into_h264_receiver`] so
+    /// the resulting transport/receiver reports the SAME
+    /// [`crate::StreamEndReason`] the RTSP client's pump / keepalive
+    /// threads record, not a fresh (always-empty) slot.
+    pub(crate) end_reason: EndReasonSlot,
 }
 
 impl RtspSession {
@@ -67,6 +75,7 @@ impl RtspSession {
         transport: TransportResponse,
         peer: SocketAddr,
         recv_timeout: Option<Duration>,
+        end_reason: EndReasonSlot,
     ) -> Self {
         Self {
             session_id: sid,
@@ -77,6 +86,7 @@ impl RtspSession {
             data_rx: None,
             rtcp_rx: None,
             recv_timeout,
+            end_reason,
         }
     }
 
@@ -91,6 +101,7 @@ impl RtspSession {
         data_rx: mpsc::Receiver<Bytes>,
         rtcp_rx: mpsc::Receiver<Bytes>,
         recv_timeout: Option<Duration>,
+        end_reason: EndReasonSlot,
     ) -> Self {
         Self {
             session_id: sid,
@@ -101,6 +112,7 @@ impl RtspSession {
             data_rx: Some(data_rx),
             rtcp_rx: Some(rtcp_rx),
             recv_timeout,
+            end_reason,
         }
     }
 
@@ -158,6 +170,7 @@ impl RtspSession {
             }
         };
         transport.set_recv_timeout(self.recv_timeout);
+        transport.set_end_reason_slot(self.end_reason.clone());
         transport
     }
 
@@ -214,6 +227,7 @@ impl RtspSession {
             }
         };
         receiver.set_recv_timeout(self.recv_timeout);
+        receiver.set_end_reason_slot(self.end_reason.clone());
         receiver
     }
 }

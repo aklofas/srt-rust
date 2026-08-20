@@ -26,6 +26,7 @@ use crate::rtcp::ingest::{ingest_rr, ingest_sr};
 use crate::rtcp::reporter::RtcpReporterHandle;
 use crate::rtcp::stats::RtcpStats;
 use crate::rtcp::{ReceiverReport, SdesPacket, SenderReport};
+use crate::rtsp::client::end_reason::{EndReasonSlot, StreamEndReason, StreamEndReasonHandle};
 use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 
 /// Convert an `io::Error` from the shared UDP socket helpers into a
@@ -655,6 +656,14 @@ pub struct RtpRecvTransport {
     /// [`RecvTransport::recv_bytes`] path. `None` (the default) blocks
     /// indefinitely. See [`Self::set_recv_timeout`].
     recv_timeout: Option<Duration>,
+    /// Structured record of why the session ended. For an RTSP-backed
+    /// transport (built via [`crate::rtsp::client::session::RtspSession::into_recv_transport`])
+    /// this is a clone of the owning `RtspClient`'s slot — populated by
+    /// the interleaved pump / keepalive threads. For a plain `rtp://`
+    /// transport (`listen*` / `from_udp_socket`) this is a fresh slot
+    /// written only by [`Self::close`] / an explicit
+    /// [`Self::cancel_handle`] fire — see [`Self::set_end_reason_slot`].
+    end_reason: EndReasonSlot,
 }
 
 /// RTP-protocol-level stats separate from [`SocketStats`].
@@ -822,6 +831,7 @@ impl RtpRecvTransport {
                             rtcp_reporter: None,
                             ssrc,
                             recv_timeout: url.recv_timeout,
+                            end_reason: EndReasonSlot::default(),
                         });
                     }
                 };
@@ -852,6 +862,7 @@ impl RtpRecvTransport {
                         rtcp_reporter: None,
                         ssrc,
                         recv_timeout: url.recv_timeout,
+                        end_reason: EndReasonSlot::default(),
                     });
                 };
                 let rtcp_target = SocketAddr::new(ip, rtcp_companion_port);
@@ -893,6 +904,7 @@ impl RtpRecvTransport {
             rtcp_reporter,
             ssrc,
             recv_timeout: url.recv_timeout,
+            end_reason: EndReasonSlot::default(),
         })
     }
 
@@ -925,6 +937,7 @@ impl RtpRecvTransport {
             rtcp_reporter: None,
             ssrc,
             recv_timeout: None,
+            end_reason: EndReasonSlot::default(),
         })
     }
 
@@ -962,6 +975,7 @@ impl RtpRecvTransport {
             rtcp_reporter: None,
             ssrc,
             recv_timeout: None,
+            end_reason: EndReasonSlot::default(),
         }
     }
 
@@ -1005,6 +1019,37 @@ impl RtpRecvTransport {
             .lock()
             .map(|g| g.clone())
             .unwrap_or_default()
+    }
+
+    /// The recorded [`StreamEndReason`], or `None` if the session hasn't
+    /// ended yet (or ended through a path this arc doesn't instrument —
+    /// see the field doc on `end_reason` for the plain-`rtp://` case).
+    pub fn end_reason(&self) -> Option<StreamEndReason> {
+        self.end_reason.get()
+    }
+
+    /// A cloneable, cross-thread-safe handle onto this transport's end
+    /// reason — for a watchdog thread that wants to poll
+    /// [`StreamEndReasonHandle::get`] without holding a reference to the
+    /// transport itself (which a single-owner `recv_bytes` loop is
+    /// using).
+    pub fn end_reason_handle(&self) -> StreamEndReasonHandle {
+        StreamEndReasonHandle::new(self.end_reason.clone())
+    }
+
+    /// Replace this transport's end-reason slot with `slot`.
+    ///
+    /// Used by [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
+    /// to swap in the owning `RtspClient`'s shared slot — so
+    /// [`Self::end_reason`] reports the SAME reason the RTSP client's
+    /// interleaved pump / keepalive threads recorded, rather than the
+    /// fresh (always-empty) slot every constructor starts with. A plain
+    /// `rtp://` transport (built via [`Self::listen`] et al., with no
+    /// owning `RtspClient`) never has this called — its slot stays the
+    /// fresh one from construction, written only by [`Self::close`] or
+    /// an explicit [`Self::cancel_handle`] fire.
+    pub(crate) fn set_end_reason_slot(&mut self, slot: EndReasonSlot) {
+        self.end_reason = slot;
     }
 
     /// Configure a persistent receive deadline for the blocking
@@ -1106,6 +1151,17 @@ impl RtpRecvTransport {
                     // Hard error from the underlying source — mark transport
                     // dead (same as both pre-refactor arms did) then propagate.
                     self.source = None;
+                    return Err(e);
+                }
+                Err(e @ TransportError::ExplicitClose) => {
+                    // `cancel` was observed set by the underlying source —
+                    // either `Self::close` already ran (which also records
+                    // this directly, since a closed transport with no recv
+                    // in flight never reaches here) or a bare
+                    // `cancel_handle().cancel()` fired while this call was
+                    // blocked. Either way the session ended because the
+                    // caller asked it to, not a wire failure.
+                    self.end_reason.record(StreamEndReason::Cancelled);
                     return Err(e);
                 }
                 Err(e) => return Err(e),
@@ -1224,6 +1280,7 @@ impl RecvTransport for RtpRecvTransport {
 
     fn close(&mut self) {
         self.source = None;
+        self.end_reason.record(StreamEndReason::Cancelled);
     }
 
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
@@ -2388,5 +2445,62 @@ mod tests {
         // 189 bytes — not 188-aligned, invalid.
         v = vec![0x47u8; 189];
         assert!(!is_valid_mp2t_payload(&v));
+    }
+
+    // ── StreamEndReason: plain rtp:// transport (no owning RtspClient) ──
+
+    /// A fresh, never-touched transport reports `None` — the session
+    /// hasn't ended.
+    #[test]
+    fn end_reason_none_on_fresh_transport() {
+        let t = RtpRecvTransport::listen("rtp://127.0.0.1:0").unwrap();
+        assert!(t.end_reason().is_none());
+        assert!(t.end_reason_handle().get().is_none());
+    }
+
+    /// `RecvTransport::close()` is the ONLY writer for a plain `rtp://`
+    /// transport (no pump, no keepalive) — it must record `Cancelled`.
+    #[test]
+    fn close_records_cancelled_on_plain_udp_transport() {
+        let mut t = RtpRecvTransport::listen("rtp://127.0.0.1:0").unwrap();
+        RecvTransport::close(&mut t);
+        assert!(
+            matches!(t.end_reason(), Some(StreamEndReason::Cancelled)),
+            "close() must record Cancelled, got {:?}",
+            t.end_reason()
+        );
+    }
+
+    /// Firing the transport's own cancel handle (without calling
+    /// `close()`) must be observed on the NEXT `recv_bytes` call — it
+    /// records `Cancelled` and returns `ExplicitClose`, and the recorded
+    /// reason is visible through a handle obtained BEFORE the fire (the
+    /// cross-thread-watchdog shape).
+    #[test]
+    fn cancel_handle_fire_records_cancelled_on_next_recv() {
+        let mut t = RtpRecvTransport::listen("rtp://127.0.0.1:0").unwrap();
+        let handle = t.end_reason_handle();
+        assert!(handle.get().is_none());
+
+        let cancel = t
+            .cancel_handle()
+            .expect("recv transport exposes a cancel handle");
+        cancel.cancel();
+
+        let mut buf = vec![0u8; 2048];
+        let result = RecvTransport::recv_bytes(&mut t, &mut buf);
+        assert!(
+            matches!(result, Err(TransportError::ExplicitClose)),
+            "expected ExplicitClose, got {result:?}"
+        );
+        assert!(
+            matches!(t.end_reason(), Some(StreamEndReason::Cancelled)),
+            "a cancel-handle fire observed at recv must record Cancelled, got {:?}",
+            t.end_reason()
+        );
+        assert!(
+            matches!(handle.get(), Some(StreamEndReason::Cancelled)),
+            "a handle obtained before the fire must observe the same recording"
+        );
     }
 }

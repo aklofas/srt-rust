@@ -52,6 +52,7 @@ use tst_core::transport::{SocketStats, TransportError};
 use crate::cancel::RtpCancelHandle;
 use crate::h264::depacketizer::{H264Au, H264Depacketizer, H264DepayConfig, H264DepayStats};
 use crate::packet::RtpHeader;
+use crate::rtsp::client::end_reason::{EndReasonSlot, StreamEndReason};
 use crate::transport::{ConnectError, MPSC_PUMP_DISCONNECTED, RECV_SCRATCH_LEN, RtpStats, Source};
 use crate::url::RtpUrl;
 
@@ -137,6 +138,12 @@ pub struct H264Receiver {
     ///
     /// `None` on UDP and plain-mpsc paths.
     rtcp_drain: Option<std::sync::mpsc::Receiver<bytes::Bytes>>,
+    /// Structured record of why the session ended — see
+    /// `RtpRecvTransport::end_reason`'s doc for the same split between
+    /// an RTSP-shared slot (set via [`Self::set_end_reason_slot`]) and a
+    /// fresh slot for a plain `rtp://` receiver, written only by
+    /// [`Self::close`] / an explicit [`Self::cancel_handle`] fire.
+    end_reason: EndReasonSlot,
 }
 
 impl H264Receiver {
@@ -206,6 +213,7 @@ impl H264Receiver {
             eos: false,
             recv_timeout: None,
             rtcp_drain: None,
+            end_reason: EndReasonSlot::default(),
         })
     }
 
@@ -244,6 +252,7 @@ impl H264Receiver {
             eos: false,
             recv_timeout: None,
             rtcp_drain: rtcp_rx,
+            end_reason: EndReasonSlot::default(),
         }
     }
 
@@ -289,6 +298,21 @@ impl H264Receiver {
     /// call.
     pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) {
         self.recv_timeout = timeout;
+    }
+
+    /// The recorded [`StreamEndReason`], or `None` if the session hasn't
+    /// ended yet (or ended through a path this arc doesn't instrument —
+    /// see the field doc on `end_reason` for the plain-`rtp://` case).
+    pub fn end_reason(&self) -> Option<StreamEndReason> {
+        self.end_reason.get()
+    }
+
+    /// Replace this receiver's end-reason slot with `slot`. Used by
+    /// [`crate::rtsp::client::session::RtspSession::into_h264_receiver`]
+    /// to swap in the owning `RtspClient`'s shared slot — mirrors
+    /// `RtpRecvTransport::set_end_reason_slot`.
+    pub(crate) fn set_end_reason_slot(&mut self, slot: EndReasonSlot) {
+        self.end_reason = slot;
     }
 
     /// [`Self::recv_au`] with a deadline. Returns
@@ -347,7 +371,13 @@ impl H264Receiver {
             let n = match raw_result {
                 Ok(n) => n,
                 Err(TransportError::ExplicitClose) => {
-                    // Cancel / close — drain depacketizer then EOS.
+                    // Cancel / close — drain depacketizer then EOS. Same
+                    // reasoning as `RtpRecvTransport::recv_bytes_inner`'s
+                    // ExplicitClose arm: `Self::close` already records
+                    // this directly when there's no recv in flight, so
+                    // this branch is reached for a bare
+                    // `cancel_handle().cancel()` fired mid-recv.
+                    self.end_reason.record(StreamEndReason::Cancelled);
                     self.eos = true;
                     return Ok(self.depay.flush());
                 }
@@ -456,6 +486,7 @@ impl H264Receiver {
         self.cancel.cancel();
         self.source = None;
         self.eos = true;
+        self.end_reason.record(StreamEndReason::Cancelled);
     }
 }
 
@@ -758,5 +789,49 @@ mod tests {
             "got {res:?}"
         );
         drop(tx);
+    }
+
+    // ── StreamEndReason: plain rtp:// receiver (no owning RtspClient) ───
+
+    /// A fresh, never-touched receiver reports `None`.
+    #[test]
+    fn end_reason_none_on_fresh_receiver() {
+        let (_tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        assert!(r.end_reason().is_none());
+    }
+
+    /// `close()` is the ONLY writer for a plain (non-RTSP) receiver — it
+    /// must record `Cancelled`.
+    #[test]
+    fn close_records_cancelled_on_plain_receiver() {
+        let (_tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        r.close();
+        assert!(
+            matches!(r.end_reason(), Some(StreamEndReason::Cancelled)),
+            "close() must record Cancelled, got {:?}",
+            r.end_reason()
+        );
+    }
+
+    /// Firing the cancel handle (without calling `close()`) is observed
+    /// on the next `recv_au()` call — flushes via the normal EOS path and
+    /// records `Cancelled`.
+    #[test]
+    fn cancel_handle_fire_records_cancelled_on_next_recv() {
+        let (_tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        r.cancel_handle().cancel();
+        let result = r.recv_au();
+        assert!(
+            matches!(result, Ok(None)),
+            "a cancelled receiver must still surface clean EOS, got {result:?}"
+        );
+        assert!(
+            matches!(r.end_reason(), Some(StreamEndReason::Cancelled)),
+            "a cancel-handle fire observed at recv must record Cancelled, got {:?}",
+            r.end_reason()
+        );
     }
 }

@@ -238,4 +238,42 @@ class St0805Test {
         assertTrue(ex.getMessage().contains("updateIntervalUs"),
                 "expected message to mention updateIntervalUs; got: " + ex.getMessage());
     }
+
+    // -----------------------------------------------------------------------
+    // Null arguments throw NullPointerException (never a silent null return)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Every CoT entry point must throw on a {@code null} record/config rather
+     * than silently returning {@code null}: jni's own null guard surfaces as a
+     * Rust-side {@code Err} with NO pending Java exception, so without an
+     * explicit up-front check these natives returned null with no diagnostic
+     * at all (the WP-F documented-stopgap behavior this test retires).
+     */
+    @Test
+    void nullRecordThrowsNpe() {
+        assertNullNamed("record", assertThrows(NullPointerException.class,
+                () -> Klv.platformPositionXml(null, GENERATED_US)));
+        assertNullNamed("record", assertThrows(NullPointerException.class,
+                () -> Klv.sensorPointOfInterestXml(null, GENERATED_US)));
+        assertNullNamed("record", assertThrows(NullPointerException.class,
+                () -> Klv.platformUid(null)));
+        assertNullNamed("record", assertThrows(NullPointerException.class,
+                () -> Klv.spiUid(null)));
+    }
+
+    @Test
+    void nullConfigThrowsNpe() {
+        assertNullNamed("config", assertThrows(NullPointerException.class,
+                () -> Klv.platformPositionXml(fixture(), null, GENERATED_US)));
+        assertNullNamed("config", assertThrows(NullPointerException.class,
+                () -> Klv.sensorPointOfInterestXml(fixture(), null, GENERATED_US)));
+    }
+
+    /** The NPE message must name the offending parameter. */
+    private static void assertNullNamed(String param, NullPointerException ex) {
+        assertNotNull(ex.getMessage(), "NPE must carry a message");
+        assertTrue(ex.getMessage().contains(param),
+                "expected message to mention " + param + "; got: " + ex.getMessage());
+    }
 }

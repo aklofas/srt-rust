@@ -473,4 +473,30 @@ class St1204Test {
                 .miisCoreId(TABLE7)                            // Tag 94
                 .build();
     }
+
+    // -----------------------------------------------------------------------
+    // Null arguments throw NullPointerException (never a silent null return)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Same contract as St0805Test's null-argument tests: jni's null guard
+     * surfaces as a Rust-side {@code Err} with NO pending Java exception, so
+     * without an explicit up-front check these natives silently returned
+     * {@code null}.
+     */
+    @Test
+    void nullArgumentsThrowNpe() {
+        NullPointerException ex = assertThrows(NullPointerException.class,
+                () -> Klv.validateMismms(null));
+        assertTrue(ex.getMessage().contains("record"),
+                "expected message to mention record; got: " + ex.getMessage());
+
+        ex = assertThrows(NullPointerException.class, () -> Klv.encodeCoreId(null));
+        assertTrue(ex.getMessage().contains("id"),
+                "expected message to mention id; got: " + ex.getMessage());
+
+        ex = assertThrows(NullPointerException.class, () -> Klv.coreIdText(null));
+        assertTrue(ex.getMessage().contains("id"),
+                "expected message to mention id; got: " + ex.getMessage());
+    }
 }

@@ -258,6 +258,30 @@ pub fn read_byte_buffer(env: &mut JNIEnv, buf: &JObject) -> jni::errors::Result<
 }
 
 // -----------------------------------------------------------------------
+// Null-argument guard
+// -----------------------------------------------------------------------
+
+/// Guard a JNI object argument that must be non-null: throw
+/// `NullPointerException` naming `what` and return `Err(JavaException)` if
+/// `obj` is null.
+///
+/// Needed because jni's own `non_null!` receiver guard rejects a null with a
+/// plain Rust-side `Err(NullPtr)` and NO pending Java exception — a native
+/// that maps reader errors to a bare `return null` therefore turns a
+/// caller's null argument into a silent null result with no diagnostic at
+/// all. Call this FIRST, before any accessor call on the object.
+pub fn require_non_null(env: &mut JNIEnv, obj: &JObject, what: &str) -> jni::errors::Result<()> {
+    if obj.is_null() {
+        let _ = env.throw_new(
+            "java/lang/NullPointerException",
+            format!("{what} must not be null"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(())
+}
+
+// -----------------------------------------------------------------------
 // Checked narrowing helpers (encode path)
 // -----------------------------------------------------------------------
 

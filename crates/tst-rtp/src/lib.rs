@@ -65,6 +65,7 @@ pub use rtcp::reporter::{RTCP_BASE_INTERVAL, RtcpReporterHandle};
 pub use rtcp::stats::RtcpStats;
 pub use rtcp::{ReceiverReport, ReportBlock, RtcpError, RtcpPacketType, SdesPacket, SenderReport};
 pub use rtsp::auth::{AuthChallenge, DigestAlgorithm, DigestChallenge, DigestContext};
+pub use rtsp::client::end_reason::{StreamEndReason, StreamEndReasonHandle};
 pub use rtsp::client::options_describe::OptionsResponse;
 pub use rtsp::client::play::{RtpInfo, parse_rtp_info};
 pub use rtsp::client::session::RtspSession;

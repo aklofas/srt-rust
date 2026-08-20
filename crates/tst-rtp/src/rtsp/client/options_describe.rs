@@ -346,6 +346,7 @@ impl RtspClient {
                                         &resp,
                                         &self.auth,
                                         self.session_dead.as_deref(),
+                                        &self.end_reason,
                                     );
                                     buf.drain(..total_len);
                                     continue;

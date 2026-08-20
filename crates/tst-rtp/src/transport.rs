@@ -821,7 +821,7 @@ impl RtpRecvTransport {
                             rtcp_stats,
                             rtcp_reporter: None,
                             ssrc,
-                            recv_timeout: None,
+                            recv_timeout: url.recv_timeout,
                         });
                     }
                 };
@@ -851,7 +851,7 @@ impl RtpRecvTransport {
                         rtcp_stats,
                         rtcp_reporter: None,
                         ssrc,
-                        recv_timeout: None,
+                        recv_timeout: url.recv_timeout,
                     });
                 };
                 let rtcp_target = SocketAddr::new(ip, rtcp_companion_port);
@@ -892,7 +892,7 @@ impl RtpRecvTransport {
             rtcp_stats,
             rtcp_reporter,
             ssrc,
-            recv_timeout: None,
+            recv_timeout: url.recv_timeout,
         })
     }
 
@@ -1748,6 +1748,61 @@ mod tests {
             elapsed >= Duration::from_millis(250) && elapsed < Duration::from_secs(5),
             "elapsed {elapsed:?}"
         );
+        assert!(t.is_alive(), "transport must stay alive after expiry");
+    }
+
+    /// Task A2: the `?recv_timeout=<ms>` URL knob (parsed by A1) must arm
+    /// the transport with NO explicit `set_recv_timeout` call —
+    /// `RtpRecvTransport::listen`'s URL path is the sibling of the
+    /// builder/trait-level knob tests above, proving the query key alone
+    /// is enough. Same ephemeral-port-discovery + unblock-lever pattern as
+    /// `configured_recv_timeout_bounds_udp_trait_recv_bytes` (the transport
+    /// exposes no local-addr getter). Asserts the error kind, not timing —
+    /// the elapsed-duration pin already lives on the setter-driven test
+    /// above.
+    #[test]
+    fn url_recv_timeout_arms_transport_without_explicit_setter() {
+        let (mut t, port) = {
+            let mut out = None;
+            for _ in 0..50 {
+                let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+                let candidate = s.local_addr().unwrap().port();
+                drop(s);
+                let url = format!("rtp://127.0.0.1:{candidate}?recv_timeout=200");
+                if let Ok(built) = RtpRecvTransport::listen(&url) {
+                    out = Some((built, candidate));
+                    break;
+                }
+            }
+            out.expect("could not allocate a loopback UDP port in 50 attempts")
+        };
+
+        let worker = std::thread::spawn(move || {
+            let mut buf = vec![0u8; 2048];
+            let r = t.recv_bytes(&mut buf);
+            (r, t)
+        });
+        let hang_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() && std::time::Instant::now() < hang_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !worker.is_finished() {
+            // Unblock lever: a valid RTP+MP2T packet makes a hung recv
+            // return data so the test FAILS instead of wedging.
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let mut pkt = vec![0u8; 12 + 188];
+            pkt[0] = 0x80;
+            pkt[1] = 33;
+            pkt[12] = 0x47;
+            let _ = s.send_to(&pkt, ("127.0.0.1", port));
+            let _ = worker.join();
+            panic!("?recv_timeout= URL knob did not arm the transport (blocked >= 5 s)");
+        }
+        let (result, t) = worker.join().unwrap();
+        match result {
+            Err(TransportError::Backpressure { .. }) => {}
+            other => panic!("expected Backpressure on expiry, got {other:?}"),
+        }
         assert!(t.is_alive(), "transport must stay alive after expiry");
     }
 

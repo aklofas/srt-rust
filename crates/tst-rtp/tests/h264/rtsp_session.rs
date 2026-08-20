@@ -11,6 +11,7 @@
 //!     `UnsupportedPacketizationMode(2)` BEFORE any SETUP request.
 
 use base64::Engine as _;
+use tst_core::transport::TransportError;
 use tst_rtp::{
     ParameterSetInjection, RtspClient, RtspClientBuilder, RtspError, RtspTransportKind,
     RtspTransportPref,
@@ -320,6 +321,50 @@ fn interleaved_rtcp_frames_do_not_kill_session() {
     expected3.extend_from_slice(&au3);
     assert_eq!(got3.annexb, expected3, "AU3 (IDR) mismatch");
     assert!(got3.key_frame);
+
+    rx.close();
+}
+
+/// Task A2: the `?recv_timeout=<ms>` URL knob on `RtspUrl` must reach the
+/// `H264Receiver` returned by `into_h264_receiver` — the H.264 sibling of
+/// `rtsp_client/recv_timeout.rs`'s `into_recv_transport` test. No
+/// `play_data` is configured, so a receiver with no configured deadline
+/// would block `recv_au` forever.
+#[test]
+fn recv_timeout_query_arms_into_h264_receiver() {
+    let sps = sps_nalu();
+    let pps = pps_nalu();
+    let sps_b64 = base64::engine::general_purpose::STANDARD.encode(&sps);
+    let pps_b64 = base64::engine::general_purpose::STANDARD.encode(&pps);
+    let sdp_body = h264_sdp(1, &sps_b64, &pps_b64);
+
+    let fixture = FixtureHandle::spawn(FixtureConfig {
+        sdp_body,
+        ..FixtureConfig::default()
+    });
+
+    let url = format!(
+        "rtsp://127.0.0.1:{}/?transport=tcp&recv_timeout=200",
+        fixture.port
+    );
+    let mut client = RtspClient::connect(&url).unwrap();
+    let sdp = client.describe().unwrap();
+    let (session, config) = client.setup_h264_auto(&sdp).unwrap();
+    client.play().unwrap();
+    let mut rx = session.into_h264_receiver(config);
+
+    let start = std::time::Instant::now();
+    let result = rx.recv_au();
+    let elapsed = start.elapsed();
+
+    match result {
+        Err(TransportError::Backpressure { .. }) => {}
+        other => panic!("expected Backpressure on expiry, got {other:?}"),
+    }
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "recv_au blocked well past the configured 200 ms deadline: {elapsed:?}"
+    );
 
     rx.close();
 }

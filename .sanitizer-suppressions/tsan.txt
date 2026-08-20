@@ -31,3 +31,33 @@
 # Remove/re-test: on any tokio upgrade that restructures the io driver
 # (delete the entry, dispatch the tsan job, re-add only if it re-fires).
 race:tokio::runtime::io::scheduled_io
+
+# 2026-08-19 — librist-internal races (tsan-native harvest, WP-SAN-5).
+# First TSan run over the sanitized native builds surfaced 5 reports in
+# 4 tst-rist live-loopback test processes; every RACING frame on both
+# sides sits inside librist C code — tst-rist Rust frames appear only as
+# the public-API caller (send_bytes/close). Three classes, suppressed by
+# the librist-internal function names at the racing accesses (NOT a
+# blanket race:rist* — rist_sys FFI frames ride genuine app-race stacks
+# and must stay unsuppressed):
+#   1. receiver flow handoff — rist_receiver_recv_data (rist-common.c:595)
+#      read vs rist_receiver_associate_flow/receiver_pthread_dataout
+#      (flow.c:202) write, each under a DIFFERENT librist mutex (M0/M1).
+#   2. evsocket teardown — ctx_del/evsocket_destroy (libevsocket.c:92)
+#      during rist_destroy racing the evsocket loop thread's mutex use.
+#   3. sender stats — rist_sender_enqueue (udp.c:930) app-thread write vs
+#      rist_sender_flow_statistics (stats.c:54) stats-thread read.
+# All three are upstream synchronization contracts internal to librist
+# 0.2.18 (upstream-report candidates; distinct from the 0.2.18-fixed
+# teardown-hang class). Evidence: local harvest log, 2026-08-19, run
+# recorded in the WP-SAN-5 PR description; 514/518 pass with the only
+# failures being TSan exit codes from these reports.
+# Remove/re-test: on any librist bump — delete this block, dispatch
+# tsan-native, re-add only what re-fires.
+race:rist_receiver_recv_data
+race:rist_receiver_associate_flow
+race:receiver_pthread_dataout
+race:ctx_del
+race:evsocket_
+race:rist_sender_enqueue
+race:rist_sender_flow_statistics

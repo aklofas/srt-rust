@@ -6,13 +6,13 @@ name: sanitizers
 #
 #   * asan / tsan — the pure-Rust crates: tst-core, tst-pipeline, tst-rtp,
 #     tst-udp, tst-tcp, tst-hls.
-#   * asan-native — the native-linking crates: tst-srt, tst-rist, tst-c.
-#     `TST_NATIVE_SANITIZER=address` threads -fsanitize through the
-#     srt-sys/rist-sys vendored cmake+meson builds so libsrt, librist and
-#     BOTH static mbedTLS copies are instrumented to match the Rust test
-#     binary (see the native_sanitizer_cflags helper in either build.rs).
-#     A tsan-native twin follows once asan-native has a week of green
-#     nightlies (WP-SAN-5, docs/plans/2026-07-24-native-sanitizer-coverage.md).
+#   * asan-native / tsan-native — the native-linking crates: tst-srt,
+#     tst-rist, tst-c. `TST_NATIVE_SANITIZER=address|thread` threads
+#     -fsanitize through the srt-sys/rist-sys vendored cmake+meson builds
+#     so libsrt, librist and BOTH static mbedTLS copies are instrumented
+#     to match the Rust test binary (see the native_sanitizer_cflags
+#     helper in either build.rs). tsan-native landed 2026-08-19
+#     (WP-SAN-5, docs/plans/2026-07-24-native-sanitizer-coverage.md).
 #
 # Tests run under cargo-nextest with the `sanitizer` profile
 # (.config/nextest.toml): sanitizer-scaled per-test timeouts (ASan ~2x,
@@ -180,6 +180,83 @@ jobs:
         # smoke binary cannot load a sanitized .so anyway. Everything else
         # links the tst-c rlib straight into the sanitized test binary,
         # which is the coverage this job exists for.
+        run: |
+          cargo +nightly nextest run --profile sanitizer \
+            -p tst-srt -p tst-rist -p tst-c \
+            --features tst-c/srt,tst-c/rtp,tst-c/udp,tst-c/tcp,tst-c/hls,tst-c/rist \
+            -E 'not (test(smoke_c_compiles_links_runs) | test(cdylib_exports_only_prefixed_symbols) | test(srt_symbols_not_exported))' \
+            --no-fail-fast \
+            -Z build-std=std,panic_abort \
+            --target x86_64-unknown-linux-gnu
+
+  tsan-native:
+    name: TSan (native-linking crates, nightly)
+    runs-on: ubuntu-latest
+    # Phase-in: soft-fail until 2026-09-09 (~3 weeks of nightlies) while
+    # the TSan'd native builds + suppression set prove stable on runners,
+    # then DELETE this line. Tracked as a dated checkbox in ROADMAP.md
+    # (same hygiene as the asan-native phase-in, closed on time
+    # 2026-08-19 — the undated PR-#58-era phase-in drifted 7 weeks).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install native build tools + symbolizer
+        # Same toolchain rationale as asan-native: meson+ninja for librist,
+        # llvm for the unversioned llvm-symbolizer the TSan runtime needs,
+        # clang pinned explicitly against runner-image drift.
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y meson ninja-build llvm clang
+
+      - name: Install nightly + rust-src
+        run: |
+          rustup toolchain install nightly --profile minimal --no-self-update
+          rustup component add --toolchain nightly rust-src
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: Cache cargo artifacts
+        # Separate key from BOTH the pure-Rust tsan job and asan-native:
+        # this target dir holds TSan-instrumented vendored static libs.
+        # Sanitized flavors must never share a cache (a restored
+        # differently-instrumented lib would corrupt the run invisibly).
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+            !target/x86_64-unknown-linux-gnu/debug/incremental
+            !target/x86_64-unknown-linux-gnu/debug/.fingerprint
+            !target/x86_64-unknown-linux-gnu/debug/deps
+          key: cargo-tsan-native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-tsan-native-${{ runner.os }}-
+
+      - name: nextest run under TSan (sanitized native libs)
+        env:
+          # TST_NATIVE_SANITIZER threads -fsanitize=thread through the
+          # srt-sys/rist-sys vendored builds so libsrt's own threads
+          # (RcvQueue, TSBPD) and librist's pthreads participate in the
+          # same happens-before graph as the Rust side — cross-boundary
+          # races are exactly what this job exists to see.
+          TST_NATIVE_SANITIZER: thread
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+          CC: clang
+          CXX: clang++
+          RUSTFLAGS: "-Z sanitizer=thread"
+          TSAN_OPTIONS: "suppressions=${{ github.workspace }}/.sanitizer-suppressions/tsan.txt:halt_on_error=0:report_signal_unsafe=0"
+        # Same scope + -E exclusions as asan-native (see that job's
+        # comment for the cdylib-path rationale).
         run: |
           cargo +nightly nextest run --profile sanitizer \
             -p tst-srt -p tst-rist -p tst-c \

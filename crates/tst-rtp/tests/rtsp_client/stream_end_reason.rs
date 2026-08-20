@@ -50,17 +50,31 @@ fn wait_for<T>(budget: Duration, mut f: impl FnMut() -> Option<T>) -> T {
 const SDP_BODY: &[u8] = b"v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=tst-rtp test\r\nt=0 0\r\na=control:*\r\nm=video 0 RTP/AVP 33\r\na=control:trackID=0\r\n";
 
 /// Block until a full request (through `CRLFCRLF`) has arrived and
-/// return it as text. Good enough here — none of these scenarios send a
-/// request with a body.
-fn read_request(sock: &mut TcpStream) -> String {
-    let mut buf = vec![0u8; 8192];
-    let mut total = String::new();
-    while !total.contains("\r\n\r\n") {
+/// return it as text. `leftover` is a persistent per-connection buffer
+/// the caller must reuse across every call on the same socket: a single
+/// `read()` can return more than one pipelined request back-to-back
+/// (e.g. a keepalive ping racing this test's own TEARDOWN write landing
+/// in the same read), and this function only consumes and returns the
+/// FIRST complete request from `leftover`, keeping any bytes past its
+/// terminating `CRLFCRLF` buffered for the next call. Discarding that
+/// surplus (the previous shape) silently drops the second pipelined
+/// request, wedging the server in a blocking read that never completes
+/// since the client already sent everything it's going to send — a
+/// deadlock that hangs the test (and the gating runner) rather than
+/// failing it.
+fn read_request(sock: &mut TcpStream, leftover: &mut Vec<u8>) -> String {
+    loop {
+        if let Some(pos) = leftover.windows(4).position(|w| w == b"\r\n\r\n") {
+            let end = pos + 4;
+            let req = String::from_utf8_lossy(&leftover[..end]).into_owned();
+            leftover.drain(..end);
+            return req;
+        }
+        let mut buf = [0u8; 8192];
         let n = sock.read(&mut buf).expect("read from client");
         assert!(n > 0, "client closed before a full request arrived");
-        total.push_str(std::str::from_utf8(&buf[..n]).unwrap_or(""));
+        leftover.extend_from_slice(&buf[..n]);
     }
-    total
 }
 
 fn cseq_of(req: &str) -> String {
@@ -76,9 +90,10 @@ fn method_of(req: &str) -> &str {
 
 /// Answer DESCRIBE, then SETUP with `transport_line` (the `Transport:`
 /// response value) under session id `DEADBEEF`. Returns once SETUP's
-/// response has been written.
-fn answer_describe_and_setup(sock: &mut TcpStream, transport_line: &str) {
-    let req = read_request(sock);
+/// response has been written. `leftover` is the same persistent buffer
+/// `read_request` needs — see its doc.
+fn answer_describe_and_setup(sock: &mut TcpStream, leftover: &mut Vec<u8>, transport_line: &str) {
+    let req = read_request(sock, leftover);
     assert_eq!(method_of(&req), "DESCRIBE", "unexpected request: {req}");
     let cseq = cseq_of(&req);
     sock.write_all(
@@ -91,7 +106,7 @@ fn answer_describe_and_setup(sock: &mut TcpStream, transport_line: &str) {
     .unwrap();
     sock.write_all(SDP_BODY).unwrap();
 
-    let req = read_request(sock);
+    let req = read_request(sock, leftover);
     assert_eq!(method_of(&req), "SETUP", "unexpected request: {req}");
     let cseq = cseq_of(&req);
     sock.write_all(
@@ -169,7 +184,8 @@ fn keepalive_454_records_session_expired() {
     let port = listener.local_addr().unwrap().port();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
-        let req = read_request(&mut sock);
+        let mut leftover = Vec::new();
+        let req = read_request(&mut sock, &mut leftover);
         assert_eq!(method_of(&req), "DESCRIBE");
         let cseq = cseq_of(&req);
         sock.write_all(
@@ -182,7 +198,7 @@ fn keepalive_454_records_session_expired() {
         .unwrap();
         sock.write_all(SDP_BODY).unwrap();
 
-        let req = read_request(&mut sock);
+        let req = read_request(&mut sock, &mut leftover);
         assert_eq!(method_of(&req), "SETUP");
         let cseq = cseq_of(&req);
         let client_port = extract_client_port(&req);
@@ -198,9 +214,13 @@ fn keepalive_454_records_session_expired() {
 
         // Answer every keepalive ping (the pinger keeps going at its
         // configured interval regardless of 454s) with 454, until the
-        // test's TEARDOWN arrives.
+        // test's TEARDOWN arrives. A ping and the test's own TEARDOWN can
+        // land in the SAME read() back-to-back — `leftover` (reused
+        // across every call in this connection, not reset per
+        // iteration) is what keeps the second request from being
+        // silently dropped; see `read_request`'s doc.
         loop {
-            let req = read_request(&mut sock);
+            let req = read_request(&mut sock, &mut leftover);
             let cseq = cseq_of(&req);
             match method_of(&req) {
                 "OPTIONS" => {
@@ -268,7 +288,8 @@ fn keepalive_write_failure_records_keepalive_failed() {
     let (ready_tx, ready_rx) = mpsc::channel::<()>();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
-        let req = read_request(&mut sock);
+        let mut leftover = Vec::new();
+        let req = read_request(&mut sock, &mut leftover);
         assert_eq!(method_of(&req), "DESCRIBE");
         let cseq = cseq_of(&req);
         sock.write_all(
@@ -281,7 +302,7 @@ fn keepalive_write_failure_records_keepalive_failed() {
         .unwrap();
         sock.write_all(SDP_BODY).unwrap();
 
-        let req = read_request(&mut sock);
+        let req = read_request(&mut sock, &mut leftover);
         assert_eq!(method_of(&req), "SETUP");
         let cseq = cseq_of(&req);
         let client_port = extract_client_port(&req);
@@ -336,7 +357,12 @@ fn pump_read_error_records_transport_failed() {
     let (ready_tx, ready_rx) = mpsc::channel::<()>();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
-        answer_describe_and_setup(&mut sock, "RTP/AVP/TCP;unicast;interleaved=0-1");
+        let mut leftover = Vec::new();
+        answer_describe_and_setup(
+            &mut sock,
+            &mut leftover,
+            "RTP/AVP/TCP;unicast;interleaved=0-1",
+        );
         ready_rx.recv().unwrap();
         force_reset(sock);
     });
@@ -382,7 +408,12 @@ fn h264_pump_death_records_transport_failed_and_recv_au_returns_none() {
     let (ready_tx, ready_rx) = mpsc::channel::<()>();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
-        answer_describe_and_setup(&mut sock, "RTP/AVP/TCP;unicast;interleaved=0-1");
+        let mut leftover = Vec::new();
+        answer_describe_and_setup(
+            &mut sock,
+            &mut leftover,
+            "RTP/AVP/TCP;unicast;interleaved=0-1",
+        );
         ready_rx.recv().unwrap();
         force_reset(sock);
     });
@@ -391,7 +422,7 @@ fn h264_pump_death_records_transport_failed_and_recv_au_returns_none() {
     let mut client = RtspClient::connect(&url).unwrap();
     let sdp = client.describe().unwrap();
     let session = client.setup_mp2t_auto(&sdp).unwrap();
-    // H264DepayConfig is #[non_exhaustive] — default-and-assign.
+    // H264DepayConfig is non-exhaustive — default-and-assign.
     let mut h264_config = H264DepayConfig::default();
     h264_config.payload_type = 96;
     let mut receiver = session.into_h264_receiver(h264_config);

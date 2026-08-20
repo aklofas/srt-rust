@@ -176,7 +176,9 @@ impl H264Receiver {
         })?;
         let local = SocketAddr::new(ip, url.port);
         let sock = UdpSocket::bind(local).map_err(ConnectError::Io)?;
-        Self::from_udp_socket_with(sock, config)
+        let mut receiver = Self::from_udp_socket_with(sock, config)?;
+        receiver.set_recv_timeout(url.recv_timeout);
+        Ok(receiver)
     }
 
     /// Wrap an already-bound socket. Sets the cancel-poll read timeout to
@@ -514,6 +516,46 @@ mod tests {
         assert_eq!(stats.packets_received, 1);
         assert_eq!(stats.bytes_received, pkt.len() as u64);
         rx.close();
+    }
+
+    /// The `?recv_timeout=<ms>` URL knob must arm the receiver on the
+    /// direct `rtp://...?pt=...` listen path — not just the RTSP-session
+    /// conversions in `session.rs`. Mirrors `transport.rs`'s
+    /// `url_recv_timeout_arms_transport_without_explicit_setter`: a silent
+    /// UDP source (nothing ever sent) must return
+    /// `Err(TransportError::Backpressure)` from `recv_au()` within a
+    /// bounded wait, with NO explicit `set_recv_timeout` call. Asserts the
+    /// error kind, not timing — same hang-proof + unblock-lever pattern as
+    /// the transport.rs sibling test (no local-addr getter issue here since
+    /// `local_addr()` exists, but the lever still guards against a
+    /// regression to infinite block).
+    #[test]
+    fn url_recv_timeout_arms_h264_receiver_without_explicit_setter() {
+        let mut rx = H264Receiver::listen("rtp://127.0.0.1:0?pt=96&recv_timeout=200").unwrap();
+        let dst = rx.local_addr().unwrap();
+
+        let worker = std::thread::spawn(move || {
+            let r = rx.recv_au();
+            (r, rx)
+        });
+        let hang_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() && std::time::Instant::now() < hang_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !worker.is_finished() {
+            // Unblock lever: a valid RTP+H264 packet makes a hung recv
+            // return data so the test FAILS instead of wedging.
+            let s = UdpSocket::bind("127.0.0.1:0").unwrap();
+            let pkt = [0x80u8, 0x80 | 96, 0, 1, 0, 0, 0x23, 0x28, 0, 0, 0, 9, 0x65];
+            let _ = s.send_to(&pkt, dst);
+            let _ = worker.join();
+            panic!("?recv_timeout= URL knob did not arm the H264Receiver (blocked >= 5 s)");
+        }
+        let (result, _rx) = worker.join().unwrap();
+        match result {
+            Err(TransportError::Backpressure { .. }) => {}
+            other => panic!("expected Backpressure on expiry, got {other:?}"),
+        }
     }
 
     /// `listen` without `?pt=` must return `MissingPayloadTypeParam`.

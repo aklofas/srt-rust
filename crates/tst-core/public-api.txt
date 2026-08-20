@@ -6725,6 +6725,7 @@ pub tst_core::mpegts::stats::StreamStats::bytes: u64
 pub tst_core::mpegts::stats::StreamStats::discontinuities: u64
 pub tst_core::mpegts::stats::StreamStats::items: u64
 pub tst_core::mpegts::stats::StreamStats::label: core::option::Option<alloc::string::String>
+pub tst_core::mpegts::stats::StreamStats::last_seen: core::option::Option<std::time::SystemTime>
 pub tst_core::mpegts::stats::StreamStats::pid: u16
 pub tst_core::mpegts::stats::StreamStats::program_number: u16
 pub tst_core::mpegts::stats::StreamStats::stream_type: tst_core::mpegts::common::StreamTypeCode
@@ -6752,6 +6753,7 @@ pub tst_core::mpegts::StreamStats::bytes: u64
 pub tst_core::mpegts::StreamStats::discontinuities: u64
 pub tst_core::mpegts::StreamStats::items: u64
 pub tst_core::mpegts::StreamStats::label: core::option::Option<alloc::string::String>
+pub tst_core::mpegts::StreamStats::last_seen: core::option::Option<std::time::SystemTime>
 pub tst_core::mpegts::StreamStats::pid: u16
 pub tst_core::mpegts::StreamStats::program_number: u16
 pub tst_core::mpegts::StreamStats::stream_type: tst_core::mpegts::common::StreamTypeCode

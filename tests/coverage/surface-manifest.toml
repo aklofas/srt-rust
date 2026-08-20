@@ -7683,6 +7683,21 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::SrAnchor"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# StreamEndReasonHandle: crate-root re-export of
+# rtsp::client::end_reason::StreamEndReasonHandle; same type, covered by
+# the same tests as the canonical-path row below.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::StreamEndReasonHandle"
+owning_tests = [
+  "crates/tst-rtp/src/rtsp/client/end_reason.rs",
+  "crates/tst-rtp/src/transport.rs",
+]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::TransportResponse"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -8409,6 +8424,57 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::rtsp::client::RtspClient::teardown"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# StreamEndReason::clone: the derived Clone genuinely runs on every
+# EndReasonSlot::get() / StreamEndReasonHandle::get() call (the method
+# body clones the recorded value out of the OnceLock) — exercised by
+# every owning test cited on the end_reason()/end_reason_handle() rows
+# above, plus end_reason.rs's own unit tests directly.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::rtsp::client::end_reason::StreamEndReason::clone"
+owning_tests = ["crates/tst-rtp/src/rtsp/client/end_reason.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_rtp::rtsp::client::end_reason::StreamEndReason::fmt"
+reason = "derived Debug; every {:?} use across the end_reason test files sits inside a lazily-evaluated assert!/panic! message argument, so it only actually runs on an assertion failure — not exercised on the green-suite happy path"
+
+# StreamEndReasonHandle: cross-thread handle onto an EndReasonSlot,
+# constructed by end_reason()'s own unit tests and by
+# RtpRecvTransport::end_reason_handle (see that row above).
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle"
+owning_tests = [
+  "crates/tst-rtp/src/rtsp/client/end_reason.rs",
+  "crates/tst-rtp/src/transport.rs",
+]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::clone"
+reason = "derived Clone on the public handle type; no test clones a StreamEndReasonHandle value directly (the underlying EndReasonSlot::clone it wraps is exercised via clone_shares_the_same_cell in end_reason.rs)"
+
+# StreamEndReasonHandle::get: exercised in end_reason.rs directly and via
+# RtpRecvTransport::end_reason_handle's own tests in transport.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::get"
+owning_tests = [
+  "crates/tst-rtp/src/rtsp/client/end_reason.rs",
+  "crates/tst-rtp/src/transport.rs",
+]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::rtsp::client::options_describe::OptionsResponse"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -8853,6 +8919,36 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::transport::RtpRecvTransport::drop"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# end_reason: StreamEndReason accessor — first-writer-wins record of why
+# an RTSP-backed session ended; unit-tested for the plain-rtp:// (no
+# owning RtspClient) case in transport.rs (fresh/close/cancel-handle-fire),
+# exercised against a real RTSP session (clean teardown, keepalive 454,
+# keepalive write failure, wire reset) in
+# tests/rtsp_client/stream_end_reason.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::transport::RtpRecvTransport::end_reason"
+owning_tests = [
+  "crates/tst-rtp/src/transport.rs",
+  "crates/tst-rtp/tests/rtsp_client/stream_end_reason.rs",
+]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+# end_reason_handle: cloneable cross-thread StreamEndReasonHandle onto the
+# same slot end_reason() reads — unit-tested (fresh handle, handle obtained
+# before a cancel-handle fire observes the recording) in transport.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::transport::RtpRecvTransport::end_reason_handle"
+owning_tests = ["crates/tst-rtp/src/transport.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::transport::RtpRecvTransport::is_alive"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -9250,6 +9346,22 @@ reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when
 item = "tst_rtp::h264::receiver::H264Receiver::drop"
 reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
 
+# end_reason: StreamEndReason accessor mirroring RtpRecvTransport::end_reason,
+# populated by RtspSession::into_h264_receiver; unit-tested for the plain-rtp://
+# (no owning RtspClient) case in receiver.rs, exercised against a real RTSP
+# session (a live TCP reset) in tests/rtsp_client/stream_end_reason.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::h264::receiver::H264Receiver::end_reason"
+owning_tests = [
+  "crates/tst-rtp/src/h264/receiver.rs",
+  "crates/tst-rtp/tests/rtsp_client/stream_end_reason.rs",
+]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::h264::receiver::H264Receiver::listen"
 reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
@@ -9280,6 +9392,24 @@ tier = "A"
 [[exempt]]
 item = "tst_rtp::h264::receiver::H264Receiver::rtp_stats"
 reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+# set_recv_timeout: persistent recv_au() deadline knob, mirroring
+# RtpRecvTransport::set_recv_timeout; dedicated tests colocated in
+# receiver.rs (knob-then-recovery, Duration::MAX saturation, the
+# one-shot recv_au_timeout arg overriding the knob, the direct
+# rtp://...?recv_timeout= URL path) plus the RtspSession::into_h264_receiver
+# conversion path in tests/h264/rtsp_session.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::h264::receiver::H264Receiver::set_recv_timeout"
+owning_tests = [
+  "crates/tst-rtp/src/h264/receiver.rs",
+  "crates/tst-rtp/tests/h264/rtsp_session.rs",
+]
+bindings = []
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_rtp::h264::receiver::H264Receiver::socket_stats"

@@ -13,6 +13,8 @@ mod fixtures;
 mod auth;
 #[path = "rtsp_client/builder_timeouts.rs"]
 mod builder_timeouts;
+#[path = "rtsp_client/clean_teardown_demux.rs"]
+mod clean_teardown_demux;
 #[path = "rtsp_client/fallback.rs"]
 mod fallback;
 // Gate lives inside the file itself (`#![cfg(feature = "rtsp-server")]`) —

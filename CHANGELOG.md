@@ -112,7 +112,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wire broke" needs to add an `Ok(None)` / `EndOfStream` arm for the
   first case. `RtpRecvTransport::end_reason()` (new, see Added)
   disambiguates further if you need to know *why* — `CleanTeardown` vs.
-  `TransportFailed` vs. `SessionExpired` vs. `Cancelled`.
+  `TransportFailed` vs. `SessionExpired` vs. `Cancelled`. Keep the
+  `RtspClient` alive, or drain the receiver, until end-of-stream is
+  observed: dropping the client races the classification, since its
+  `Drop` cancels the pump, which may record `Cancelled` before the
+  server's EOF is read — that race reproduces the old `TransportBroken`
+  shape.
 
 Together with `ReconnectPolicy`'s `mode` field, the `RtpUrl` /
 `RtspUrl` / `StreamStats` field adds above are all compile-breaking for
@@ -126,7 +131,7 @@ all Rust-only for now; see the "Background reconnect — bindings
 parity", "RTP receive-deadline bindings parity", and "Python/JVM
 `tracing` diagnostics bridge + structured stream-end reason" entries in
 [docs/project/deferred-features.md](docs/project/deferred-features.md).
-C ABI stays at 19 — nothing in this arc touches `tst-c`. (The JVM
+C ABI stays at 19 — these changes do not touch `tst-c`. (The JVM
 null-argument fix under **Fixed** below is a separate, JVM-only
 behavior change.)
 

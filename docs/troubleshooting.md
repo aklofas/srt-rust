@@ -396,6 +396,24 @@ this arc doesn't instrument — most notably a plain `rtp://` transport
 with no owning `RtspClient`, which only records `Cancelled` (via its
 own `close()` / cancel-handle) and nothing else.
 
+If you're wrapping the transport in `DemuxReceiver` / `Receiver` /
+`RawReceiver`, obtain `end_reason_handle()` **before** moving the
+transport into the shell — the transport itself is unreachable once
+the shell owns it, same obtain-before-move rule as `cancel_handle()`:
+
+```rust,ignore
+let handle = transport.end_reason_handle();
+let mut demux = DemuxReceiver::new(transport);
+// ... later, once recv_event() returns Ok(None) or an error ...
+match handle.get() { /* same match as above */ }
+```
+
+Keep the owning `RtspClient` alive, or drain the receiver, until
+end-of-stream is observed: dropping the client races the
+classification, since its `Drop` cancels the pump, which may record
+`Cancelled` before the server's EOF is read — that race reproduces the
+old `TransportBroken` shape.
+
 This is a Rust-only surface today — see the "Python/JVM `tracing`
 diagnostics bridge + structured stream-end reason" entry in
 [deferred-features.md](/docs/project/deferred-features.md) for the

@@ -19,6 +19,7 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use tst_core::transport::TransportError;
@@ -258,6 +259,13 @@ fn keepalive_454_records_session_expired() {
 fn keepalive_write_failure_records_keepalive_failed() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    // A TCP RST purges the peer's receive queue — resetting before the
+    // client has finished reading the SETUP response races the client's
+    // own read of that response (setup_mp2t_auto() can then see the
+    // reset instead of the 200 OK). Signal readiness only after the
+    // client-side conversion has returned, so the reset always lands
+    // strictly after SETUP was fully consumed.
+    let (ready_tx, ready_rx) = mpsc::channel::<()>();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
         let req = read_request(&mut sock);
@@ -289,6 +297,7 @@ fn keepalive_write_failure_records_keepalive_failed() {
 
         // Abortive close: the client's next keepalive write hits a reset
         // connection. Nothing reads again on this socket.
+        ready_rx.recv().unwrap();
         force_reset(sock);
     });
 
@@ -297,6 +306,7 @@ fn keepalive_write_failure_records_keepalive_failed() {
     let sdp = client.describe().unwrap();
     let session = client.setup_mp2t_auto(&sdp).unwrap();
     let transport = session.into_recv_transport();
+    ready_tx.send(()).unwrap();
     client
         .spawn_keepalive_if_needed(Some(Duration::from_millis(50)))
         .unwrap();
@@ -319,9 +329,15 @@ fn keepalive_write_failure_records_keepalive_failed() {
 fn pump_read_error_records_transport_failed() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    // See the ready-signal comment in `keepalive_write_failure_records_keepalive_failed`
+    // — a TCP RST purges the peer's receive queue, so resetting before
+    // the client's own read of the SETUP response completes races that
+    // read. Only reset after `into_recv_transport()` has returned.
+    let (ready_tx, ready_rx) = mpsc::channel::<()>();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
         answer_describe_and_setup(&mut sock, "RTP/AVP/TCP;unicast;interleaved=0-1");
+        ready_rx.recv().unwrap();
         force_reset(sock);
     });
 
@@ -330,6 +346,7 @@ fn pump_read_error_records_transport_failed() {
     let sdp = client.describe().unwrap();
     let session = client.setup_mp2t_auto(&sdp).unwrap();
     let mut transport = session.into_recv_transport();
+    ready_tx.send(()).unwrap();
 
     let reason = wait_for(Duration::from_secs(3), || transport.end_reason());
     assert!(
@@ -359,9 +376,14 @@ fn pump_read_error_records_transport_failed() {
 fn h264_pump_death_records_transport_failed_and_recv_au_returns_none() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    // See the ready-signal comment in `keepalive_write_failure_records_keepalive_failed`
+    // — only reset after `into_h264_receiver()` has returned, so the RST
+    // can't race the client's own read of the SETUP response.
+    let (ready_tx, ready_rx) = mpsc::channel::<()>();
     let server = std::thread::spawn(move || {
         let (mut sock, _) = listener.accept().unwrap();
         answer_describe_and_setup(&mut sock, "RTP/AVP/TCP;unicast;interleaved=0-1");
+        ready_rx.recv().unwrap();
         force_reset(sock);
     });
 
@@ -373,6 +395,7 @@ fn h264_pump_death_records_transport_failed_and_recv_au_returns_none() {
     let mut h264_config = H264DepayConfig::default();
     h264_config.payload_type = 96;
     let mut receiver = session.into_h264_receiver(h264_config);
+    ready_tx.send(()).unwrap();
 
     // recv_au() blocks until the pump's Sender drops (post-reset), then
     // resolves via the normal flush-then-EOS path — Ok(None), the SAME

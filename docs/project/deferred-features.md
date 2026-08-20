@@ -912,21 +912,26 @@ the trigger that would unblock it.
 
 ## Last-activity-wall-clock gauges per stream
 
-- **Status:** `StreamStats` carries item / byte counters but no
-  `last_seen_at: Option<SystemTime>` gauge. Consumers that want
-  "is this stream stalled?" detection have to compare deltas across
-  successive `stats()` calls themselves.
-- **Why deferred:** Adding a `SystemTime` field across what's
-  otherwise plain integer counters cascades into the C ABI: the
-  layout has to encode either epoch nanos in a `uint64_t` (overflows
-  in 2554 — fine, but explicit) or a `(seconds, nanos)` split
-  (extra two fields per `tst_stream_stats_t`). Either way it's a
-  bigger surface than the rest of the stats struct, and consumers
-  who care can derive staleness from `items` deltas + their own
-  wall-clock sampling cadence.
+- **Status:** Rust-only since 2026-08-20 — `StreamStats.last_seen:
+  Option<SystemTime>` is stamped on every mux push / demux emit
+  (`std` builds only; the field is absent under `no_std`, matching
+  every other wall-clock-dependent surface). No C ABI, Python, or JVM
+  mirror exists yet: `tst-c`'s `TstStreamStats` is filled field-by-field
+  by `fill_stream_stats`, not struct-copied, so `last_seen` does not
+  cross the C ABI just because the Rust field exists.
+- **Why deferred (the binding mirror):** Adding a wall-clock field to
+  `TstStreamStats` (currently a byte-size-asserted, plain-integer-
+  counter C struct) cascades into the C ABI: the layout has to encode
+  either epoch nanos in a `uint64_t` (overflows in 2554 — fine, but
+  explicit) or a `(seconds, nanos)` split (extra two fields per
+  `tst_stream_stats_t`). Either way it's a bigger surface than the rest
+  of the stats struct, and consumers who care can derive staleness from
+  `items` deltas + their own wall-clock sampling cadence in the
+  meantime.
 - **Trigger to revisit:** A consumer ships a watchdog that needs
   per-stream staleness without holding two snapshots, or asks for
-  millisecond-resolution event timing in the stats surface.
+  millisecond-resolution event timing in the stats surface, from a
+  binding rather than Rust directly.
 
 ## Per-stream PMT descriptor surface at the C ABI
 
@@ -1742,7 +1747,11 @@ the trigger that would unblock it.
   `RtpRecvTransport::recv_timeout`, and the configured-knob
   `RtpRecvTransport::set_recv_timeout` (deadline-bounded receive, for
   stall watchdogs) are Rust-only; no Python, JVM, or C ABI mirror
-  exists.
+  exists. (2026-08-20: the Rust-side surface grew further —
+  `H264Receiver` gained its own `set_recv_timeout` knob, and a
+  `?recv_timeout=<ms>` URL key reaches all four constructors without a
+  binding-specific setter — but the binding mirror itself is still not
+  shipped.)
 - **Why deferred:** shipped Rust-first from an integrator field report
   (a healthy-but-stalled RTSP session — no error, no EOS — previously
   required a ~150-line reader-thread + `sync_channel` + cancel-handle
@@ -1976,6 +1985,13 @@ the trigger that would unblock it.
   session/receiver objects (clean teardown vs read error vs session
   expiry vs pump failure), which touches the public API of three
   bindings and deserves its own pass rather than riding a bugfix PR.
+  (2026-08-20: the structured surface itself shipped Rust-only —
+  `tst_rtp::StreamEndReason` / `StreamEndReasonHandle`,
+  `RtpRecvTransport::{end_reason, end_reason_handle}`,
+  `H264Receiver::end_reason` — see
+  [troubleshooting.md](/docs/troubleshooting.md#why-did-my-rtsp-stream-end).
+  The `TSTRANS_LOG` bridge and the Python/JVM mirror of this surface
+  remain unshipped.)
 - **Trigger to revisit:** the next bindings-surface wave, or the next
   field report where a Python/JVM integrator cannot tell why a stream
   ended.

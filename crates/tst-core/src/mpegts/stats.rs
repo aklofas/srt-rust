@@ -26,7 +26,7 @@ pub struct StreamStats {
     /// component (mux: last push; demux: last emitted item). `None` = never.
     ///
     /// `std`-only: no wall clock exists under `no_std` (the field is absent
-    /// entirely on that build — see [`StreamStats::touch_last_seen`]).
+    /// entirely on that build).
     #[cfg(feature = "std")]
     pub last_seen: Option<std::time::SystemTime>,
 }

@@ -247,8 +247,9 @@ tsp_analyze_counters_zero() {
 # finding for the original instance of this). Every player this script
 # drives therefore logs a stream of codec-payload decode complaints on
 # EVERY profile it can open at all — verified line-for-line against real
-# captured logs (all 12 profiles x ffplay/vlc/mpv on this box) before
-# being added here, not guessed:
+# captured logs (all 12 profiles x ffplay/vlc/mpv on this box, then all
+# 12 profiles x gst-play in the 2026-08-20 pre-evidence run that first
+# enabled those cells) before being added here, not guessed:
 #   - h264: "crop values invalid", "sps_id N out of range",
 #     "non-existing PPS/SPS N referenced", "decode_slice_header error",
 #     "no frame!", "Error decoding the extradata"
@@ -263,6 +264,18 @@ tsp_analyze_counters_zero() {
 #     `--vo=null` genuinely selects+decodes a track, unlike its old
 #     `--no-video` invocation — see MPV_NO_STREAMS_SELECTED below):
 #     "Error while decoding frame!"
+#   - gst-play-specific phrasings for the same filler-AU mechanism
+#     (playbin instantiates the decoder/parser, the payload yields zero
+#     frames, the element reports it at EOS): "No valid frames decoded
+#     before end of stream" (gstvideodecoder via avdec_h264 — 8 of the
+#     12 profiles) / "No valid frames found before end of stream"
+#     (gstbaseparse via h265parse — h265-klv), each followed by an
+#     "ERROR debug information: ..." companion line naming the emitting
+#     base-class function (excluded by that function name, the stable
+#     anchor across GStreamer builds' differing source paths). av1-klv-*
+#     and h266-klv produce NO output at all under --quiet (GStreamer
+#     1.24 wires no AV1-in-TS / VVC decode path in playbin, so no
+#     decoder ever instantiates to complain) — nothing to exclude.
 # None of these indicate a container/PSI-level problem; all are excluded
 # from the marker-grep every decode cell applies. Every alternative below
 # is anchored to the surrounding fixed text actually observed (not a
@@ -271,7 +284,21 @@ tsp_analyze_counters_zero() {
 # word — re-verified against the same captured logs (12 profiles x
 # ffplay/vlc/mpv) this was originally built from: identical PASS/FAIL
 # outcome per cell before and after tightening.
-DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.|Error while decoding frame!'
+DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.|Error while decoding frame!|No valid frames (decoded|found) before end of stream|debug information: .*gst_(video_decoder|base_parse)_sink_event_default'
+
+# gst-play-specific: headless-sandbox audio-sink setup noise, observed
+# only on the `audio` profile (the sole fixture with an audio track, so
+# the only cell where playbin builds an audio sink): ALSA userspace
+# config probing fails without a sound card ("ALSA lib conf.c:...:
+# ... returned error" and friends), OpenAL's PipeWire backend can't
+# create an event context, and pulsesink's connect is refused — none of
+# it says anything about the INPUT FILE. Anchored on the ALSA-lib
+# source-file prefix / the exact observed sink lines so a real
+# container error can't be swallowed. Decode cells are local-file
+# probes with no transport, so "Connection refused" here can only be
+# the audio server. Verified against the same 2026-08-20 12-profile
+# gst-play capture as the DECODE_PAYLOAD_NOISE additions above.
+GST_PLAY_ENV_NOISE='^ALSA lib (conf|confmisc|pcm)\.c:[0-9]+:|Failed to create PipeWire event context|Failed to connect: Connection refused'
 
 # ffplay-specific: `-nodisp` in this headless sandbox (no $DISPLAY, no
 # real video output device) makes ffplay print "Failed to open file '...'

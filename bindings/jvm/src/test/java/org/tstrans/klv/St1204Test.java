@@ -486,17 +486,23 @@ class St1204Test {
      */
     @Test
     void nullArgumentsThrowNpe() {
-        NullPointerException ex = assertThrows(NullPointerException.class,
-                () -> Klv.validateMismms(null));
-        assertTrue(ex.getMessage().contains("record"),
-                "expected message to mention record; got: " + ex.getMessage());
+        assertNpeNames("record", assertThrows(NullPointerException.class,
+                () -> Klv.validateMismms(null)));
+        assertNpeNames("id", assertThrows(NullPointerException.class,
+                () -> Klv.encodeCoreId(null)));
+        assertNpeNames("id", assertThrows(NullPointerException.class,
+                () -> Klv.coreIdText(null)));
+    }
 
-        ex = assertThrows(NullPointerException.class, () -> Klv.encodeCoreId(null));
-        assertTrue(ex.getMessage().contains("id"),
-                "expected message to mention id; got: " + ex.getMessage());
-
-        ex = assertThrows(NullPointerException.class, () -> Klv.coreIdText(null));
-        assertTrue(ex.getMessage().contains("id"),
-                "expected message to mention id; got: " + ex.getMessage());
+    /**
+     * The NPE message must name the offending parameter. Guards
+     * {@code getMessage()} against null first (legal for NPE) so a
+     * message-less regression fails with this assert, not an NPE inside
+     * the test itself. Mirrors St0805Test's identical helper.
+     */
+    private static void assertNpeNames(String param, NullPointerException ex) {
+        assertNotNull(ex.getMessage(), "NPE must carry a message");
+        assertTrue(ex.getMessage().contains(param),
+                "expected message to mention " + param + "; got: " + ex.getMessage());
     }
 }

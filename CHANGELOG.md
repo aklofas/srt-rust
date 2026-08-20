@@ -58,10 +58,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   field. This is compile-breaking for those callers, so the next
   release is 0.6.0.
 
-Bindings (C ABI, Python, JVM) are unchanged this pass —
-`ReconnectMode::Background` and the new stats accessors are Rust-only
-for now; see the "Background reconnect — bindings parity" entry in
+Bindings (C ABI, Python, JVM) are unchanged by the reconnect work
+above — `ReconnectMode::Background` and the new stats accessors are
+Rust-only for now; see the "Background reconnect — bindings parity"
+entry in
 [docs/project/deferred-features.md](docs/project/deferred-features.md).
+(The JVM null-argument fix under **Fixed** below is a separate,
+JVM-only behavior change.)
 
 ### Fixed
 

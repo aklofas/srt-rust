@@ -358,7 +358,7 @@ cancel-handle pattern.
 
 ## Why did my RTSP stream end?
 
-**`recv_au()` / `recv_bytes()` returned `Ok(None)` / `EndOfStream`, or an error, and it's not obvious why**
+**`recv_au()` returned `Ok(None)`, a receiver shell (`DemuxReceiver` / `Receiver` / `RawReceiver`) returned `Ok(None)` / `EndOfStream`, or any of them surfaced an error, and it's not obvious why**
 
 `RtpRecvTransport` and `H264Receiver` built from an RTSP session
 (`RtspSession::into_recv_transport` / `into_h264_receiver`) record a

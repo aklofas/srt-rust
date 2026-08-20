@@ -49,15 +49,18 @@ race:tokio::runtime::io::scheduled_io
 #      rist_sender_flow_statistics (stats.c:54) stats-thread read.
 # All three are upstream synchronization contracts internal to librist
 # 0.2.18 (upstream-report candidates; distinct from the 0.2.18-fixed
-# teardown-hang class). Evidence: local harvest log, 2026-08-19, run
-# recorded in the WP-SAN-5 PR description; 514/518 pass with the only
-# failures being TSan exit codes from these reports.
+# teardown-hang class). Evidence: harvested in a local pre-CI run
+# (2026-08-19, 514/518 with the only failures being TSan exit codes from
+# these reports); first CI run exercising this block = the WP-SAN-5
+# branch dispatch, all 4 sanitizer jobs green:
+# https://github.com/aklofas/ts-transformer/actions/runs/32334048232
 # Remove/re-test: on any librist bump — delete this block, dispatch
 # tsan-native, re-add only what re-fires.
 race:rist_receiver_recv_data
 race:rist_receiver_associate_flow
 race:receiver_pthread_dataout
 race:ctx_del
-race:evsocket_
+race:evsocket_destroy
+race:evsocket_loop_single
 race:rist_sender_enqueue
 race:rist_sender_flow_statistics

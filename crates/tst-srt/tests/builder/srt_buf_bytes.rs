@@ -61,12 +61,17 @@ fn recv_buf_bytes_and_send_buf_bytes_are_byte_scaled() {
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _ = accept.join();
+    // Keep the accepted peer alive across the option reads: dropping it
+    // closes the far side, and once libsrt notices, getsockopt on this
+    // socket starts failing — a race first hit under ASan's slower timing
+    // (nightly 2026-08-20).
+    let peer = accept.join();
 
     let handle = socket.raw_handle();
 
     let rcv = read_i32(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF).expect("read SRTO_RCVBUF");
     let snd = read_i32(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDBUF).expect("read SRTO_SNDBUF");
+    drop(peer);
 
     // libsrt may clamp to a kernel limit; the floor assertion here is
     // 512 KB — well above any MSS-scaled packet interpretation of the

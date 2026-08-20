@@ -50,6 +50,42 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in both `Blocking` and `Background` modes — a Condvar-based wait
   replaces the previous `thread::sleep`, so `close()` / `cancel()` /
   `Drop` no longer wait out the full backoff period.
+- **`?recv_timeout=<ms>` query key on `rtp://` and `rtsp(s)://` URLs**
+  (`RtpUrl.recv_timeout` / `RtspUrl.recv_timeout`) — a configured
+  receive deadline in milliseconds (must be nonzero), applied at
+  construction time everywhere a URL builds a receiver:
+  `RtpRecvTransport::listen`, `H264Receiver::listen`, and both
+  `RtspSession::into_recv_transport` / `into_h264_receiver` (via the
+  `RtspUrl` the session was built from). Equivalent to an explicit
+  `set_recv_timeout` call, but reachable from a URL string alone — no
+  binding-specific plumbing needed. Client-local on `rtsp(s)://` —
+  never rendered onto the wire (same shape as `tcp_keepalive` above).
+  Absent == no deadline (unchanged default).
+- **`H264Receiver::set_recv_timeout(Option<Duration>)`** — the
+  persistent-deadline knob `RtpRecvTransport` already had
+  (`set_recv_timeout`, v0.5.1), now on the H.264 AU-level receiver: a
+  `recv_au()` call that assembles no complete AU within the configured
+  timeout returns `Backpressure` with the session left valid. The
+  existing one-shot `recv_au_timeout` ignores the knob — its explicit
+  argument always wins for that call.
+- **`StreamEndReason`** (`CleanTeardown` / `SessionExpired` /
+  `KeepaliveFailed { msg }` / `TransportFailed { msg }` /
+  `ProtocolError { msg }` / `Cancelled`) + `RtpRecvTransport::{end_reason,
+  end_reason_handle}` + `H264Receiver::end_reason` +
+  `StreamEndReasonHandle::get` — a structured, first-writer-wins record
+  of why an RTSP-backed receive session ended, recorded at the site
+  that actually observed it (the interleaved pump's exit paths, the
+  keepalive thread's failure paths) rather than reconstructed after the
+  fact from whatever terminal error a caller happens to see. Two
+  previously-silent keepalive failure sites (the header-injection
+  encode guard, the control-TCP write) now also emit a
+  `tracing::warn!`. `None` means the session hasn't ended yet, or ended
+  through a path this arc doesn't instrument (e.g. a plain `rtp://`
+  transport that was never closed or cancelled).
+- **`StreamStats.last_seen: Option<SystemTime>`** — wall-clock gauge
+  stamped every time a stream carries an item through a `Muxer` push or
+  a `Demuxer` emit. `std`-only (the field doesn't exist under `no_std`
+  — no wall clock there).
 
 ### Changed
 
@@ -57,14 +93,42 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   struct literals (not using `..Default::default()`) need the new
   field. This is compile-breaking for those callers, so the next
   release is 0.6.0.
+- **`RtpUrl` and `RtspUrl` both gained a `recv_timeout: Option<Duration>`
+  field.** Full struct literals need the new field — same
+  compile-breaking shape as `ReconnectPolicy`'s `mode` field above.
+- **`StreamStats` gained a `last_seen: Option<SystemTime>` field**
+  (std builds only). Full struct literals need the new field.
+- **Clean RTSP server teardown now ends a receive session as a clean
+  end of stream, not `ShellErrorKind::TransportBroken`.** A
+  `DemuxReceiver` / `Receiver` / `RawReceiver` wrapping a transport from
+  `RtspSession::into_recv_transport` used to surface a server-initiated
+  TEARDOWN (clean TCP EOF on the interleaved control/data connection)
+  identically to a wire failure — both looked like the pump's `mpsc`
+  channel disconnecting, and the shell had no way to tell them apart.
+  It now reports `Ok(None)` (`ShellErrorKind::EndOfStream`) for the
+  clean case; a hard read error or reset (RST) still surfaces as
+  `TransportBroken`, unchanged. **Migration:** a `TransportBroken` match
+  arm that was catching BOTH "the server ended the session" and "the
+  wire broke" needs to add an `Ok(None)` / `EndOfStream` arm for the
+  first case. `RtpRecvTransport::end_reason()` (new, see Added)
+  disambiguates further if you need to know *why* — `CleanTeardown` vs.
+  `TransportFailed` vs. `SessionExpired` vs. `Cancelled`.
 
-Bindings (C ABI, Python, JVM) are unchanged by the reconnect work
-above — `ReconnectMode::Background` and the new stats accessors are
-Rust-only for now; see the "Background reconnect — bindings parity"
-entry in
+Together with `ReconnectPolicy`'s `mode` field, the `RtpUrl` /
+`RtspUrl` / `StreamStats` field adds above are all compile-breaking for
+full-struct-literal callers, confirming the next release is 0.6.0.
+
+Bindings (C ABI, Python, JVM) are unchanged by either the reconnect
+work or the `tst-rtp` work above — `ReconnectMode::Background`, the new
+stats accessors, the `recv_timeout` URL key,
+`H264Receiver::set_recv_timeout`, and the `StreamEndReason` family are
+all Rust-only for now; see the "Background reconnect — bindings
+parity", "RTP receive-deadline bindings parity", and "Python/JVM
+`tracing` diagnostics bridge + structured stream-end reason" entries in
 [docs/project/deferred-features.md](docs/project/deferred-features.md).
-(The JVM null-argument fix under **Fixed** below is a separate,
-JVM-only behavior change.)
+C ABI stays at 19 — nothing in this arc touches `tst-c`. (The JVM
+null-argument fix under **Fixed** below is a separate, JVM-only
+behavior change.)
 
 ### Fixed
 

@@ -355,3 +355,48 @@ transport, consider switching to SRT, RTP, or TCP — all three expose a
 cloneable cancel handle that is safe to store and fire from any context.
 See [srt-cancel-handle.md](/docs/reference/srt-cancel-handle.md) for the
 cancel-handle pattern.
+
+## Why did my RTSP stream end?
+
+**`recv_au()` / `recv_bytes()` returned `Ok(None)` / `EndOfStream`, or an error, and it's not obvious why**
+
+`RtpRecvTransport` and `H264Receiver` built from an RTSP session
+(`RtspSession::into_recv_transport` / `into_h264_receiver`) record a
+structured `StreamEndReason` the moment the interleaved pump or the
+keepalive thread observes the session ending, distinguishing a handful
+of cases that otherwise all look like the same disconnect from the
+caller's side: a clean
+server-initiated TEARDOWN (`CleanTeardown`), a keepalive `454 Session
+Not Found` (`SessionExpired`), a keepalive ping that failed to encode
+or write (`KeepaliveFailed`), a hard TCP read error (`TransportFailed`),
+a malformed or flooding peer (`ProtocolError`), or the caller's own
+`close()` / cancel-handle fire (`Cancelled`).
+
+Fix: call `end_reason()` on the transport or receiver after a recv
+returns `None`/`EndOfStream` or a terminal error, and match on the
+result:
+
+```rust,ignore
+match transport.end_reason() {
+    Some(StreamEndReason::CleanTeardown) => { /* expected — server hung up */ }
+    Some(StreamEndReason::SessionExpired) => { /* re-`describe()` + `setup()` */ }
+    Some(StreamEndReason::KeepaliveFailed { msg }) => eprintln!("keepalive died: {msg}"),
+    Some(StreamEndReason::TransportFailed { msg }) => eprintln!("wire broke: {msg}"),
+    Some(StreamEndReason::ProtocolError { msg }) => eprintln!("peer misbehaved: {msg}"),
+    Some(StreamEndReason::Cancelled) => { /* we asked for this */ }
+    None => { /* session hasn't ended, or ended through an uninstrumented path */ }
+}
+```
+
+`end_reason_handle()` returns a cloneable, `Send + Sync` handle for
+polling the same recorded value from a watchdog thread that doesn't
+own the transport (mirrors the `cancel_handle()` pattern above). `None`
+means either the session hasn't ended yet, or it ended through a path
+this arc doesn't instrument — most notably a plain `rtp://` transport
+with no owning `RtspClient`, which only records `Cancelled` (via its
+own `close()` / cancel-handle) and nothing else.
+
+This is a Rust-only surface today — see the "Python/JVM `tracing`
+diagnostics bridge + structured stream-end reason" entry in
+[deferred-features.md](/docs/project/deferred-features.md) for the
+bindings-parity status.

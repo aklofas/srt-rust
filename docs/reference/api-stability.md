@@ -101,14 +101,14 @@ its `rtsp` row), the more specific row wins for that path.
 | tst-rtp | cancel | Stable | RTP cancellation handle |
 | tst-rtp | clock | Stable | RTP clock/timestamp helper |
 | tst-rtp | error | Stable | RTP error taxonomy |
-| tst-rtp | h264 | Stable | RFC 6184 H.264 depacketizer/receiver |
+| tst-rtp | h264 | Stable | RFC 6184 H.264 depacketizer/receiver; `H264Receiver::set_recv_timeout` and `end_reason()` (shipped 2026-08-20) are Provisional — same divergence shape as `transport`'s row below |
 | tst-rtp | init | Stable | one-time RTP init |
 | tst-rtp | packet | Stable | RTP packet parse/build |
 | tst-rtp | rtcp | Stable | RTCP sender/receiver report handling |
 | tst-rtp | sdp | Stable | SDP parsing/media selection |
-| tst-rtp | transport | Stable | RTP transports (unicast/multicast, v4/v6) |
+| tst-rtp | transport | Stable | RTP transports (unicast/multicast, v4/v6); `RtpRecvTransport::{end_reason, end_reason_handle}` (shipped 2026-08-20) are Provisional — they return `StreamEndReason`/`StreamEndReasonHandle`, which live in and inherit the tier of the `rtsp` row below |
 | tst-rtp | url | Stable | `rtp(s)://`/`rtsp(s)://` URL parsing |
-| tst-rtp | rtsp | Provisional | server surface (`RtspServer`) still evolving; the client API (`RtspClient`) is stable in practice, but the module's tier is set by the server surface — the rail is module-granular, not sub-module |
+| tst-rtp | rtsp | Provisional | server surface (`RtspServer`) still evolving; the client API (`RtspClient`) is stable in practice, but the module's tier is set by the server surface — the rail is module-granular, not sub-module. Also covers `rtsp::client::end_reason` (`StreamEndReason`, `StreamEndReasonHandle`, re-exported at the crate root) |
 | tst-hls | (crate) | Provisional | crate restructured 2026-07 |
 | tst-rist | (crate) | Provisional | profile coverage still evolving |
 | tstrans-srt-sys | (crate) | Internal | raw FFI, no direct-consumer promise; documentation-only row — no `public-api.txt` baseline exists for this crate |

@@ -87,8 +87,7 @@ pub struct RtpUrl {
     pub pt: Option<u8>,
     /// Configured receive deadline (`?recv_timeout=<ms>`, milliseconds).
     /// Applied at transport construction; expiry surfaces as retryable
-    /// `Backpressure`. Client-local on rtsp URLs — never rendered to the
-    /// wire.
+    /// `Backpressure`. Absent — the default — means no deadline.
     pub recv_timeout: Option<Duration>,
 }
 

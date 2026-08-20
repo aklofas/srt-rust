@@ -520,7 +520,7 @@ impl RtspUrl {
                     if ms == 0 {
                         return Err(UrlError::BadQuery {
                             key: "recv_timeout".to_string(),
-                            value: v.to_string(),
+                            value: format!("{v} (must be nonzero)"),
                         });
                     }
                     recv_timeout = Some(Duration::from_millis(ms));
@@ -957,7 +957,11 @@ mod rtsp_tests {
 
     #[test]
     fn rtsp_url_recv_timeout_zero_rejected() {
-        RtspUrl::parse("rtsp://cam.lan/h264?recv_timeout=0").unwrap_err();
+        let e = RtspUrl::parse("rtsp://cam.lan/h264?recv_timeout=0").unwrap_err();
+        assert!(
+            e.to_string().contains("must be nonzero"),
+            "error message should explain why 0 is invalid, got: {e}"
+        );
     }
 
     #[test]

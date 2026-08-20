@@ -83,7 +83,7 @@ impl EndReasonSlot {
 /// caller can poll the end reason from a thread other than the one
 /// driving `recv_bytes` (e.g. a watchdog) without holding a reference to
 /// the transport itself.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct StreamEndReasonHandle(EndReasonSlot);
 
 impl StreamEndReasonHandle {

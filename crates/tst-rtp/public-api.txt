@@ -912,6 +912,8 @@ impl tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 pub fn tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::get(&self) -> core::option::Option<tst_rtp::rtsp::client::end_reason::StreamEndReason>
 impl core::clone::Clone for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 pub fn tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::clone(&self) -> tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
+impl core::fmt::Debug for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
+pub fn tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 impl core::marker::Send for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 impl core::marker::Sync for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
@@ -3076,6 +3078,8 @@ impl tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 pub fn tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::get(&self) -> core::option::Option<tst_rtp::rtsp::client::end_reason::StreamEndReason>
 impl core::clone::Clone for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 pub fn tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::clone(&self) -> tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
+impl core::fmt::Debug for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
+pub fn tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 impl core::marker::Send for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle
 impl core::marker::Sync for tst_rtp::rtsp::client::end_reason::StreamEndReasonHandle

@@ -56,14 +56,20 @@ one of four verdicts:
 | **KNOWN-FLAKY** | A `FAIL` (or PASS) matching a row marked flaky rather than reliably-reproducing. |
 | **SKIPPED** | The peer tool wasn't installed on the runner. Never a silent pass. |
 
-**Current census: 157 cells — 80 PASS, 0 FAIL, 65 EXPECTED-UNSUPPORTED, 12
-SKIPPED.** This exact per-cell (cell id, verdict) set first reproduced
-byte-identically across four independent full local runs plus a public CI
-run — five runs total, across two hosts, two different
-`--seconds`-per-cell settings (8 locally, 10 in CI), and two different
-TSDuck point releases (3.43-4549 locally, 3.44-4676 in CI) — and has
-since reproduced on every verified run, most recently the release-gate
-run cited below.
+**Current census: 157 cells — 92 PASS, 0 FAIL, 65 EXPECTED-UNSUPPORTED, 0
+SKIPPED.** The predecessor census (80 / 0 / 65 / 12 — identical except
+that the 12 `decode/gst-play` cells were SKIPPED while `gst-play-1.0` was
+deliberately withheld from the runner pending a first evidenced local
+run) first reproduced byte-identically across four independent full local
+runs plus a public CI run — five runs total, across two hosts, two
+different `--seconds`-per-cell settings (8 locally, 10 in CI), and two
+different TSDuck point releases (3.43-4549 locally, 3.44-4676 in CI) —
+and then on every verified run through the 0.5.1 release gate. The
+gst-play cells were enabled 2026-08-20 after that local evidence run
+(all 12 now PASS; the harvested filler-AU noise phrasings and the
+enablement rationale live in `scripts/interop/lib.sh` and the workflow's
+peer-tools step), and the 92-PASS census reproduced identically on the
+dev box and the CI run cited below.
 `report merge`'s exit code is 0 iff every `FAIL` matched a documented
 `expectations.toml` row; any new, undocumented `FAIL` still exits nonzero —
 an unexpected failure is never silently absorbed into the census.
@@ -76,16 +82,17 @@ local dev-box state, no vendored corpus) via
 weekly on a schedule (Mondays 05:00 UTC), on every `workflow_dispatch`, and
 on any PR touching `crates/tst-interop/`, `scripts/interop/`, or the
 workflow file itself. The verified run cited above is
-[run 32106462041](https://github.com/aklofas/ts-transformer/actions/runs/32106462041)
-(`workflow_dispatch` at commit `47ceee90` — the complete 0.5.1
-release-candidate code; the release tag differs from that commit only
-by this documentation/evidence update — completed `success` on
-2026-08-18 with the census-completeness assert, the
-157 / 80 / 0 / 65 / 12 census, and 157 per-cell result records with
+[run 32400751057](https://github.com/aklofas/ts-transformer/actions/runs/32400751057)
+(`pull_request` at the gst-play-enablement change, completed `success`
+on 2026-08-20 with the census-completeness assert, the
+157 / 92 / 0 / 65 / 0 census, and 157 per-cell result records with
 zero `FAIL` and no expectation drift: all 65 documented-gap rows
-reproduced. The ancestor run
+reproduced. The 0.5.1 release-gate run
+[32106462041](https://github.com/aklofas/ts-transformer/actions/runs/32106462041)
+at `47ceee90` — the last of the 80 / 0 / 65 / 12 predecessor-census
+runs — the ancestor run
 [32103732958](https://github.com/aklofas/ts-transformer/actions/runs/32103732958)
-at `239e2d80` and the 0.5.0-candidate run
+at `239e2d80`, and the 0.5.0-candidate run
 [31335394509](https://github.com/aklofas/ts-transformer/actions/runs/31335394509)
 remain as historical evidence) — its `results.json`/`results.md`,
 per-cell logs, and captures are attached as the `interop-evidence` artifact

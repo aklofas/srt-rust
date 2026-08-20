@@ -21,6 +21,7 @@ use tst_core::klv::st0601::{MismmsViolation, validate_mismms};
 use tst_core::klv::st1204::{CoreId, IdType, St1204Error, decode, encode_to_vec};
 
 use crate::error::throw_klv_decode;
+use crate::jutil::require_non_null;
 
 // ── IdType helpers ────────────────────────────────────────────────────────────
 
@@ -341,6 +342,11 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_encodeCoreIdNative<'local>(
     id: JObject<'local>,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Null args must throw NPE, never fall into the reader's silent
+        // Err(NullPtr)-with-no-pending-exception path (see require_non_null).
+        if require_non_null(env, &id, "id").is_err() {
+            return JObject::null().into_raw();
+        }
         match read_core_id(env, &id) {
             Ok(rust_id) => {
                 let wire = encode_to_vec(&rust_id);
@@ -370,6 +376,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_coreIdTextNative<'local>(
     id: JObject<'local>,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Same NPE-first contract as encodeCoreIdNative above.
+        if require_non_null(env, &id, "id").is_err() {
+            return JObject::null().into_raw();
+        }
         match read_core_id(env, &id) {
             Ok(rust_id) => {
                 let text = alloc::format!("{rust_id}");
@@ -401,6 +411,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_validateMismmsNative<'local>(
     record: JObject<'local>,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Same NPE-first contract as encodeCoreIdNative above.
+        if require_non_null(env, &record, "record").is_err() {
+            return JObject::null().into_raw();
+        }
         // Re-use the same st0601 reader that the encode entry point uses.
         let rust_rec = match super::st0601::read_uas_datalink_for_validate(env, &record) {
             Ok(r) => r,

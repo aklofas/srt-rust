@@ -63,6 +63,19 @@ Bindings (C ABI, Python, JVM) are unchanged this pass —
 for now; see the "Background reconnect — bindings parity" entry in
 [docs/project/deferred-features.md](docs/project/deferred-features.md).
 
+### Fixed
+
+- **JVM: MISB natives now throw `NullPointerException` on null
+  arguments instead of silently returning `null`.** Affected:
+  `Klv.platformPositionXml` / `Klv.sensorPointOfInterestXml` (null
+  `record` or `config`), `Klv.platformUid` / `Klv.spiUid` /
+  `Klv.validateMismms` (null `record`), and `Klv.encodeCoreId` /
+  `Klv.coreIdText` (null `id`). Previously jni's own null guard
+  surfaced as a Rust-side error with no pending Java exception, so
+  these calls returned `null` with no diagnostic — a documented
+  stopgap since the MISB full-tag arc. The NPE message names the
+  offending parameter; javadocs updated to match.
+
 ---
 
 ## [0.5.1] — 2026-08-18

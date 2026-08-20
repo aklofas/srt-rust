@@ -43,7 +43,7 @@ use tst_core::klv::st0805::{
     spi_uid,
 };
 
-use crate::jutil::{read_nullable_double, read_nullable_string};
+use crate::jutil::{read_nullable_double, read_nullable_string, require_non_null};
 
 // ── CotConfig <-> Java record ────────────────────────────────────────────────
 
@@ -145,6 +145,13 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_platformPositionXmlNative<'local
     generated_us: jlong,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Null args must throw NPE, never fall into the readers' silent
+        // Err(NullPtr)-with-no-pending-exception path (see require_non_null).
+        if require_non_null(env, &record, "record").is_err()
+            || require_non_null(env, &config, "config").is_err()
+        {
+            return std::ptr::null_mut();
+        }
         let rust_rec = match super::st0601::read_uas_datalink_for_validate(env, &record) {
             Ok(r) => r,
             Err(_) => return std::ptr::null_mut(),
@@ -177,6 +184,12 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_sensorPointOfInterestXmlNative<'
     generated_us: jlong,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Same NPE-first contract as platformPositionXmlNative above.
+        if require_non_null(env, &record, "record").is_err()
+            || require_non_null(env, &config, "config").is_err()
+        {
+            return std::ptr::null_mut();
+        }
         let rust_rec = match super::st0601::read_uas_datalink_for_validate(env, &record) {
             Ok(r) => r,
             Err(_) => return std::ptr::null_mut(),
@@ -207,6 +220,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_platformUidNative<'local>(
     record: JObject<'local>,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Same NPE-first contract as platformPositionXmlNative above.
+        if require_non_null(env, &record, "record").is_err() {
+            return std::ptr::null_mut();
+        }
         let rust_rec = match super::st0601::read_uas_datalink_for_validate(env, &record) {
             Ok(r) => r,
             Err(_) => return std::ptr::null_mut(),
@@ -229,6 +246,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_spiUidNative<'local>(
     record: JObject<'local>,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Same NPE-first contract as platformPositionXmlNative above.
+        if require_non_null(env, &record, "record").is_err() {
+            return std::ptr::null_mut();
+        }
         let rust_rec = match super::st0601::read_uas_datalink_for_validate(env, &record) {
             Ok(r) => r,
             Err(_) => return std::ptr::null_mut(),

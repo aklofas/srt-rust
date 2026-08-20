@@ -18,6 +18,7 @@
 //! | `pkt_size` | positive multiple of 188 (send URLs only; rejected on receive URLs) | 1316 |
 //! | `ssrc` | u32 decimal or `0x`-prefixed hex | random |
 //! | `pt` | 1..=127, 33 rejected (MPEG-TS) | absent — required by `H264Receiver::listen` |
+//! | `recv_timeout` | positive integer milliseconds | absent — no deadline |
 //!
 //! Supported `rtsp[s]://` query keys:
 //!
@@ -26,6 +27,7 @@
 //! | `transport` | `tcp` or `udp` | absent → prefer-UDP with TCP fallback |
 //! | `rtsp_version` | `1.0` or `2.0` | `1.0` |
 //! | `tcp_keepalive` | `SO_KEEPALIVE` idle seconds for the control TCP socket | absent → OS keepalive off |
+//! | `recv_timeout` | positive integer milliseconds | absent — no deadline |
 //!
 //! `ttl` is wire-format-shared between IPv4 (`IP_MULTICAST_TTL`) and
 //! IPv6 (`IPV6_MULTICAST_HOPS`). The transport applies the right
@@ -83,6 +85,11 @@ pub struct RtpUrl {
     /// MP2T constructors (`RtpTransport::connect*` /
     /// `RtpRecvTransport::listen*`).
     pub pt: Option<u8>,
+    /// Configured receive deadline (`?recv_timeout=<ms>`, milliseconds).
+    /// Applied at transport construction; expiry surfaces as retryable
+    /// `Backpressure`. Client-local on rtsp URLs — never rendered to the
+    /// wire.
+    pub recv_timeout: Option<Duration>,
 }
 
 /// Errors specific to parsing the `rtp://` URL form.
@@ -128,6 +135,9 @@ pub enum UrlError {
     /// `?pt=` value is out of range or is the reserved MPEG-TS type (33).
     #[error("invalid pt '{got}': {detail}")]
     BadPayloadType { got: String, detail: String },
+    /// `?recv_timeout=` failed validation (non-numeric or zero).
+    #[error("invalid recv_timeout '{got}': {detail}")]
+    BadRecvTimeout { got: String, detail: String },
     /// Query key wasn't recognized. (The full set is documented in the
     /// module rustdoc table.) We reject unknown keys hard so typos don't
     /// silently get ignored.
@@ -201,6 +211,7 @@ impl RtpUrl {
         let mut pkt_size = None;
         let mut ssrc = None;
         let mut pt = None;
+        let mut recv_timeout = None;
         for (k, v) in query.iter() {
             match k.as_ref() {
                 "ttl" => ttl = Some(parse_ttl(v.as_ref())?),
@@ -208,6 +219,7 @@ impl RtpUrl {
                 "pkt_size" => pkt_size = Some(parse_pkt_size(v.as_ref())?),
                 "ssrc" => ssrc = Some(parse_ssrc(v.as_ref())?),
                 "pt" => pt = Some(parse_pt(v.as_ref())?),
+                "recv_timeout" => recv_timeout = Some(parse_recv_timeout(v.as_ref())?),
                 other => {
                     return Err(UrlError::UnknownKey {
                         got: other.to_string(),
@@ -223,6 +235,7 @@ impl RtpUrl {
             pkt_size,
             ssrc,
             pt,
+            recv_timeout,
         })
     }
 }
@@ -305,6 +318,22 @@ fn parse_pt(v: &str) -> Result<u8, UrlError> {
         });
     }
     Ok(n as u8)
+}
+
+fn parse_recv_timeout(v: &str) -> Result<Duration, UrlError> {
+    let ms: u64 = v
+        .parse()
+        .map_err(|e: std::num::ParseIntError| UrlError::BadRecvTimeout {
+            got: v.to_string(),
+            detail: e.to_string(),
+        })?;
+    if ms == 0 {
+        return Err(UrlError::BadRecvTimeout {
+            got: v.to_string(),
+            detail: "must be nonzero".to_string(),
+        });
+    }
+    Ok(Duration::from_millis(ms))
 }
 
 /// RTSP URL scheme — distinguishes plain RTSP from RTSP-over-TLS.
@@ -395,6 +424,11 @@ pub struct RtspUrl {
     /// the kernel probe an idle connection so a peer that vanished
     /// without FIN/RST eventually errors the socket.
     pub tcp_keepalive: Option<Duration>,
+    /// Configured receive deadline (`?recv_timeout=<ms>`, milliseconds).
+    /// Applied at transport construction; expiry surfaces as retryable
+    /// `Backpressure`. Client-local on rtsp URLs — never rendered to the
+    /// wire.
+    pub recv_timeout: Option<Duration>,
 }
 
 impl RtspUrl {
@@ -407,6 +441,8 @@ impl RtspUrl {
     /// - `tcp_keepalive=N` — enable `SO_KEEPALIVE` on the control-channel
     ///   TCP socket with an `N`-second idle time; absent == OS default
     ///   (keepalive off).
+    /// - `recv_timeout=N` — configured receive deadline in milliseconds
+    ///   (must be nonzero); absent == no deadline.
     ///
     /// Unknown query keys cause [`UrlError::UnknownQueryKey`]; recognized
     /// keys with invalid values cause [`UrlError::BadQuery`]; non-rtsp
@@ -437,6 +473,7 @@ impl RtspUrl {
         let mut transport_preference = RtspTransportPref::PreferUdp;
         let mut rtsp_version = RtspVersion::V1_0;
         let mut tcp_keepalive = None;
+        let mut recv_timeout = None;
         for (k, v) in &parsed.query {
             match k.as_ref() {
                 "transport" => {
@@ -473,6 +510,22 @@ impl RtspUrl {
                         })?;
                     tcp_keepalive = Some(Duration::from_secs(secs));
                 }
+                "recv_timeout" => {
+                    let ms: u64 =
+                        tst_core::url::common::parse_int_query(v.as_ref()).map_err(|_| {
+                            UrlError::BadQuery {
+                                key: "recv_timeout".to_string(),
+                                value: v.to_string(),
+                            }
+                        })?;
+                    if ms == 0 {
+                        return Err(UrlError::BadQuery {
+                            key: "recv_timeout".to_string(),
+                            value: v.to_string(),
+                        });
+                    }
+                    recv_timeout = Some(Duration::from_millis(ms));
+                }
                 other => {
                     return Err(UrlError::UnknownQueryKey {
                         key: other.to_string(),
@@ -491,6 +544,7 @@ impl RtspUrl {
             transport_preference,
             rtsp_version,
             tcp_keepalive,
+            recv_timeout,
         })
     }
 
@@ -761,6 +815,35 @@ mod tests {
         let err = RtpUrl::parse("rtp://h:5004?pt=h264").unwrap_err();
         assert!(matches!(err, UrlError::BadPayloadType { .. }));
     }
+
+    // ── ?recv_timeout= query key tests ──────────────────────────────────────
+
+    #[test]
+    fn rtp_url_recv_timeout_query() {
+        let u = RtpUrl::parse("rtp://127.0.0.1:5004?recv_timeout=15000").unwrap();
+        assert_eq!(
+            u.recv_timeout,
+            Some(std::time::Duration::from_millis(15000))
+        );
+    }
+
+    #[test]
+    fn rtp_url_recv_timeout_default_none() {
+        let u = RtpUrl::parse("rtp://127.0.0.1:5004").unwrap();
+        assert_eq!(u.recv_timeout, None);
+    }
+
+    #[test]
+    fn rtp_url_recv_timeout_zero_rejected() {
+        let err = RtpUrl::parse("rtp://127.0.0.1:5004?recv_timeout=0").unwrap_err();
+        assert!(matches!(err, UrlError::BadRecvTimeout { .. }));
+    }
+
+    #[test]
+    fn rtp_url_recv_timeout_bad_value_rejected() {
+        let err = RtpUrl::parse("rtp://127.0.0.1:5004?recv_timeout=forever").unwrap_err();
+        assert!(matches!(err, UrlError::BadRecvTimeout { .. }));
+    }
 }
 
 #[cfg(test)]
@@ -854,6 +937,33 @@ mod rtsp_tests {
     fn rtsp_url_tcp_keepalive_bad_value_rejected() {
         let e = RtspUrl::parse("rtsp://cam.lan/h264?tcp_keepalive=forever").unwrap_err();
         assert!(matches!(e, UrlError::BadQuery { .. }));
+    }
+
+    #[test]
+    fn rtsp_url_recv_timeout_query() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264?recv_timeout=15000").unwrap();
+        assert_eq!(
+            u.recv_timeout,
+            Some(std::time::Duration::from_millis(15000))
+        );
+    }
+
+    #[test]
+    fn rtsp_url_recv_timeout_default_none() {
+        assert_eq!(
+            RtspUrl::parse("rtsp://cam.lan/h264").unwrap().recv_timeout,
+            None
+        );
+    }
+
+    #[test]
+    fn rtsp_url_recv_timeout_zero_rejected() {
+        RtspUrl::parse("rtsp://cam.lan/h264?recv_timeout=0").unwrap_err();
+    }
+
+    #[test]
+    fn rtsp_url_recv_timeout_bad_value_rejected() {
+        RtspUrl::parse("rtsp://cam.lan/h264?recv_timeout=forever").unwrap_err();
     }
 }
 

@@ -1147,6 +1147,27 @@ impl RtpRecvTransport {
                 .recv_raw(&mut self.scratch, &self.cancel, deadline);
             let n = match raw_result {
                 Ok(n) => n,
+                Err(TransportError::Broken { ref msg, .. })
+                    if msg == MPSC_PUMP_DISCONNECTED
+                        && matches!(
+                            self.end_reason.get(),
+                            Some(StreamEndReason::CleanTeardown)
+                        ) =>
+                {
+                    // The pump's `Sender` drop (Disconnected) looks
+                    // identical whether the peer TEARDOWN'd cleanly or the
+                    // wire broke — the recorded end reason (set by the SAME
+                    // pump thread strictly before it returns and drops the
+                    // Sender, see interleaved_pump.rs's `Ok(0)` arm) tells
+                    // them apart. Only a recorded CleanTeardown remaps this
+                    // disconnect to `Closed` (→ `EndOfStream` at the
+                    // Receiver/DemuxReceiver shells); every other reason —
+                    // or a still-empty slot, e.g. a plain `rtp://` source
+                    // with no owning `RtspClient` — falls through to the
+                    // generic `Broken` arm below unchanged.
+                    self.source = None;
+                    return Err(TransportError::Closed);
+                }
                 Err(e @ TransportError::Broken { .. }) => {
                     // Hard error from the underlying source — mark transport
                     // dead (same as both pre-refactor arms did) then propagate.

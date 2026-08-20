@@ -416,6 +416,17 @@ impl RtspClient {
         tcp.set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| RtspError::Io(e.kind()))?;
         tcp.set_nodelay(true).ok();
+        // `?tcp_keepalive=` / `RtspClientBuilder::tcp_keepalive`: applied
+        // to the raw TCP socket before any TLS wrap so it covers rtsps://
+        // too. Unlike nodelay above this propagates failure — the caller
+        // explicitly asked for keepalive, so silently running without it
+        // would defeat the dead-peer detection they configured.
+        if let Some(idle) = url.tcp_keepalive {
+            let ka = socket2::TcpKeepalive::new().with_time(idle);
+            socket2::SockRef::from(&tcp)
+                .set_tcp_keepalive(&ka)
+                .map_err(|e| RtspError::Io(e.kind()))?;
+        }
 
         // Branch the stream construction. For `rtsps://` we hand the
         // TCP socket to the rustls handshake; the resulting TlsStream
@@ -713,6 +724,36 @@ mod tests {
         let c = RtspClient::connect(&url).unwrap();
         assert_eq!(c.peer.port(), port);
         assert!(matches!(c.url.scheme(), RtspScheme::Rtsp));
+    }
+
+    /// `?tcp_keepalive=` must actually reach the OS: SO_KEEPALIVE reads
+    /// back enabled on the connected control socket, and stays at the OS
+    /// default (off) when the knob is absent.
+    #[test]
+    fn tcp_keepalive_query_applies_to_control_socket() {
+        let keepalive_state = |query: &str| -> bool {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            std::thread::spawn(move || {
+                let _ = listener.accept();
+            });
+            let url = format!("rtsp://127.0.0.1:{port}/test{query}");
+            let c = RtspClient::connect(&url).unwrap();
+            let stream = c.stream.lock().unwrap();
+            match &*stream {
+                Stream::Plain(tcp) => socket2::SockRef::from(tcp).keepalive().unwrap(),
+                #[cfg(feature = "tls")]
+                Stream::Tls(_) => unreachable!("plain rtsp:// connects yield Stream::Plain"),
+            }
+        };
+        assert!(
+            keepalive_state("?tcp_keepalive=30"),
+            "knob set -> SO_KEEPALIVE enabled"
+        );
+        assert!(
+            !keepalive_state(""),
+            "knob absent -> SO_KEEPALIVE stays off"
+        );
     }
 
     #[test]

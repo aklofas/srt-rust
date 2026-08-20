@@ -40,19 +40,18 @@ tokio-util = { version = "0.7", optional = true }
 # Single facade for diagnostics workspace-wide.
 tracing    = { version = "0.1", default-features = false, features = ["std"] }
 
+# Cross-platform setsockopt paths std doesn't expose on 1.85: SO_KEEPALIVE
+# with an idle time on the RTSP client's control socket (`?tcp_keepalive=`),
+# and IP_MULTICAST_IF on Windows for the RTSP multicast-mount send socket
+# (Unix multicast uses the libc path below). Kept unconditional — it's a
+# tiny dep and gating it buys nothing.
+socket2    = { workspace = true }
+
 # Raw setsockopt for multicast knobs not exposed on stable std::net::UdpSocket
 # in Rust 1.85: IPV6_MULTICAST_HOPS and IP_MULTICAST_IF. Unix-only; Phase 1
 # returns IfaceUnsupported on non-Unix platforms.
 [target.'cfg(unix)'.dependencies]
 libc       = { workspace = true }
-
-# IP_MULTICAST_IF on Windows for the RTSP multicast-mount send socket. std/tokio
-# expose no setter; socket2's SockRef borrows the tokio UdpSocket and issues the
-# cross-platform setsockopt. Unix uses the libc path above. Kept unconditional
-# (not gated on `rtsp-server`, even though only the server's multicast mount
-# uses it) — it's a tiny dep and gating it buys nothing.
-[target.'cfg(windows)'.dependencies]
-socket2    = { workspace = true }
 
 [features]
 # rtsp-server is default-ON: most consumers want the push server available.

@@ -255,6 +255,20 @@ impl RtspClientBuilder {
         self
     }
 
+    /// Enable OS-level TCP `SO_KEEPALIVE` on the control socket with the
+    /// given idle time. The kernel then probes an idle connection, so a
+    /// peer that died without FIN/RST (e.g. a hard-power-cycled camera)
+    /// eventually errors the socket instead of leaving it silently open.
+    /// Probe cadence and count after the idle time are the OS defaults.
+    ///
+    /// Distinct from [`Self::keepalive_interval`], which paces the
+    /// RTSP-level OPTIONS pinger. Equivalent to the `?tcp_keepalive=N`
+    /// URL query key (seconds). Default: disabled (OS default).
+    pub fn tcp_keepalive(mut self, idle: Duration) -> Self {
+        self.url.tcp_keepalive = Some(idle);
+        self
+    }
+
     /// Provide explicit credentials. Overrides anything parsed from
     /// the URL's userinfo component.
     ///
@@ -612,6 +626,20 @@ mod tests {
         let b = RtpRecvSocketBuilder::new("127.0.0.1", 0);
         // Port 0 -> OS-assigned; doesn't conflict.
         let _ = b.listen().expect("bind 127.0.0.1:0 should succeed");
+    }
+
+    /// Both knob homes land on the same `RtspUrl` field: the builder
+    /// setter and the `?tcp_keepalive=` URL query (already baked in by
+    /// `new`), so `connect` needs no separate plumbing for either.
+    #[test]
+    fn tcp_keepalive_builder_and_url_paths_set_knob() {
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:8554/live")
+            .unwrap()
+            .tcp_keepalive(Duration::from_secs(15));
+        assert_eq!(b.url.tcp_keepalive, Some(Duration::from_secs(15)));
+
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:8554/live?tcp_keepalive=9").unwrap();
+        assert_eq!(b.url.tcp_keepalive, Some(Duration::from_secs(9)));
     }
 
     // --- B6: User-Agent / credential header injection rejected at connect,

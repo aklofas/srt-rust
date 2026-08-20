@@ -25,12 +25,14 @@
 //! |---|---|---|
 //! | `transport` | `tcp` or `udp` | absent → prefer-UDP with TCP fallback |
 //! | `rtsp_version` | `1.0` or `2.0` | `1.0` |
+//! | `tcp_keepalive` | `SO_KEEPALIVE` idle seconds for the control TCP socket | absent → OS keepalive off |
 //!
 //! `ttl` is wire-format-shared between IPv4 (`IP_MULTICAST_TTL`) and
 //! IPv6 (`IPV6_MULTICAST_HOPS`). The transport applies the right
 //! setsockopt based on the destination address family.
 
 use std::net::IpAddr;
+use std::time::Duration;
 
 use secrecy::SecretString;
 use thiserror::Error;
@@ -386,6 +388,13 @@ pub struct RtspUrl {
     pub transport_preference: RtspTransportPref,
     /// Effective RTSP wire-format version; see [`RtspVersion`].
     pub rtsp_version: RtspVersion,
+    /// TCP-level `SO_KEEPALIVE` idle time for the control socket
+    /// (`?tcp_keepalive=N` seconds), or `None` (default) to leave the OS
+    /// keepalive off. Distinct from the RTSP-level OPTIONS keepalive
+    /// cadence (`RtspClientBuilder::keepalive_interval`): this knob makes
+    /// the kernel probe an idle connection so a peer that vanished
+    /// without FIN/RST eventually errors the socket.
+    pub tcp_keepalive: Option<Duration>,
 }
 
 impl RtspUrl {
@@ -395,6 +404,9 @@ impl RtspUrl {
     /// - `transport=tcp|udp` — see [`RtspTransportPref`]; absent ==
     ///   `PreferUdp`.
     /// - `rtsp_version=1.0|2.0` — see [`RtspVersion`]; absent == `V1_0`.
+    /// - `tcp_keepalive=N` — enable `SO_KEEPALIVE` on the control-channel
+    ///   TCP socket with an `N`-second idle time; absent == OS default
+    ///   (keepalive off).
     ///
     /// Unknown query keys cause [`UrlError::UnknownQueryKey`]; recognized
     /// keys with invalid values cause [`UrlError::BadQuery`]; non-rtsp
@@ -424,6 +436,7 @@ impl RtspUrl {
 
         let mut transport_preference = RtspTransportPref::PreferUdp;
         let mut rtsp_version = RtspVersion::V1_0;
+        let mut tcp_keepalive = None;
         for (k, v) in &parsed.query {
             match k.as_ref() {
                 "transport" => {
@@ -450,6 +463,16 @@ impl RtspUrl {
                         }
                     };
                 }
+                "tcp_keepalive" => {
+                    let secs: u64 =
+                        tst_core::url::common::parse_int_query(v.as_ref()).map_err(|_| {
+                            UrlError::BadQuery {
+                                key: "tcp_keepalive".to_string(),
+                                value: v.to_string(),
+                            }
+                        })?;
+                    tcp_keepalive = Some(Duration::from_secs(secs));
+                }
                 other => {
                     return Err(UrlError::UnknownQueryKey {
                         key: other.to_string(),
@@ -467,6 +490,7 @@ impl RtspUrl {
             password: parsed.password.map(SecretString::from),
             transport_preference,
             rtsp_version,
+            tcp_keepalive,
         })
     }
 
@@ -812,6 +836,24 @@ mod rtsp_tests {
     fn rtsp_url_unknown_query_key_rejected() {
         let e = RtspUrl::parse("rtsp://cam.lan/h264?bogus=1").unwrap_err();
         assert!(matches!(e, UrlError::UnknownQueryKey { .. }));
+    }
+
+    #[test]
+    fn rtsp_url_tcp_keepalive_query() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264?tcp_keepalive=30").unwrap();
+        assert_eq!(u.tcp_keepalive, Some(std::time::Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn rtsp_url_tcp_keepalive_default_none() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264").unwrap();
+        assert_eq!(u.tcp_keepalive, None);
+    }
+
+    #[test]
+    fn rtsp_url_tcp_keepalive_bad_value_rejected() {
+        let e = RtspUrl::parse("rtsp://cam.lan/h264?tcp_keepalive=forever").unwrap_err();
+        assert!(matches!(e, UrlError::BadQuery { .. }));
     }
 }
 

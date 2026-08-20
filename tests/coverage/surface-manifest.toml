@@ -7820,6 +7820,19 @@ bindings = []
 scenario_ids = []
 tier = "A"
 
+# tcp_keepalive: OS-level SO_KEEPALIVE knob for the RTSP client control
+# socket (FireLink defense-in-depth rider); builder unit test in
+# builder.rs plus an OS-observed apply test (SockRef::keepalive read-back)
+# in rtsp/client/mod.rs. URL twin `?tcp_keepalive=` tested in url.rs.
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
+item = "tst_rtp::builder::RtspClientBuilder::tcp_keepalive"
+owning_tests = ["crates/tst-rtp/src/builder.rs", "crates/tst-rtp/src/rtsp/client/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_rtp::builder::RtspClientBuilder::user_agent"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

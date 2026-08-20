@@ -11,6 +11,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TCP `SO_KEEPALIVE` knob on the RTSP client control socket** —
+  `RtspClientBuilder::tcp_keepalive(Duration)` or `?tcp_keepalive=N`
+  (seconds) on `rtsp://` / `rtsps://` URLs. The kernel probes an idle
+  control connection so a peer that died without FIN/RST eventually
+  errors the socket, instead of leaving it silently open forever.
+  Complements (does not replace) the application-level receive
+  deadline `RtpRecvTransport::set_recv_timeout`: keepalive only
+  detects a dead TCP peer, not a stalled-but-connected one. The query
+  key is client-local — it is never forwarded on the RTSP request
+  line. Because it is a URL knob, it works from every binding today.
+  Default: off (OS default), matching the `tcp://` transport's
+  `?keepalive=` precedent.
+
 - **`ReconnectMode::Background` on `ReconnectPolicy`** — opt-in
   reconnect for `ManagedTransport` that doesn't wait on backoff or
   factory calls. A per-outage worker thread owns the

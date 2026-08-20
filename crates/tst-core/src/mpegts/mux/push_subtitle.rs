@@ -185,6 +185,7 @@ impl Muxer {
         // Per-stream stats — Ok-path only.
         if let Some(s) = self.per_stream.get_mut(&subtitle_pid) {
             s.items += 1;
+            s.touch_last_seen();
             s.bytes += payload.len() as u64;
         }
 

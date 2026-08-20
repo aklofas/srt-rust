@@ -266,6 +266,7 @@ impl Muxer {
         // count caller's payload bytes, not auto-wrapped bytes.
         if let Some(s) = self.per_stream.get_mut(&klv_pid) {
             s.items += 1;
+            s.touch_last_seen();
             s.bytes += klv.len() as u64;
         }
         // One push = one KLV record (muxer contract: caller passes a single

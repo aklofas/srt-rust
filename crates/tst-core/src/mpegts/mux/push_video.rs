@@ -517,6 +517,7 @@ impl Muxer {
         // overhead is wire-level and not counted here.
         if let Some(s) = self.per_stream.get_mut(&video_pid) {
             s.items += 1;
+            s.touch_last_seen();
             s.bytes += nal.len() as u64;
         }
 

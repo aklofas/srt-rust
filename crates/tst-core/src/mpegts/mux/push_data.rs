@@ -209,6 +209,7 @@ impl Muxer {
         // entry (decision D6: they surface StreamCodecStats::Unknown).
         if let Some(s) = self.per_stream.get_mut(&data_pid) {
             s.items += 1;
+            s.touch_last_seen();
             s.bytes += data.len() as u64;
         }
 

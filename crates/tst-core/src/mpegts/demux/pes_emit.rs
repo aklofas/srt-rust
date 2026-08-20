@@ -217,6 +217,7 @@ impl super::demuxer::Demuxer {
                     program_number,
                 );
                 entry.items += 1;
+                entry.touch_last_seen();
                 entry.bytes += raw_len as u64;
                 // `nals_or_obus` is no longer counted here (it required the
                 // split the demuxer no longer performs). The `random_access_aus`
@@ -263,6 +264,7 @@ impl super::demuxer::Demuxer {
                         program_number,
                     );
                     entry.items += 1;
+                    entry.touch_last_seen();
                     entry.bytes += meta_len as u64;
                     self.bump_klv_counters(stream.pid, 1);
                     self.queue.push_back(DemuxEvent::Metadata {
@@ -285,6 +287,7 @@ impl super::demuxer::Demuxer {
                         program_number,
                     );
                     entry.items += 1;
+                    entry.touch_last_seen();
                     entry.bytes += payload_len as u64;
                     self.queue.push_back(DemuxEvent::Sample {
                         stream,
@@ -364,6 +367,7 @@ impl super::demuxer::Demuxer {
                                     program_number,
                                 );
                                 entry.items += 1;
+                                entry.touch_last_seen();
                                 entry.bytes += meta_len as u64;
                                 self.bump_klv_counters(stream.pid, 1);
                                 self.queue.push_back(DemuxEvent::Metadata {
@@ -431,6 +435,7 @@ impl super::demuxer::Demuxer {
                                         program_number,
                                     );
                                     entry.items += 1;
+                                    entry.touch_last_seen();
                                     entry.bytes += meta_len as u64;
                                     self.bump_klv_counters(stream.pid, 1);
                                     self.queue.push_back(DemuxEvent::Metadata {
@@ -492,6 +497,7 @@ impl super::demuxer::Demuxer {
                 let payload_len = pes.payload.len();
                 let entry = self.stream_stats_entry(stream.pid, stream_type, program_number);
                 entry.items += 1;
+                entry.touch_last_seen();
                 entry.bytes += payload_len as u64;
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
@@ -511,6 +517,7 @@ impl super::demuxer::Demuxer {
                     program_number,
                 );
                 entry.items += 1;
+                entry.touch_last_seen();
                 entry.bytes += payload_len as u64;
                 // C11 — for AAC-LATM (stream_type 0x11) validate the LOAS
                 // syncword at the start of the PES payload. Pre-C11 we
@@ -607,6 +614,7 @@ impl super::demuxer::Demuxer {
                     crate::mpegts::stats::demux_subtitle_codec_label(codec).to_string()
                 });
                 entry.items += 1;
+                entry.touch_last_seen();
                 entry.bytes += payload_len as u64;
                 // B6 — EN 300 743 §6.2 (DVB-sub) + EN 300 472 §4.2
                 // (teletext) mandate `data_alignment_indicator = 1`.

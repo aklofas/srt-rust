@@ -208,6 +208,15 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
             let mut chunk = [0u8; 4096];
             loop {
                 if cancel.load(Ordering::Relaxed) {
+                    // The most common deliberate-shutdown path: this
+                    // flag is flipped by `RtspClient::Drop` (before the
+                    // best-effort TEARDOWN) and by a replacement pump
+                    // spawn reaping its predecessor — never by a wire
+                    // event. Record it here so a client that's simply
+                    // done (the overwhelmingly common case) reports
+                    // `Cancelled` rather than leaving `end_reason()` at
+                    // `None` forever.
+                    end_reason.record(StreamEndReason::Cancelled);
                     return;
                 }
                 // Yield the stream lock to a control-path writer that is
@@ -1359,6 +1368,40 @@ mod tests {
         fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
             Err(std::io::Error::other("simulated hard read failure"))
         }
+    }
+
+    /// The pump's loop-top cancel check (hit by `RtspClient::Drop` or a
+    /// replacement pump spawn reaping its predecessor — the most common
+    /// deliberate-shutdown path) must record `Cancelled`, distinct from
+    /// the `Ok(0)` clean-EOF branch below. Cancel is set BEFORE spawn so
+    /// the pump takes the loop-top exit on its very first iteration,
+    /// before ever touching the (empty, EOF-on-first-read) reader.
+    #[test]
+    fn cancel_flag_exit_records_cancelled() {
+        let raw = Vec::<u8>::new();
+        let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        cancel.store(true, Ordering::Relaxed);
+        let end_reason = EndReasonSlot::default();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicUsize::new(0)),
+            Arc::new(Mutex::new(AuthState::default())),
+            None,
+            stats.clone(),
+            end_reason.clone(),
+        )
+        .unwrap();
+        let _ = handle.join();
+        assert!(
+            matches!(end_reason.get(), Some(StreamEndReason::Cancelled)),
+            "the loop-top cancel exit must record Cancelled, got {:?}",
+            end_reason.get()
+        );
     }
 
     #[test]

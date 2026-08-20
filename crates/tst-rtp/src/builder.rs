@@ -51,6 +51,7 @@ impl RtpSocketBuilder {
                 pkt_size: None,
                 ssrc: None,
                 pt: None,
+                recv_timeout: None,
             },
             rtcp: false,
         }
@@ -143,6 +144,7 @@ impl RtpRecvSocketBuilder {
                 pkt_size: None,
                 ssrc: None,
                 pt: None,
+                recv_timeout: None,
             },
             rtcp: false,
         }

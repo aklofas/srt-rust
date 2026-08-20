@@ -687,6 +687,7 @@ run_decode_probe() {
   case "$player" in
     ffplay) filtered=$(grep -Ev "$FFPLAY_ENV_NOISE" <<<"$filtered" || true) ;;
     vlc) filtered=$(grep -Ev "$VLC_ENV_NOISE" <<<"$filtered" || true) ;;
+    gst-play) filtered=$(grep -Ev "$GST_PLAY_ENV_NOISE" <<<"$filtered" || true) ;;
   esac
 
   local -a reasons=()

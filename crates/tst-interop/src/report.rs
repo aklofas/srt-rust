@@ -454,13 +454,20 @@ pub fn build_results(
 
 /// Read every `*.json` file in `dir` (sorted by filename, for
 /// deterministic output) and parse each as a [`RawCell`].
+///
+/// A directory-entry read error propagates rather than being skipped:
+/// an unreadable entry could hide a written cell, and a silently
+/// shrunken census is exactly the "absorbed failure" shape the module
+/// doc rules out (same property as the zero-cells guard in [`merge`]).
 fn read_cells_dir(dir: &Path) -> Result<Vec<RawCell>, String> {
-    let mut paths: Vec<PathBuf> = fs::read_dir(dir)
-        .map_err(|e| format!("read_dir {}: {e}", dir.display()))?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("json"))
-        .collect();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))? {
+        let entry = entry.map_err(|e| format!("read_dir entry in {}: {e}", dir.display()))?;
+        let p = entry.path();
+        if p.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            paths.push(p);
+        }
+    }
     paths.sort();
 
     let mut cells = Vec::with_capacity(paths.len());

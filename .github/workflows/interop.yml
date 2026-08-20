@@ -88,19 +88,30 @@ jobs:
         #     srt/gst-to-us, and srt/us-to-gst has no expectations row at
         #     all (it's expected to PASS) — either way a surprise FAIL
         #     that would red this job for the wrong reason.
+        #   - gstreamer1.0-plugins-base-apps: gst-play-1.0, the
+        #     decode/gst-play cells across all 12 profiles. Enabled
+        #     2026-08-20 after the local pre-evidence run this comment
+        #     block previously demanded: all 12 cells exercised on the
+        #     dev box (same Ubuntu 24.04 / GStreamer 1.24.2 stack as
+        #     this runner), payload/env noise phrasings harvested into
+        #     lib.sh's DECODE_PAYLOAD_NOISE / GST_PLAY_ENV_NOISE from
+        #     the captured logs, 12/12 PASS after filtering — no
+        #     expectations.toml rows needed.
+        #   - gstreamer1.0-libav: avdec_h264/avdec_h265 — the decoder
+        #     elements playbin builds for the decode/gst-play cells and
+        #     the exact element names the harvested filler-AU noise
+        #     phrasings come from. Load-bearing for those cells the same
+        #     way plugins-bad is for the SRT ones: without it playbin
+        #     fails with a DIFFERENT text ("missing plugin: decoder
+        #     ...") that the payload-noise filter deliberately does not
+        #     cover, so the cells would red for an environment reason,
+        #     not an input-file reason. (av1-klv-*/h266-klv need no
+        #     decoder: GStreamer 1.24 wires no AV1-in-TS / VVC playbin
+        #     path, and the cells pass silently — see lib.sh.)
         #   - jq: required by run-matrix.sh/lib.sh's own JSON handling
         #     (README.md).
-        #
-        # Deliberately NOT installed: gstreamer1.0-plugins-base-apps
-        # (ships gst-play-1.0, used only by the format-axis decode/gst-play
-        # cells across all 12 profiles). Those cells have never executed
-        # anywhere and would first-run unattended on this runner with no
-        # expectations.toml rows to catch a surprise — left
-        # SKIPPED_TOOL_MISSING here (honest) until a local evidence run
-        # exercises them first and either documents a gap or confirms a
-        # clean pass; then add the apt package here in the same PR.
         run: |
-          sudo apt-get -o Acquire::Retries=5 install -y ffmpeg vlc mpv gstreamer1.0-tools gstreamer1.0-plugins-bad jq
+          sudo apt-get -o Acquire::Retries=5 install -y ffmpeg vlc mpv gstreamer1.0-tools gstreamer1.0-plugins-bad gstreamer1.0-plugins-base-apps gstreamer1.0-libav jq
 
       - name: Install TSDuck
         # Not in Ubuntu's apt repos — install the pinned upstream .deb
@@ -200,18 +211,19 @@ jobs:
         # win): `report merge` exits 0 on whatever subset of cell JSONs it
         # finds, so a silently truncated run (missing peer, dropped cell
         # subset, profile-list drift) could otherwise publish a smaller
-        # census as green. The advertised shape is 157 cells with exactly
-        # the 12 documented gst-play skips; anything else fails this job.
-        # (Full per-cell-identity inventory enforcement is tracked as
-        # harness-hardening backlog.)
+        # census as green. The advertised shape is 157 cells with ZERO
+        # tool-missing skips (the 12 gst-play cells were the last skip
+        # class, enabled 2026-08-20 — see the peer-tools install step);
+        # anything else fails this job. (Full per-cell-identity inventory
+        # enforcement is tracked as harness-hardening backlog.)
         run: |
           total=$(jq '.summary.total' "$RUNNER_TEMP/interop/results.json")
           skipped=$(jq '.summary.skipped_tool_missing' "$RUNNER_TEMP/interop/results.json")
-          if [ "$total" != "157" ] || [ "$skipped" != "12" ]; then
-            echo "::error::census mismatch: total=$total (want 157) skipped=$skipped (want 12)"
+          if [ "$total" != "157" ] || [ "$skipped" != "0" ]; then
+            echo "::error::census mismatch: total=$total (want 157) skipped=$skipped (want 0)"
             exit 1
           fi
-          echo "census complete: 157 cells, 12 expected skips"
+          echo "census complete: 157 cells, 0 tool-missing skips"
 
       - name: Publish step summary
         # Re-render with --github-summary so the verdict table appears

@@ -492,7 +492,12 @@ impl H264Receiver {
 
 impl Drop for H264Receiver {
     fn drop(&mut self) {
-        self.cancel.cancel();
+        // Mirrors `RtpRecvTransport::drop`, which calls its own `close()`
+        // — records `Cancelled` on drop, not just a bare cancel-flag set,
+        // so the two mirrored receive shells have symmetric drop
+        // semantics. `close()` is documented idempotent, so this is safe
+        // even if the caller already called it explicitly.
+        self.close();
     }
 }
 
@@ -832,6 +837,28 @@ mod tests {
             matches!(r.end_reason(), Some(StreamEndReason::Cancelled)),
             "a cancel-handle fire observed at recv must record Cancelled, got {:?}",
             r.end_reason()
+        );
+    }
+
+    /// `Drop` must record `Cancelled` too, mirroring
+    /// `RtpRecvTransport::drop` (which calls its own `close()`) —
+    /// otherwise a caller who just drops the receiver without an
+    /// explicit `close()` call gets no end-reason record at all.
+    /// `H264Receiver` has no post-drop accessor (no
+    /// `end_reason_handle()`), so this clones the private `end_reason`
+    /// slot before dropping the receiver — the slot's underlying cell is
+    /// shared by clone, so it still observes whatever `Drop` records.
+    #[test]
+    fn drop_records_cancelled() {
+        let (_tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let r = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, H264DepayConfig::default());
+        let slot = r.end_reason.clone();
+        assert!(slot.get().is_none(), "fresh receiver must start unrecorded");
+        drop(r);
+        assert!(
+            matches!(slot.get(), Some(StreamEndReason::Cancelled)),
+            "Drop must record Cancelled, got {:?}",
+            slot.get()
         );
     }
 }

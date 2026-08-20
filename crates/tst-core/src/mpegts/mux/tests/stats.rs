@@ -226,6 +226,53 @@ fn muxer_stats_reports_subtitle_streams_configured() {
     assert_eq!(teletext_stat.label.as_deref(), Some("DVB-Teletext"));
 }
 
+// last_seen is a std-only field (wall clock unavailable under no_std) —
+// gate this test to match, same convention as MuxSender::into_inner's tests.
+#[cfg(feature = "std")]
+#[test]
+fn stats_last_seen_stamped_on_push_none_when_unpushed() {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        prog.add_audio(0x102, AudioCodec::Aac);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let mut m = Muxer::new(cfg).unwrap();
+
+    // Configured but never pushed — last_seen stays None for all three.
+    let st0 = m.stats();
+    assert_eq!(st0.per_stream[&0x100].last_seen, None);
+    assert_eq!(st0.per_stream[&0x101].last_seen, None);
+    assert_eq!(st0.per_stream[&0x102].last_seen, None);
+
+    // Push to stream A (video, 0x100) then stream B (KLV, 0x101).
+    let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+    m.push_video(nal, Pts90khz::new(0), true).unwrap();
+    let klv: &[u8] = &[
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00, 0x00,
+    ];
+    m.push_klv(klv, Pts90khz::new(0), 0x00).unwrap();
+
+    let st = m.stats();
+    let a = st.per_stream[&0x100]
+        .last_seen
+        .expect("stream A was pushed — last_seen must be Some");
+    let b = st.per_stream[&0x101]
+        .last_seen
+        .expect("stream B was pushed — last_seen must be Some");
+    assert!(
+        a <= b,
+        "stream B was pushed after stream A: last_seen must be non-decreasing"
+    );
+
+    // Stream C (audio, 0x102) was configured but never pushed — still None.
+    assert_eq!(st.per_stream[&0x102].last_seen, None);
+}
+
 #[test]
 fn muxer_stream_codec_stats_distinguishes_configured_from_unconfigured() {
     // Default MuxerConfig configures PIDs 0x1011 (video) + 0x1031 (KLV).

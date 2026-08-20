@@ -140,6 +140,7 @@ impl Muxer {
         // Count on the Ok path only — after all early-returns above.
         if let Some(s) = self.per_stream.get_mut(&audio_pid) {
             s.items += 1;
+            s.touch_last_seen();
             s.bytes += frames.len() as u64;
         }
 

@@ -1713,6 +1713,66 @@ mod tests {
         assert_eq!(s.subtitle_streams_seen, 0);
     }
 
+    // last_seen is a std-only field (wall clock unavailable under no_std) —
+    // gate this test to match, same convention as MuxSender::into_inner's
+    // tests.
+    #[cfg(feature = "std")]
+    #[test]
+    fn stats_last_seen_stamped_on_emit() {
+        use crate::mpegts::mux::{
+            KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+        };
+
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x101, MuxVideoCodec::H264);
+            prog.add_klv(0x102, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        let mut demux = Demuxer::new();
+
+        // Feed stream A (video, 0x101) and drain its event in its own
+        // feed/drain cycle, then do the same for stream B (KLV, 0x102) —
+        // two strictly-sequential batches, so PES emission order is
+        // pinned to feed-call order regardless of how the muxer
+        // interleaves TS packets from concurrently-pushed streams within
+        // a single pull().
+        let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        mux.push_video(nal, Pts90khz::new(0), true).unwrap();
+        let mut bytes_a = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut bytes_a);
+        bytes_a.truncate(n);
+        demux.feed(&bytes_a).unwrap();
+        demux.flush();
+        while demux.next_event().is_some() {}
+        let a = demux.stats().per_stream[&0x101]
+            .last_seen
+            .expect("video PES was emitted — last_seen must be Some");
+
+        let klv: &[u8] = &[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00,
+        ];
+        mux.push_klv(klv, Pts90khz::new(0), 0x00).unwrap();
+        let mut bytes_b = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut bytes_b);
+        bytes_b.truncate(n);
+        demux.feed(&bytes_b).unwrap();
+        demux.flush();
+        while demux.next_event().is_some() {}
+        let b = demux.stats().per_stream[&0x102]
+            .last_seen
+            .expect("KLV PES was emitted — last_seen must be Some");
+
+        assert!(
+            a <= b,
+            "stream B was emitted after stream A: last_seen must be non-decreasing"
+        );
+    }
+
     /// A malicious PMT PUSI claiming `section_length=0xFFF` (4095 bytes,
     /// total = 4098 > 4096 cap) and never closing must NOT cause unbounded
     /// buffer growth — ffmpeg caps at 4096 (`MAX_SECTION_SIZE` in

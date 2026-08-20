@@ -22,6 +22,30 @@ pub struct StreamStats {
     pub items: u64,
     pub bytes: u64,
     pub discontinuities: u64,
+    /// Wall-clock time this stream last carried an item through this
+    /// component (mux: last push; demux: last emitted item). `None` = never.
+    ///
+    /// `std`-only: no wall clock exists under `no_std` (the field is absent
+    /// entirely on that build — see [`StreamStats::touch_last_seen`]).
+    #[cfg(feature = "std")]
+    pub last_seen: Option<std::time::SystemTime>,
+}
+
+impl StreamStats {
+    /// Stamp [`StreamStats::last_seen`] to the current wall-clock time.
+    /// Called at every site that increments `items`.
+    ///
+    /// No-op under `no_std` (the field doesn't exist there — no wall
+    /// clock). Kept as a same-shaped method on both configs, mirroring
+    /// `tst_pipeline::mutex::ShellMutex`'s std/no_std split, so call sites
+    /// compile unchanged either way.
+    #[cfg(feature = "std")]
+    pub(crate) fn touch_last_seen(&mut self) {
+        self.last_seen = Some(std::time::SystemTime::now());
+    }
+
+    #[cfg(not(feature = "std"))]
+    pub(crate) fn touch_last_seen(&mut self) {}
 }
 
 /// Mux-side codec label. Used to populate [`StreamStats::label`] for
@@ -227,6 +251,7 @@ mod tests {
             items: 5,
             bytes: 1024,
             discontinuities: 0,
+            ..Default::default()
         };
         let b = a.clone();
         assert_eq!(a, b);

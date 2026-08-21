@@ -176,6 +176,51 @@ def test_demux_receiver_emits_events_from_loopback_send() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# ?recv_timeout= URL knob                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_demux_receiver_url_knob_iteration_resumes_after_timeout() -> None:
+    """`?recv_timeout=<ms>` on the URL arms a persistent recv deadline on
+    `tstrans.rtp.DemuxReceiver` too (same knob as `tstrans.rtp.Receiver`
+    — `RtpRecvSocketBuilder::from_url`, no new API). A quiet socket's
+    `next(it)` raises `RtpError(TIMEOUT)` rather than blocking forever;
+    the receiver + demuxer state survive the expiry, so once a real
+    sender delivers muxed TS bytes, the SAME iterator resumes and
+    yields a `DemuxEvent` instead of raising again."""
+    port = _free_udp_port()
+    with tstrans.rtp.DemuxReceiver(
+        f"rtp://127.0.0.1:{port}?recv_timeout=200"
+    ) as rx:
+        it = iter(rx)
+
+        # Quiet socket: the persistent deadline expires and `next()`
+        # raises RtpError(TIMEOUT) — the transport error mapping used by
+        # `DemuxReceiverErrorSource::Transport(Backpressure)`.
+        with pytest.raises(RtpError) as exc_info:
+            next(it)
+        assert exc_info.value.kind == RtpErrorKind.TIMEOUT
+
+        # Deliver muxed TS bytes on the same port *before* resuming the
+        # iterator, so the datagrams are already queued in the kernel
+        # recv buffer and the 200 ms deadline is ample. Same
+        # build-and-burst pattern as
+        # `test_demux_receiver_emits_events_from_loopback_send`.
+        ts_bytes = _build_minimal_ts_bytes()
+        with tstrans.rtp.Sender(f"rtp://127.0.0.1:{port}") as snd:
+            for _ in range(3):
+                for i in range(0, len(ts_bytes), 188):
+                    snd.send(ts_bytes[i : i + 188])
+                time.sleep(0.05)
+
+        # Resume the SAME iterator: it yields a DemuxEvent rather than
+        # raising again, proving the receiver/demux state survived the
+        # caught TIMEOUT.
+        ev = next(it)
+        assert isinstance(ev, DemuxEvent)
+
+
+# --------------------------------------------------------------------------- #
 # Round-trip                                                                  #
 # --------------------------------------------------------------------------- #
 

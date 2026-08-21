@@ -123,17 +123,38 @@ Together with `ReconnectPolicy`'s `mode` field, the `RtpUrl` /
 `RtspUrl` / `StreamStats` field adds above are all compile-breaking for
 full-struct-literal callers, confirming the next release is 0.6.0.
 
-Bindings (C ABI, Python, JVM) are unchanged by either the reconnect
-work or the `tst-rtp` work above — `ReconnectMode::Background`, the new
-stats accessors, the `recv_timeout` URL key,
-`H264Receiver::set_recv_timeout`, and the `StreamEndReason` family are
-all Rust-only for now; see the "Background reconnect — bindings
+**C ABI minor 19 → 20** (additive; no existing symbol, signature, or
+struct layout changed) brings the C surface most of the way to parity
+with the Rust-core work above:
+
+- `TstReconnectMode` (`Blocking` / `Background`) +
+  `tst_reconnect_policy_set_mode` on `tst_reconnect_policy_t`; the
+  48-byte `tst_managed_transport_stats_t` (size-pinned in the header
+  trailer) + `tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`
+  (`TST_HAS_SRT` — send-side only, matching Rust).
+- `TstStreamEndReason` + `tst_rtp_{receiver,demux_receiver}_end_reason`
+  (`TST_HAS_RTP`). An actually-recorded reason resets
+  `tst_get_last_error[_str]` to `TST_E_SUCCESS` plus the detail message
+  (or `""`) on every call, overwriting any pending failure; `None`
+  touches last-error not at all — see `tst_get_last_error`'s doc. A
+  future Rust `StreamEndReason` variant this binding doesn't know about
+  yet aliases to `TstStreamEndReason::None` until the C mapping catches
+  up in a later release.
+- `tst_*_get_stream_last_seen_micros` on all six demux-receiver handle
+  families (plain + managed SRT, RIST, RTP, TCP, UDP).
+- `?recv_timeout=<ms>` is now honored by `tst_rtp_recv_open` /
+  `tst_rtp_demux_receiver_open` (previously only the RTSP-converted
+  path applied it) — no new symbols; expiry surfaces as the existing
+  `TST_E_BUFFER_FULL` (-4), retryable, documented on
+  `tst_rtp_receiver_recv_ts` / `tst_rtp_demux_receiver_next_event`.
+
+Python and JVM remain unchanged by either the reconnect work or the
+`tst-rtp` work above — see the "Background reconnect — bindings
 parity", "RTP receive-deadline bindings parity", and "Python/JVM
 `tracing` diagnostics bridge + structured stream-end reason" entries in
 [docs/project/deferred-features.md](docs/project/deferred-features.md).
-C ABI stays at 19 — these changes do not touch `tst-c`. (The JVM
-null-argument fix under **Fixed** below is a separate, JVM-only
-behavior change.)
+(The JVM null-argument fix under **Fixed** below is a separate,
+JVM-only behavior change.)
 
 ### Fixed
 

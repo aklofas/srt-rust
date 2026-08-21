@@ -890,48 +890,41 @@ the trigger that would unblock it.
   flapping (e.g. for alarm thresholds / backoff tuning) beyond the
   existing rebuild count.
 
-## Background reconnect — bindings parity (C / Python / JVM)
+## Background reconnect — bindings parity (Python / JVM)
 
-- **Status:** Rust-only as of 2026-08-19. `ReconnectMode::Background`
-  (a per-outage worker thread that keeps `send_bytes` from waiting on
-  backoff or factory calls through a sink outage),
-  `ManagedTransport::stats_handle()`, and `ManagedStatsHandle` /
-  `ManagedTransportStats` have no C ABI, Python, or JVM mirror. Binding
-  consumers configuring a `ReconnectPolicy` only get
-  `ReconnectMode::Blocking` (the unchanged pre-existing behavior).
-- **Why deferred:** Ships Rust-first, matching the precedent set by
-  recent pipeline additions (`RtpRecvTransport::set_recv_timeout`,
-  `MuxSender::finish`) — no binding consumer has asked for it yet, and
-  the C surface is additive when it lands: an opaque-builder setter on
-  `tst_reconnect_policy_t` plus an ABI minor bump, not a breaking
-  change to the existing struct.
+- **Status:** C ABI mirror shipped 2026-08-20 (ABI minor 20):
+  `TstReconnectMode` + `tst_reconnect_policy_set_mode` on
+  `tst_reconnect_policy_t`, plus `tst_managed_transport_stats_t` +
+  `tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`
+  (send-side only, matching Rust). Python and JVM still have no mirror:
+  `ReconnectMode::Background`, `ManagedTransport::stats_handle()`, and
+  `ManagedStatsHandle` / `ManagedTransportStats` are unreachable from
+  either binding, which only get `ReconnectMode::Blocking` (the
+  unchanged pre-existing behavior).
+- **Why deferred (Python / JVM):** Ships C-first now that the ABI
+  mirror has landed — no Python or JVM consumer has asked for it yet.
 - **Trigger to revisit:** A binding consumer running a
   single-threaded relay pump against a managed sink — the same shape
   that motivated the Rust-side feature — asks for that
-  backoff-decoupled send path outside Rust.
+  backoff-decoupled send path from Python or JVM.
 
-## Last-activity-wall-clock gauges per stream
+## Last-activity-wall-clock gauges per stream (Python / JVM)
 
-- **Status:** Rust-only since 2026-08-20 — `StreamStats.last_seen:
-  Option<SystemTime>` is stamped on every mux push / demux emit
-  (`std` builds only; the field is absent under `no_std`, matching
-  every other wall-clock-dependent surface). No C ABI, Python, or JVM
-  mirror exists yet: `tst-c`'s `TstStreamStats` is filled field-by-field
-  by `fill_stream_stats`, not struct-copied, so `last_seen` does not
-  cross the C ABI just because the Rust field exists.
-- **Why deferred (the binding mirror):** Adding a wall-clock field to
-  `TstStreamStats` (currently a byte-size-asserted, plain-integer-
-  counter C struct) cascades into the C ABI: the layout has to encode
-  either epoch nanos in a `uint64_t` (overflows in 2554 — fine, but
-  explicit) or a `(seconds, nanos)` split (extra two fields per
-  `tst_stream_stats_t`). Either way it's a bigger surface than the rest
-  of the stats struct, and consumers who care can derive staleness from
-  `items` deltas + their own wall-clock sampling cadence in the
-  meantime.
-- **Trigger to revisit:** A consumer ships a watchdog that needs
-  per-stream staleness without holding two snapshots, or asks for
-  millisecond-resolution event timing in the stats surface, from a
-  binding rather than Rust directly.
+- **Status:** `StreamStats.last_seen: Option<SystemTime>` (stamped on
+  every mux push / demux emit, `std` builds only) got its C ABI mirror
+  2026-08-20 (ABI minor 20) — NOT by growing `tst_stream_stats_t`
+  (still byte-size-asserted, plain-integer counters only), but as a new
+  getter, `tst_*_get_stream_last_seen_micros`, on all six demux-receiver
+  handle families (plain + managed SRT, RIST, RTP, TCP, UDP). Returns a
+  `uint64_t` Unix epoch microsecond timestamp, `0` if the PID has never
+  been observed. Python and JVM still have no mirror.
+- **Why deferred (Python / JVM):** Ships C-first now that the ABI
+  getter shape is proven — no Python or JVM consumer has asked for it
+  yet; in the meantime they can derive staleness from `items` deltas +
+  their own wall-clock sampling cadence.
+- **Trigger to revisit:** A Python or JVM consumer ships a watchdog
+  that needs per-stream staleness without holding two snapshots, or
+  asks for millisecond-resolution event timing in the stats surface.
 
 ## Per-stream PMT descriptor surface at the C ABI
 
@@ -1741,25 +1734,28 @@ the trigger that would unblock it.
   reconstruction, or RTCP RR feedback to the sender is needed for
   adaptive bitrate control.
 
-## RTP receive-deadline bindings parity
+## RTP receive-deadline bindings parity (Python / JVM)
 
-- **Status:** Deferred. `H264Receiver::recv_au_timeout`,
+- **Status:** C ABI covered 2026-08-20 — no new symbols needed. The
+  `?recv_timeout=<ms>` URL key (already reaching all four Rust
+  constructors) is now also honored by `tst_rtp_recv_open` /
+  `tst_rtp_demux_receiver_open` (previously only the RTSP-converted
+  path applied it); expiry surfaces as the existing `TST_E_BUFFER_FULL`
+  (-4), retryable, documented on `tst_rtp_receiver_recv_ts` /
+  `tst_rtp_demux_receiver_next_event`. `H264Receiver::recv_au_timeout`,
   `RtpRecvTransport::recv_timeout`, and the configured-knob
-  `RtpRecvTransport::set_recv_timeout` (deadline-bounded receive, for
-  stall watchdogs) are Rust-only; no Python, JVM, or C ABI mirror
-  exists. (2026-08-20: the Rust-side surface grew further —
-  `H264Receiver` gained its own `set_recv_timeout` knob, and a
-  `?recv_timeout=<ms>` URL key reaches all four constructors without a
-  binding-specific setter — but the binding mirror itself is still not
-  shipped.)
-- **Why deferred:** shipped Rust-first from an integrator field report
-  (a healthy-but-stalled RTSP session — no error, no EOS — previously
-  required a ~150-line reader-thread + `sync_channel` + cancel-handle
-  watchdog around the blocking `recv_au`). No binding consumer has asked
-  for the deadline variant yet.
-- **Trigger to revisit:** the first Python, JVM, or C consumer asking for
-  a stall watchdog — the Python wheel consumers currently wrap
-  `recv_au` with a reader thread for this purpose.
+  `RtpRecvTransport::set_recv_timeout` remain Rust/C-URL-only — Python
+  and JVM have no mirror (no `timeout_ms` kwarg / boxed-`Integer`
+  parameter, no typed `TIMEOUT` error kind).
+- **Why deferred (Python / JVM):** shipped Rust/C-first from an
+  integrator field report (a healthy-but-stalled RTSP session — no
+  error, no EOS — previously required a ~150-line reader-thread +
+  `sync_channel` + cancel-handle watchdog around the blocking
+  `recv_au`). No Python or JVM consumer has asked for the typed
+  deadline variant yet.
+- **Trigger to revisit:** the first Python or JVM consumer asking for a
+  stall watchdog — the Python wheel consumers currently wrap `recv_au`
+  with a reader thread for this purpose.
 
 ## `MuxSender::finish` bindings parity
 
@@ -1985,13 +1981,15 @@ the trigger that would unblock it.
   session/receiver objects (clean teardown vs read error vs session
   expiry vs pump failure), which touches the public API of three
   bindings and deserves its own pass rather than riding a bugfix PR.
-  (2026-08-20: the structured surface itself shipped Rust-only —
+  (2026-08-20: the structured surface shipped Rust-side —
   `tst_rtp::StreamEndReason` / `StreamEndReasonHandle`,
   `RtpRecvTransport::{end_reason, end_reason_handle}`,
   `H264Receiver::end_reason` — see
-  [troubleshooting.md](/docs/troubleshooting.md#why-did-my-rtsp-stream-end).
-  The `TSTRANS_LOG` bridge and the Python/JVM mirror of this surface
-  remain unshipped.)
+  [troubleshooting.md](/docs/troubleshooting.md#why-did-my-rtsp-stream-end)
+  — and got its C ABI mirror the same day (ABI minor 20):
+  `TstStreamEndReason` + `tst_rtp_{receiver,demux_receiver}_end_reason`.
+  The `TSTRANS_LOG` bridge and the Python/JVM mirror of the structured
+  surface remain unshipped.)
 - **Trigger to revisit:** the next bindings-surface wave, or the next
   field report where a Python/JVM integrator cannot tell why a stream
   ended.

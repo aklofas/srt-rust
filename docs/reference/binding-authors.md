@@ -265,7 +265,7 @@ baseline (by design)" for the full rationale.
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **19** today. History (additive bumps only — major stays at 0 pre-1.0):
+  **20** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
       `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
@@ -371,6 +371,39 @@ baseline (by design)" for the full rationale.
       NAL) + `tst_misp_time_extract`, with error codes `TST_E_MISP_TIME` (−45)
       and `TST_E_MISP_TIME_MALFORMED` (−46). Additive — no symbol, signature,
       or struct layout changed.
+    - `20` — bindings-parity bundle, items 6-9 (2026-08-20). All additive —
+      no existing symbol, signature, or struct layout changed:
+      - **Item 7, background reconnect:** `TstReconnectMode` enum
+        (`Blocking = 0`, `Background = 1`) + `tst_reconnect_policy_set_mode`
+        setter on `tst_reconnect_policy_t` (`TST_HAS_SRT`); the 48-byte
+        `tst_managed_transport_stats_t` (5×`uint64_t` + `bool` + 7-byte pad,
+        size-pinned in the header trailer) + three send-side getters
+        (`tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`,
+        `TST_HAS_SRT`).
+      - **Item 8, RTP stream-end reason:** `TstStreamEndReason` enum
+        (`None = 0`, `CleanTeardown = 1`, `SessionExpired = 2`,
+        `KeepaliveFailed = 3`, `TransportFailed = 4`, `ProtocolError = 5`,
+        `Cancelled = 6`) + `tst_rtp_{receiver,demux_receiver}_end_reason`
+        getters (`TST_HAS_RTP`). Last-error detail contract: an
+        actually-recorded reason resets `tst_get_last_error[_str]` to
+        `TST_E_SUCCESS` + the detail message (or `""` for msg-less
+        reasons) on every call, overwriting any pending failure; `None`
+        touches last-error not at all (see `tst_get_last_error`'s doc).
+        **Wildcard aliasing:** a future Rust `StreamEndReason` variant this
+        binding doesn't know about yet maps to `TstStreamEndReason::None`
+        until the C mapping is updated in a later release.
+      - **Item 9, per-stream last-seen gauges:**
+        `tst_*_get_stream_last_seen_micros` on all six demux-receiver
+        families — plain + managed SRT (`TST_HAS_SRT`), RIST
+        (`TST_HAS_RIST`), RTP (`TST_HAS_RTP`), TCP (`TST_HAS_TCP`), UDP
+        (`TST_HAS_UDP`) — a `uint64_t` Unix epoch microsecond timestamp,
+        `0` if the PID has never been observed.
+      - **Item 6, RTP receive-deadline parity — no new symbols:** the
+        `?recv_timeout=<ms>` URL key is now honored by `tst_rtp_recv_open`
+        / `tst_rtp_demux_receiver_open` (it previously reached only the
+        RTSP-converted path); deadline expiry surfaces as the existing
+        `TST_E_BUFFER_FULL` (-4), retryable — the same code SRT's
+        recv-deadline expiry already returns to C consumers.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 

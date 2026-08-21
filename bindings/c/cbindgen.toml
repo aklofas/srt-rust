@@ -70,6 +70,7 @@ trailer = """
 /* Pointer-width-independent layouts (fixed-width integer fields only). */
 _TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_managed_transport_stats_t) == 48, "tst_managed_transport_stats_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
 _TST_ABI_ASSERT(sizeof(tst_stream_codec_stats_t)   == 24, "tst_stream_codec_stats_t size drift: expected 24 bytes");
 _TST_ABI_ASSERT(sizeof(tst_socket_stats_t)         == 120, "tst_socket_stats_t size drift: expected 120 bytes");
@@ -117,6 +118,7 @@ include = [
     "TstKlvStreamType",
     "TstTsFramingMode",
     "TstOverflowPolicy",
+    "TstReconnectMode",
     "TstVideoStreamHandle",
     "TstKlvStreamHandle",
     "TstAudioStreamHandle",
@@ -129,6 +131,7 @@ include = [
     "TstMuxSenderStats",
     "TstSenderStats",
     "TstRawSendStats",
+    "TstManagedTransportStats",
     "TstRawReceiver",
     "TstManagedRawReceiver",
     "TstRawRecvStats",
@@ -181,6 +184,8 @@ include = [
     "TstPublisherKind",
     # RTSP client builder handle (rtp feature — emitted inside #if defined(TST_HAS_RTP))
     "TstRtspClientBuilder",
+    # RTP stream-end reason (rtp feature)
+    "TstStreamEndReason",
     # T10: RTSP server stats structs (rtp feature)
     "TstServerStats",
     "TstMountStats",
@@ -195,6 +200,7 @@ include = [
 "TstKlvStreamType"     = "tst_klv_stream_type"
 "TstTsFramingMode"     = "tst_ts_framing_mode"
 "TstOverflowPolicy"    = "tst_overflow_policy"
+"TstReconnectMode"     = "tst_reconnect_mode"
 # Opaque handles: idiomatic C _t suffix
 "TstMuxer"             = "tst_muxer_t"
 "TstMuxConfig"         = "tst_mux_config_t"
@@ -221,6 +227,7 @@ include = [
 "TstMuxerStats"        = "tst_muxer_stats_t"
 "TstMuxSenderStats"    = "tst_mux_sender_stats_t"
 "TstRawSendStats"    = "tst_raw_send_stats_t"
+"TstManagedTransportStats" = "tst_managed_transport_stats_t"
 # Receiver handles
 "TstRawReceiver"       = "tst_raw_receiver_t"
 "TstManagedRawReceiver" = "tst_managed_raw_receiver_t"
@@ -268,6 +275,9 @@ include = [
 "TstPublisherKind"          = "tst_publisher_kind"
 # RTSP client builder opaque handle
 "TstRtspClientBuilder"      = "tst_rtsp_client_builder_t"
+# RTP stream-end reason discriminator — no _t suffix so prefix_with_name
+# yields clean TST_STREAM_END_REASON_* variants
+"TstStreamEndReason"        = "tst_stream_end_reason"
 # T10: RTSP server stats structs
 "TstServerStats"            = "tst_server_stats_t"
 "TstMountStats"             = "tst_mount_stats_t"

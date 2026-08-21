@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.19` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.20` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -203,7 +203,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 19` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 20` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -322,7 +322,60 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   `tst_muxer_push_video_misp_to_with_dts`, `tst_misp_time_extract`,
 ///   `TST_E_MISP_TIME` (-45), `TST_E_MISP_TIME_MALFORMED` (-46).
 ///   Additive — no struct growth, no signature changes.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 19;
+/// - `20` (bindings-parity bundle, items 7-9, 2026-08-20): four addition
+///   groups, all gated behind their existing feature defines (`TST_HAS_SRT`
+///   / `TST_HAS_RTP` / `TST_HAS_RIST` / `TST_HAS_TCP` / `TST_HAS_UDP` as
+///   applicable) — no existing symbol, signature, or struct layout changed:
+///   - **Background reconnect (item 7):** `TstReconnectMode` enum
+///     (`Blocking = 0`, `Background = 1`) + `tst_reconnect_policy_set_mode`
+///     setter on the opaque `tst_reconnect_policy_t` builder (`TST_HAS_SRT`
+///     — the managed family is SRT-only); the 48-byte
+///     `tst_managed_transport_stats_t` (5×`uint64_t` + `bool` + explicit
+///     7-byte pad, `_Static_assert`-pinned) plus three getters —
+///     `tst_managed_sender_get_reconnect_stats`,
+///     `tst_managed_mux_sender_get_reconnect_stats`,
+///     `tst_managed_raw_sender_get_reconnect_stats` (`TST_HAS_SRT`;
+///     send-side only, matching Rust's `ManagedTransport::stats_handle()` —
+///     the recv-side managed handles get no getter).
+///   - **Stream-end reason (item 8, RTP half):** `TstStreamEndReason` enum
+///     (`None = 0`, `CleanTeardown = 1`, `SessionExpired = 2`,
+///     `KeepaliveFailed = 3`, `TransportFailed = 4`, `ProtocolError = 5`,
+///     `Cancelled = 6`) + `tst_rtp_receiver_end_reason` /
+///     `tst_rtp_demux_receiver_end_reason` getters (`TST_HAS_RTP`).
+///     **Last-error detail contract:** on every call that reports an
+///     *actually-recorded* reason, the getter resets the thread-local
+///     last-error channel to `TST_E_SUCCESS` (0) with either the real
+///     detail message (`KeepaliveFailed` / `TransportFailed` /
+///     `ProtocolError`) or an empty string (every other recorded reason) —
+///     this OVERWRITES any pending failure from an earlier call, so a
+///     caller reading `tst_get_last_error[_str]` after one of these
+///     getters is reading the getter's own outcome, not a stale error. A
+///     `None` result (session hasn't ended) touches last-error not at all.
+///     See `tst_get_last_error`'s doc for the same note. **Forward-compat
+///     wildcard:** a future Rust `StreamEndReason` variant this C binding
+///     doesn't yet know about maps to `TstStreamEndReason::None` until the
+///     C mapping is updated in a later release — same as "ended through a
+///     path this arc doesn't instrument" already means for the Rust side's
+///     own `None`.
+///   - **Per-stream last-seen gauges (item 9):** `tst_*_get_stream_last_seen_micros`
+///     added to all six demux-receiver handle families —
+///     `tst_demux_receiver_*` / `tst_managed_demux_receiver_*` (`TST_HAS_SRT`),
+///     `tst_rist_demux_receiver_*` (`TST_HAS_RIST`),
+///     `tst_rtp_demux_receiver_*` (`TST_HAS_RTP`),
+///     `tst_tcp_demux_receiver_*` (`TST_HAS_TCP`),
+///     `tst_udp_demux_receiver_*` (`TST_HAS_UDP`). Returns a `uint64_t`
+///     Unix epoch microsecond timestamp of the last time the given PID
+///     carried an item through the demuxer; `0` if the PID has never been
+///     observed (mirrors `StreamStats.last_seen: Option<SystemTime>`,
+///     `None` and a pre-epoch clock both collapsing to `0`).
+///   - **RTP receive-deadline parity (item 6, C half — no new symbols):**
+///     the `?recv_timeout=<ms>` URL key (already Rust-core-only prior to
+///     this release) is now honored by `tst_rtp_recv_open` and
+///     `tst_rtp_demux_receiver_open` — deadline expiry surfaces as the
+///     existing `TST_E_BUFFER_FULL` (-4), retryable, exactly like SRT's
+///     recv-deadline expiry already does. Documented on
+///     `tst_rtp_receiver_recv_ts` / `tst_rtp_demux_receiver_next_event`.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 20;
 
 // =========================================================================
 // Runtime version accessors

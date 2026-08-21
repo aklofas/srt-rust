@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 19` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 20` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -175,8 +175,61 @@
  *   `tst_muxer_push_video_misp_to_with_dts`, `tst_misp_time_extract`,
  *   `TST_E_MISP_TIME` (-45), `TST_E_MISP_TIME_MALFORMED` (-46).
  *   Additive — no struct growth, no signature changes.
+ * - `20` (bindings-parity bundle, items 7-9, 2026-08-20): four addition
+ *   groups, all gated behind their existing feature defines (`TST_HAS_SRT`
+ *   / `TST_HAS_RTP` / `TST_HAS_RIST` / `TST_HAS_TCP` / `TST_HAS_UDP` as
+ *   applicable) — no existing symbol, signature, or struct layout changed:
+ *   - **Background reconnect (item 7):** `TstReconnectMode` enum
+ *     (`Blocking = 0`, `Background = 1`) + `tst_reconnect_policy_set_mode`
+ *     setter on the opaque `tst_reconnect_policy_t` builder (`TST_HAS_SRT`
+ *     — the managed family is SRT-only); the 48-byte
+ *     `tst_managed_transport_stats_t` (5×`uint64_t` + `bool` + explicit
+ *     7-byte pad, `_Static_assert`-pinned) plus three getters —
+ *     `tst_managed_sender_get_reconnect_stats`,
+ *     `tst_managed_mux_sender_get_reconnect_stats`,
+ *     `tst_managed_raw_sender_get_reconnect_stats` (`TST_HAS_SRT`;
+ *     send-side only, matching Rust's `ManagedTransport::stats_handle()` —
+ *     the recv-side managed handles get no getter).
+ *   - **Stream-end reason (item 8, RTP half):** `TstStreamEndReason` enum
+ *     (`None = 0`, `CleanTeardown = 1`, `SessionExpired = 2`,
+ *     `KeepaliveFailed = 3`, `TransportFailed = 4`, `ProtocolError = 5`,
+ *     `Cancelled = 6`) + `tst_rtp_receiver_end_reason` /
+ *     `tst_rtp_demux_receiver_end_reason` getters (`TST_HAS_RTP`).
+ *     **Last-error detail contract:** on every call that reports an
+ *     *actually-recorded* reason, the getter resets the thread-local
+ *     last-error channel to `TST_E_SUCCESS` (0) with either the real
+ *     detail message (`KeepaliveFailed` / `TransportFailed` /
+ *     `ProtocolError`) or an empty string (every other recorded reason) —
+ *     this OVERWRITES any pending failure from an earlier call, so a
+ *     caller reading `tst_get_last_error[_str]` after one of these
+ *     getters is reading the getter's own outcome, not a stale error. A
+ *     `None` result (session hasn't ended) touches last-error not at all.
+ *     See `tst_get_last_error`'s doc for the same note. **Forward-compat
+ *     wildcard:** a future Rust `StreamEndReason` variant this C binding
+ *     doesn't yet know about maps to `TstStreamEndReason::None` until the
+ *     C mapping is updated in a later release — same as "ended through a
+ *     path this arc doesn't instrument" already means for the Rust side's
+ *     own `None`.
+ *   - **Per-stream last-seen gauges (item 9):** `tst_*_get_stream_last_seen_micros`
+ *     added to all six demux-receiver handle families —
+ *     `tst_demux_receiver_*` / `tst_managed_demux_receiver_*` (`TST_HAS_SRT`),
+ *     `tst_rist_demux_receiver_*` (`TST_HAS_RIST`),
+ *     `tst_rtp_demux_receiver_*` (`TST_HAS_RTP`),
+ *     `tst_tcp_demux_receiver_*` (`TST_HAS_TCP`),
+ *     `tst_udp_demux_receiver_*` (`TST_HAS_UDP`). Returns a `uint64_t`
+ *     Unix epoch microsecond timestamp of the last time the given PID
+ *     carried an item through the demuxer; `0` if the PID has never been
+ *     observed (mirrors `StreamStats.last_seen: Option<SystemTime>`,
+ *     `None` and a pre-epoch clock both collapsing to `0`).
+ *   - **RTP receive-deadline parity (item 6, C half — no new symbols):**
+ *     the `?recv_timeout=<ms>` URL key (already Rust-core-only prior to
+ *     this release) is now honored by `tst_rtp_recv_open` and
+ *     `tst_rtp_demux_receiver_open` — deadline expiry surfaces as the
+ *     existing `TST_E_BUFFER_FULL` (-4), retryable, exactly like SRT's
+ *     recv-deadline expiry already does. Documented on
+ *     `tst_rtp_receiver_recv_ts` / `tst_rtp_demux_receiver_next_event`.
  */
-#define TST_ABI_VERSION_MINOR 19
+#define TST_ABI_VERSION_MINOR 20
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -257,10 +310,91 @@ typedef enum tst_klv_stream_type {
   TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA = 1,
 } tst_klv_stream_type;
 
+/**
+ * Where a `ManagedTransport`'s reconnect loop runs after the inner
+ * transport breaks.
+ *
+ * - `Blocking` (default): reconnect runs on the caller's thread — a sink
+ *   outage blocks the caller inside a send call until reconnect succeeds
+ *   or `max_attempts` runs out.
+ * - `Background`: reconnect runs on a dedicated per-outage worker thread.
+ *   Sends never wait out backoff or a factory call while the transport is
+ *   down; they enqueue into the gap buffer under the configured overflow
+ *   policy instead. On a managed *receive* open, `Background` is not
+ *   supported: the open logs a warning and degrades to `Blocking`.
+ */
+typedef enum tst_reconnect_mode {
+  TST_RECONNECT_MODE_BLOCKING = 0,
+  TST_RECONNECT_MODE_BACKGROUND = 1,
+} tst_reconnect_mode;
+
 typedef enum tst_overflow_policy {
   TST_OVERFLOW_POLICY_DROP_OLDEST = 0,
   TST_OVERFLOW_POLICY_REJECT = 1,
 } tst_overflow_policy;
+
+#if defined(TST_HAS_RTP)
+/**
+ * Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`
+ * with one addition — `None` (0) — for "hasn't ended yet, or ended
+ * through a path this arc doesn't instrument" (the case
+ * `StreamEndReasonHandle::get()` reports as `Option::None`, e.g. a plain
+ * `rtp://` receiver that was never `_cancel`'d or `_close`'d).
+ * Discriminants 1-6 are cross-surface stable — the Python and JVM
+ * bindings use the same numbering.
+ */
+typedef enum tst_stream_end_reason {
+#if defined(TST_HAS_RTP)
+  /**
+   * The session hasn't ended yet, or ended through a path this arc
+   * doesn't instrument.
+   */
+  TST_STREAM_END_REASON_NONE = 0,
+#endif
+#if defined(TST_HAS_RTP)
+  /**
+   * The peer closed the connection in an orderly way, with no
+   * protocol or transport error.
+   */
+  TST_STREAM_END_REASON_CLEAN_TEARDOWN = 1,
+#endif
+#if defined(TST_HAS_RTP)
+  /**
+   * The server no longer honors the session — a keepalive ping was
+   * answered `454 Session Not Found`.
+   */
+  TST_STREAM_END_REASON_SESSION_EXPIRED = 2,
+#endif
+#if defined(TST_HAS_RTP)
+  /**
+   * The keepalive background thread failed to encode or send a ping.
+   * Detail message: see the getter doc.
+   */
+  TST_STREAM_END_REASON_KEEPALIVE_FAILED = 3,
+#endif
+#if defined(TST_HAS_RTP)
+  /**
+   * A hard I/O error on the underlying transport. Detail message:
+   * see the getter doc.
+   */
+  TST_STREAM_END_REASON_TRANSPORT_FAILED = 4,
+#endif
+#if defined(TST_HAS_RTP)
+  /**
+   * The peer violated the wire protocol. Detail message: see the
+   * getter doc.
+   */
+  TST_STREAM_END_REASON_PROTOCOL_ERROR = 5,
+#endif
+#if defined(TST_HAS_RTP)
+  /**
+   * The caller explicitly cancelled or closed the transport — not a
+   * wire-level failure.
+   */
+  TST_STREAM_END_REASON_CANCELLED = 6,
+#endif
+} tst_stream_end_reason;
+#endif
 
 typedef enum tst_ts_framing_mode {
   TST_TS_FRAMING_MODE_RECOVER = 0,
@@ -1873,6 +2007,52 @@ typedef struct TstHlsStats {
 } TstHlsStats;
 
 /**
+ * `repr(C)` mirror of `tst_pipeline::ManagedTransportStats` — reconnect
+ * telemetry for a managed (auto-reconnecting) sender. Returned by
+ * `tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`. Size 48 B.
+ *
+ * Layout (offsets in bytes — verified by the
+ * `_TST_MANAGED_TRANSPORT_STATS_SIZE` const assertion below):
+ *   0: reconnect_attempts   (u64, 8 B)
+ *   8: reconnect_successes  (u64, 8 B)
+ *  16: gap_len              (u64, 8 B)
+ *  24: gap_messages_dropped (u64, 8 B)
+ *  32: gap_bytes_dropped    (u64, 8 B)
+ *  40: reconnecting         (bool, 1 B)
+ *  41: _pad                 ([u8; 7], 7 B, alignment tail)
+ * Total: 48 B.
+ *
+ * Fields:
+ * - `reconnect_attempts` — total `factory()` invocations across all
+ *   reconnect cycles (successful + failed).
+ * - `reconnect_successes` — factory calls that returned a transport
+ *   successfully installed as the new inner connection.
+ * - `gap_len` — messages currently queued in the gap buffer, awaiting
+ *   drain once the inner transport reconnects.
+ * - `gap_messages_dropped` / `gap_bytes_dropped` — messages/bytes evicted
+ *   by `DropOldest` (plus oversized-after-reconnect drops discovered
+ *   during drain).
+ * - `reconnecting` — true while a background reconnect worker is active
+ *   (`ReconnectMode::Background` only; always `false` in `Blocking` mode).
+ *
+ * All counters are mode-agnostic: `Blocking` mode's inline reconnect loop
+ * bumps `reconnect_attempts`/`reconnect_successes` exactly like
+ * `Background` mode's worker does.
+ */
+typedef struct tst_managed_transport_stats_t {
+  uint64_t reconnect_attempts;
+  uint64_t reconnect_successes;
+  uint64_t gap_len;
+  uint64_t gap_messages_dropped;
+  uint64_t gap_bytes_dropped;
+  bool reconnecting;
+  /**
+   * Alignment padding after the `bool` tail field.
+   */
+  uint8_t _pad[7];
+} tst_managed_transport_stats_t;
+
+/**
  * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6192 B
  * (4×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see
  * the `_TST_MUX_SENDER_STATS_SIZE` const assertion below.
@@ -2188,6 +2368,14 @@ uint32_t tst_get_abi_version_minor(void);
  * recent failure on this thread (or `TST_E_SUCCESS` if there has been
  * none since thread start).
  *
+ * **Exception — the RTP end-reason getters:** `tst_rtp_receiver_end_reason`
+ * and `tst_rtp_demux_receiver_end_reason` reset this to `TST_E_SUCCESS`
+ * (with a detail message on [`tst_get_last_error_str`], possibly empty)
+ * EVERY time they report an actually-recorded end reason — even though
+ * they are not themselves failing; see their doc for the full contract.
+ * A pending failure from an earlier call must be read before calling
+ * one of those getters, or it is overwritten.
+ *
  * **Storage:** per-thread (`thread_local!`) under the default `std` build
  * (the desktop cdylib/staticlib — the per-thread wording above is exact).
  * In a `no_std` build the slot is instead a single **process-global**
@@ -2202,6 +2390,12 @@ int tst_get_last_error(void);
  * Pointer to the most recent error message on this thread. Valid until
  * the next tst-c call on the same thread. Never NULL — empty string when
  * no error.
+ *
+ * **Exception — the RTP end-reason getters:** see the note on
+ * [`tst_get_last_error`] — `tst_rtp_receiver_end_reason` and
+ * `tst_rtp_demux_receiver_end_reason` overwrite this message (to the
+ * recorded reason's detail, or an empty string when the reason carries
+ * none) on every call that reports an actually-recorded reason.
  *
  * **`no_std` builds:** the backing slot is process-global rather than
  * per-thread (see [`tst_get_last_error`]), so "the next tst-c call"
@@ -2318,6 +2512,29 @@ int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Snapshot reconnect/gap telemetry for a `tst_managed_mux_sender_t` into
+ * `*out`. Unlike [`tst_managed_mux_sender_get_socket_stats`], this never
+ * returns `TST_E_NOT_AVAILABLE` — the counters live on the side-channel
+ * `ManagedStatsHandle`, which stays readable across reconnect gaps.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_CLOSED` if the sender has been closed, or `TST_E_INTERNAL` if the
+ * gap-buffer lock is poisoned (see `ManagedTransport`'s lock poisoning
+ * policy — a prior panic mid-drain).
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedMuxSender` opened via
+ * `tst_managed_mux_sender_open` and `out` points to a writable
+ * `tst_managed_transport_stats_t`.
+ */
+
+int tst_managed_mux_sender_get_reconnect_stats(struct tst_managed_mux_sender_t *p,
+                                               struct tst_managed_transport_stats_t *out);
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -3815,6 +4032,29 @@ int tst_managed_sender_flush(struct tst_managed_sender_t *p);
 
 #if defined(TST_HAS_SRT)
 /**
+ * Snapshot reconnect/gap telemetry for a `tst_managed_sender_t` into
+ * `*out`. Unlike [`tst_managed_sender_get_socket_stats`], this never
+ * returns `TST_E_NOT_AVAILABLE` — the counters live on the side-channel
+ * `ManagedStatsHandle`, which stays readable across reconnect gaps.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_CLOSED` if the sender has been closed, or `TST_E_INTERNAL` if the
+ * gap-buffer lock is poisoned (see `ManagedTransport`'s lock poisoning
+ * policy — a prior panic mid-drain).
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedSender` opened via
+ * `tst_managed_sender_open` and `out` points to a writable
+ * `tst_managed_transport_stats_t`.
+ */
+
+int tst_managed_sender_get_reconnect_stats(struct tst_managed_sender_t *p,
+                                           struct tst_managed_transport_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
  * Managed sibling of [`tst_sender_get_socket_stats`]. Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
  * inner socket.
@@ -3978,6 +4218,29 @@ int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Snapshot reconnect/gap telemetry for a `tst_managed_raw_sender_t` into
+ * `*out`. Unlike [`tst_managed_raw_sender_get_socket_stats`], this never
+ * returns `TST_E_NOT_AVAILABLE` — the counters live on the side-channel
+ * `ManagedStatsHandle`, which stays readable across reconnect gaps.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_CLOSED` if the sender has been closed, or `TST_E_INTERNAL` if the
+ * gap-buffer lock is poisoned (see `ManagedTransport`'s lock poisoning
+ * policy — a prior panic mid-drain).
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedRawSender` opened via
+ * `tst_managed_raw_sender_open` and `out` points to a writable
+ * `tst_managed_transport_stats_t`.
+ */
+
+int tst_managed_raw_sender_get_reconnect_stats(struct tst_managed_raw_sender_t *p,
+                                               struct tst_managed_transport_stats_t *out);
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -4367,6 +4630,28 @@ int tst_demux_receiver_get_stream_codec_stats(struct tst_demux_receiver_t *p,
 
 #if defined(TST_HAS_SRT)
 /**
+ * Read the Unix-epoch microsecond timestamp of the last item observed
+ * on `pid` (video/KLV/audio/PSI — any elementary stream tracked in
+ * per-stream stats) into `*out_epoch_micros`.
+ *
+ * `*out_epoch_micros` is `0` when `pid` has never been observed on this
+ * handle — unknown pid and "never seen" are indistinguishable (both mean
+ * "nothing to report yet") and this getter never errors on either case.
+ * This lets a caller poll per-PID staleness (e.g. a watchdog checking
+ * "has this stream gone quiet") with a single lock/lookup instead of
+ * holding a `_get_stream_stats` snapshot open.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, `TST_E_CLOSED` if the receiver has been closed.
+ */
+
+int tst_demux_receiver_get_stream_last_seen_micros(struct tst_demux_receiver_t *p,
+                                                   uint16_t pid,
+                                                   uint64_t *out_epoch_micros);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
  * Snapshot per-PID stats for a `tst_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
  * pair borrowing that buffer.
@@ -4659,6 +4944,18 @@ int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
 int tst_managed_demux_receiver_get_stream_codec_stats(struct tst_managed_demux_receiver_t *p,
                                                       uint16_t pid,
                                                       struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Managed sibling of [`tst_demux_receiver_get_stream_last_seen_micros`](super::stats::tst_demux_receiver_get_stream_last_seen_micros).
+ * Same semantics — `*out_epoch_micros` is `0` for a pid never observed on
+ * this handle, 0 on success otherwise.
+ */
+
+int tst_managed_demux_receiver_get_stream_last_seen_micros(struct tst_managed_demux_receiver_t *p,
+                                                           uint16_t pid,
+                                                           uint64_t *out_epoch_micros);
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -6456,6 +6753,12 @@ int tst_reconnect_policy_set_gap_buffer_capacity(struct tst_reconnect_policy_t *
  */
 int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int32_t n);
 
+/**
+ * Set the reconnect-loop placement. See `TstReconnectMode` for the
+ * semantics of each mode. Default: `Blocking`.
+ */
+int tst_reconnect_policy_set_mode(struct tst_reconnect_policy_t *p, enum tst_reconnect_mode mode);
+
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
@@ -6527,6 +6830,29 @@ int tst_rist_demux_receiver_get_stats(struct TstRistDemuxReceiver *p,
 int tst_rist_demux_receiver_get_stream_codec_stats(struct TstRistDemuxReceiver *p,
                                                    uint16_t pid,
                                                    struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_RIST)
+/**
+ * Read the Unix-epoch microsecond timestamp of the last item observed
+ * on `pid` into `*out_epoch_micros`. `0` when `pid` has never been
+ * observed on this handle (see
+ * [`tst_demux_receiver_get_stream_last_seen_micros`](crate::receiver::demux_receiver::tst_demux_receiver_get_stream_last_seen_micros)
+ * for full semantics — same shape, different handle type).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistDemuxReceiver` opened via
+ * `tst_rist_demux_receiver_open`. `out_epoch_micros` must point to a
+ * writable `u64`.
+ */
+
+int tst_rist_demux_receiver_get_stream_last_seen_micros(struct TstRistDemuxReceiver *p,
+                                                        uint16_t pid,
+                                                        uint64_t *out_epoch_micros);
 #endif
 
 #if defined(TST_HAS_RIST)
@@ -7135,6 +7461,51 @@ int tst_rist_sender_send_ts(struct TstRistSender *p, const uint8_t *bytes, size_
 
 #if defined(TST_HAS_RTP)
 /**
+ * Read the recorded reason this `tst_rtp_demux_receiver_t` receive
+ * session ended, if any.
+ *
+ * Writes `TstStreamEndReason::None` (returns `0`) when the session
+ * hasn't ended yet, or ended through a path this arc doesn't
+ * instrument — and in that case the thread-local last-error channel is
+ * left untouched (any pending failure from an earlier call is still
+ * readable). A recorded reason is data, not a getter failure — this
+ * only returns a nonzero code for a null-pointer argument.
+ *
+ * **Last-error side effect on every ACTUALLY-recorded reason:** unlike
+ * the "hasn't ended" case above, once the session has ended this getter
+ * unconditionally resets the thread-local last-error channel to
+ * `TST_E_SUCCESS` with a detail message — the `KeepaliveFailed` /
+ * `TransportFailed` / `ProtocolError` reasons write their underlying
+ * detail; `CleanTeardown` / `SessionExpired` / `Cancelled` write an
+ * EMPTY message (so `tst_get_last_error_str()` never carries a stale
+ * message left over from some earlier, unrelated failure once a reason
+ * has been recorded). Read any pending failure from an earlier call
+ * BEFORE calling this getter, or it is overwritten — see the exception
+ * noted on [`crate::error::tst_get_last_error`].
+ *
+ * Side-channel: reads directly off the end-reason handle captured at
+ * open/conversion time WITHOUT acquiring this handle's data-path Mutex —
+ * same rationale as `tst_rtp_demux_receiver_cancel` (a concurrent
+ * `_next_event` may be blocked holding it). This is what makes the
+ * getter safe to poll from a watchdog thread while another thread
+ * drives `_next_event`. One consequence: this call never itself
+ * returns `TST_E_CLOSED` — after `_close` the whole handle is freed,
+ * and calling anything on it, including this getter, is a
+ * use-after-free the caller must avoid.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRtpDemuxReceiver` opened via
+ * `tst_rtp_demux_receiver_open` or `tst_rtsp_session_into_demux_receiver`.
+ * `out` must point to a writable `TstStreamEndReason`.
+ */
+
+int tst_rtp_demux_receiver_end_reason(struct TstRtpDemuxReceiver *p,
+                                      enum tst_stream_end_reason *out);
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
  * Read wire-level transport stats for the underlying RTP socket.
  *
  * `out` MUST point to a writable `TstSocketStats`; the function zeros
@@ -7204,6 +7575,29 @@ int tst_rtp_demux_receiver_get_stream_codec_stats(struct TstRtpDemuxReceiver *p,
 
 #if defined(TST_HAS_RTP)
 /**
+ * Read the Unix-epoch microsecond timestamp of the last item observed
+ * on `pid` into `*out_epoch_micros`. `0` when `pid` has never been
+ * observed on this handle (see
+ * [`tst_demux_receiver_get_stream_last_seen_micros`](crate::receiver::demux_receiver::tst_demux_receiver_get_stream_last_seen_micros)
+ * for full semantics — same shape, different handle type).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRtpDemuxReceiver` opened via
+ * `tst_rtp_demux_receiver_open`. `out_epoch_micros` must point to a
+ * writable `u64`.
+ */
+
+int tst_rtp_demux_receiver_get_stream_last_seen_micros(struct TstRtpDemuxReceiver *p,
+                                                       uint16_t pid,
+                                                       uint64_t *out_epoch_micros);
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
  * Snapshot per-PID stats for a `tst_rtp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
  * pair borrowing that buffer.
@@ -7246,6 +7640,10 @@ int tst_rtp_demux_receiver_get_stream_stats(struct TstRtpDemuxReceiver *p,
  * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
  * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
  * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_BUFFER_FULL` (-4) if the receiver was opened with
+ *   `?recv_timeout=<ms>` and no event arrived before the configured
+ *   deadline — retryable, the session stays alive (the same code SRT's
+ *   recv-deadline expiry already returns to C consumers)
  * - `TST_E_INVALID_TS` (-3) on a demuxer error
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
  *
@@ -7269,6 +7667,9 @@ int tst_rtp_demux_receiver_next_event(struct TstRtpDemuxReceiver *p,
  * address (`rtp://239.0.0.1:port?iface=eth0`).
  *
  * `?pkt_size=` is send-side only and is rejected on receive URLs.
+ *
+ * `?recv_timeout=<ms>` configures a persistent receive deadline (see
+ * [`tst_rtp_demux_receiver_next_event`]'s doc for how expiry surfaces).
  *
  * # Safety
  *
@@ -7574,6 +7975,50 @@ int tst_rtp_mux_sender_reset_stats(struct TstRtpMuxSender *p);
 
 #if defined(TST_HAS_RTP)
 /**
+ * Read the recorded reason this `tst_rtp_receiver_t` receive session
+ * ended, if any.
+ *
+ * Writes `TstStreamEndReason::None` (returns `0`) when the session
+ * hasn't ended yet, or ended through a path this arc doesn't
+ * instrument (e.g. a plain `rtp://` receiver that was never `_cancel`'d
+ * or `_close`'d) — and in that case the thread-local last-error channel
+ * is left untouched (any pending failure from an earlier call is still
+ * readable). A recorded reason is data, not a getter failure — this
+ * only returns a nonzero code for a null-pointer argument.
+ *
+ * **Last-error side effect on every ACTUALLY-recorded reason:** unlike
+ * the "hasn't ended" case above, once the session has ended this getter
+ * unconditionally resets the thread-local last-error channel to
+ * `TST_E_SUCCESS` with a detail message — the `KeepaliveFailed` /
+ * `TransportFailed` / `ProtocolError` reasons write their underlying
+ * detail; `CleanTeardown` / `SessionExpired` / `Cancelled` write an
+ * EMPTY message (so `tst_get_last_error_str()` never carries a stale
+ * message left over from some earlier, unrelated failure once a reason
+ * has been recorded). Read any pending failure from an earlier call
+ * BEFORE calling this getter, or it is overwritten — see the exception
+ * noted on [`crate::error::tst_get_last_error`].
+ *
+ * Side-channel: reads directly off the end-reason handle captured at
+ * `_open` time WITHOUT acquiring this handle's data-path Mutex — same
+ * rationale as `tst_rtp_receiver_cancel` (a concurrent `_recv_ts` may
+ * be blocked holding it). This is what makes the getter safe to poll
+ * from a watchdog thread while another thread drives `_recv_ts`. One
+ * consequence: this call never itself returns `TST_E_CLOSED` — after
+ * `_close` the whole handle is freed, and calling anything on it,
+ * including this getter, is a use-after-free the caller must avoid
+ * (not something this function can detect from a dangling pointer).
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRtpReceiver` opened via
+ * `tst_rtp_recv_open`. `out` must point to a writable
+ * `TstStreamEndReason`.
+ */
+int tst_rtp_receiver_end_reason(struct TstRtpReceiver *p, enum tst_stream_end_reason *out);
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
  * Read wire-level transport stats for the underlying RTP socket.
  *
  * `out` MUST point to a writable `TstSocketStats`; the function zeros
@@ -7621,6 +8066,10 @@ int tst_rtp_receiver_get_stats(struct TstRtpReceiver *p, struct tst_receiver_sta
  * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
  * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
  * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_BUFFER_FULL` (-4) if the receiver was opened with
+ *   `?recv_timeout=<ms>` and no packet arrived before the configured
+ *   deadline — retryable, the session stays alive (the same code SRT's
+ *   recv-deadline expiry already returns to C consumers)
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments or too-small buffer
  *
  * # Safety
@@ -7662,6 +8111,9 @@ int tst_rtp_receiver_reset_stats(struct TstRtpReceiver *p);
  * Port `0` causes the kernel to assign an ephemeral port.
  *
  * `?pkt_size=` is send-side only and is rejected on receive URLs.
+ *
+ * `?recv_timeout=<ms>` configures a persistent receive deadline (see
+ * [`tst_rtp_receiver_recv_ts`]'s doc for how expiry surfaces).
  *
  * # Safety
  *
@@ -7904,6 +8356,12 @@ void tst_rtsp_client_builder_keepalive(struct tst_rtsp_client_builder_t *builder
  * `rtsps://`) TLS root certificates may be set with the `_transport_pref`,
  * `_auth_*`, `_keepalive`, and `_tls_root_cert_pem` setters before calling
  * `tst_rtsp_client_builder_connect` (Task 6) to open a live session.
+ *
+ * `?recv_timeout=<ms>` on `url` configures a persistent receive deadline
+ * on the transport `tst_rtsp_session_into_demux_receiver` returns —
+ * expiry surfaces through `tst_rtp_demux_receiver_next_event` as
+ * `TST_E_BUFFER_FULL` (-4), retryable. Client-local — never rendered
+ * onto the RTSP request line.
  *
  * Returns a non-NULL builder pointer on success, or NULL with the
  * thread-local last-error populated on failure (bad URL, allocation
@@ -8946,6 +9404,29 @@ int tst_tcp_demux_receiver_get_stream_codec_stats(struct TstTcpDemuxReceiver *p,
 
 #if defined(TST_HAS_TCP)
 /**
+ * Read the Unix-epoch microsecond timestamp of the last item observed
+ * on `pid` into `*out_epoch_micros`. `0` when `pid` has never been
+ * observed on this handle (see
+ * [`tst_demux_receiver_get_stream_last_seen_micros`](crate::receiver::demux_receiver::tst_demux_receiver_get_stream_last_seen_micros)
+ * for full semantics — same shape, different handle type).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpDemuxReceiver` opened via
+ * `tst_tcp_demux_receiver_open`. `out_epoch_micros` must point to a
+ * writable `u64`.
+ */
+
+int tst_tcp_demux_receiver_get_stream_last_seen_micros(struct TstTcpDemuxReceiver *p,
+                                                       uint16_t pid,
+                                                       uint64_t *out_epoch_micros);
+#endif
+
+#if defined(TST_HAS_TCP)
+/**
  * Snapshot per-PID stats for a `tst_tcp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
  * pair borrowing that buffer.
@@ -9684,6 +10165,29 @@ int tst_udp_demux_receiver_get_stream_codec_stats(struct TstUdpDemuxReceiver *p,
 
 #if defined(TST_HAS_UDP)
 /**
+ * Read the Unix-epoch microsecond timestamp of the last item observed
+ * on `pid` into `*out_epoch_micros`. `0` when `pid` has never been
+ * observed on this handle (see
+ * [`tst_demux_receiver_get_stream_last_seen_micros`](crate::receiver::demux_receiver::tst_demux_receiver_get_stream_last_seen_micros)
+ * for full semantics — same shape, different handle type).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
+ * `tst_udp_demux_receiver_open`. `out_epoch_micros` must point to a
+ * writable `u64`.
+ */
+
+int tst_udp_demux_receiver_get_stream_last_seen_micros(struct TstUdpDemuxReceiver *p,
+                                                       uint16_t pid,
+                                                       uint64_t *out_epoch_micros);
+#endif
+
+#if defined(TST_HAS_UDP)
+/**
  * Snapshot per-PID stats for a `tst_udp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
  * pair borrowing that buffer.
@@ -10291,6 +10795,7 @@ int tst_udp_sender_send_ts(struct TstUdpSender *p, const uint8_t *bytes, size_t 
 /* Pointer-width-independent layouts (fixed-width integer fields only). */
 _TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_managed_transport_stats_t) == 48, "tst_managed_transport_stats_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
 _TST_ABI_ASSERT(sizeof(tst_stream_codec_stats_t)   == 24, "tst_stream_codec_stats_t size drift: expected 24 bytes");
 _TST_ABI_ASSERT(sizeof(tst_socket_stats_t)         == 120, "tst_socket_stats_t size drift: expected 120 bytes");

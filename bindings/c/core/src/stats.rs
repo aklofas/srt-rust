@@ -378,6 +378,12 @@ const _TST_MANAGED_TRANSPORT_STATS_SIZE: () = assert!(
     "TstManagedTransportStats must be 48 bytes (5×u64 + bool + 7 pad)"
 );
 
+// `tst_pipeline::ManagedTransportStats` is itself `#[cfg(feature = "std")]`
+// (the background-reconnect machinery it describes is threading-based) —
+// this impl is the only thing in this file that touches it, so it alone
+// needs the gate; the plain-integer `TstManagedTransportStats` struct
+// above stays available (and its size assert stays checked) under no_std.
+#[cfg(feature = "std")]
 impl From<&tst_pipeline::ManagedTransportStats> for TstManagedTransportStats {
     fn from(s: &tst_pipeline::ManagedTransportStats) -> Self {
         Self {

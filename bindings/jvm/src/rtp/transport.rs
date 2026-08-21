@@ -16,10 +16,10 @@ use std::time::Duration;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
-use jni::sys::{jbyteArray, jint, jlong};
+use jni::sys::{jbyteArray, jint, jlong, jobjectArray};
 use tst_core::transport::{RecvTransport, Transport, TransportCancel};
 use tst_rtp::builder::RtpRecvSocketBuilder;
-use tst_rtp::{RtpRecvTransport, RtpSocketBuilder, RtpTransport};
+use tst_rtp::{RtpRecvTransport, RtpSocketBuilder, RtpTransport, StreamEndReasonHandle};
 
 use super::JniRtpCancel;
 use super::errors::{connect_error_to_rtp, throw_rtp, transport_error_to_rtp};
@@ -34,6 +34,14 @@ struct JniRtpSender {
 struct JniRtpReceiver {
     inner: RtpRecvTransport,
     cancel: Arc<dyn TransportCancel + Send + Sync>,
+    /// Pulled from `inner.end_reason_handle()` at construction — cheap to
+    /// clone, independent of `inner`'s lifetime within this struct. Read by
+    /// `nEndReason`/`nEndDetail` while the registry entry is live; `nClose`
+    /// reads it once more (after `inner.close()` records `Cancelled` if
+    /// nothing else already claimed the slot) to build the close-time
+    /// snapshot — see `end_reason`'s module doc for why that has to happen
+    /// inside `nClose` itself.
+    end_reason: StreamEndReasonHandle,
     scratch: Vec<u8>,
 }
 
@@ -237,10 +245,15 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nFromUrl(
             .cancel_handle()
             .expect("RtpRecvTransport always returns Some(cancel_handle)");
         let cancel_for_hook = cancel.clone();
+        // Pulled BEFORE `inner` is boxed into the registry entry alongside
+        // it — same construction-time-capture shape as `cancel` above (and
+        // the D5 `stats_handle` precedent in srt::managed_basic).
+        let end_reason = inner.end_reason_handle();
         REGISTRY_RECEIVER.insert_with_cancel(
             JniRtpReceiver {
                 inner,
                 cancel,
+                end_reason,
                 scratch: vec![0u8; scratch_len],
             },
             Some(Box::new(move || cancel_for_hook.cancel())),
@@ -379,19 +392,81 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nCancelHandle(
     })
 }
 
+/// Why the receive session ended, or `-1` if it hasn't ended yet (or ended
+/// through a path this arc doesn't instrument). See `end_reason`'s module
+/// doc for the wire-ordinal convention. Returns `-1` on a closed/absent
+/// handle rather than throwing (matches `endReason()`'s post-close-snapshot
+/// contract — the closed case never reaches this native at all, since
+/// `Receiver.endReason()` reads the Java-side snapshot once `peekHandle()`
+/// is 0).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_Receiver_nEndReason(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jint {
+    crate::panic::jni_catch(&mut env, -1, |_env| {
+        REGISTRY_RECEIVER
+            .with(handle as u64, |w| {
+                super::end_reason::end_reason_ordinal(w.end_reason.get().as_ref())
+            })
+            .unwrap_or(-1)
+    })
+}
+
+/// Free-text detail for `nEndReason` — the `msg` carried by
+/// `KEEPALIVE_FAILED` / `TRANSPORT_FAILED` / `PROTOCOL_ERROR`; `null` for
+/// every other reason (including "hasn't ended yet" and a closed/absent
+/// handle).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_Receiver_nEndDetail<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let detail = REGISTRY_RECEIVER
+            .with(handle as u64, |w| {
+                w.end_reason
+                    .get()
+                    .and_then(|r| super::end_reason::end_reason_detail(&r).map(str::to_owned))
+            })
+            .flatten();
+        match detail {
+            Some(d) => match env.new_string(&d) {
+                Ok(s) => s.into(),
+                Err(_) => JObject::null(),
+            },
+            None => JObject::null(),
+        }
+    })
+}
+
 /// Close the Receiver, freeing the native box. The cancel hook fires first
 /// (waking a parked `recv`) before the resource is taken — mirrors tst-py
 /// `PyReceiver.close`.
+///
+/// Returns the 2-element close-time end-reason snapshot (see `end_reason`'s
+/// module doc) — computed here, from the resource this call already
+/// exclusively owns, because the registry entry (and with it any further
+/// `nEndReason`/`nEndDetail` calls on this handle) is gone once this
+/// function returns.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Receiver_nClose(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) {
+) -> jobjectArray {
     // Atomic + idempotent: cancel hook wakes a parked recv, then take + teardown.
-    crate::panic::jni_catch(&mut env, (), |_env| {
-        if let Some(mut w) = REGISTRY_RECEIVER.close(handle as u64) {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let reason = if let Some(mut w) = REGISTRY_RECEIVER.close(handle as u64) {
             w.inner.close();
-        }
+            w.end_reason.get()
+        } else {
+            None
+        };
+        super::end_reason::build_close_snapshot(env, reason)
+            .map(|arr| arr.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     })
 }

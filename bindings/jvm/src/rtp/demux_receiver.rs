@@ -371,6 +371,38 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nStats<'local>(
     })
 }
 
+/// `nLastSeenMicros(handle, pid)` — Unix-epoch microsecond timestamp the stream
+/// identified by `pid` last carried a demuxed item through this receiver
+/// (last emitted event); `-1` if `pid` was never seen — including an
+/// unrecognized PID (no range check beyond the native `u16` truncating cast,
+/// same as `pmtPid`/`pcrPid` elsewhere in this binding) — or a timestamp
+/// predating the Unix epoch. Boxed to `Long` (`null` for `-1`) at the Java
+/// layer. Same registry-lock discipline as `nStats`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nLastSeenMicros(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    pid: jint,
+) -> jlong {
+    crate::panic::jni_catch(&mut env, -1, |env| {
+        let Some(last_seen) = REGISTRY.with(handle as u64, |jdr| {
+            jdr.inner
+                .stats()
+                .per_stream
+                .get(&(pid as u16))
+                .and_then(|s| s.last_seen)
+        }) else {
+            crate::error::throw_closed(env, "DemuxReceiver");
+            return -1;
+        };
+        last_seen
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_micros() as i64)
+            .unwrap_or(-1)
+    })
+}
+
 /// `nEndReason(handle)` — why the receive session ended, as the wire-pinned
 /// ordinal (see `end_reason`'s module doc); `-1` if it hasn't ended yet, or
 /// on a closed/absent handle (the closed case never reaches this native —

@@ -205,7 +205,7 @@ impl From<RustReconnectMode> for PyReconnectMode {
         match m {
             RustReconnectMode::Blocking => PyReconnectMode::BLOCKING,
             RustReconnectMode::Background => PyReconnectMode::BACKGROUND,
-            // `ReconnectMode` is #[non_exhaustive] on the Rust side (room
+            // `ReconnectMode` is non-exhaustive on the Rust side (room
             // for future modes); default to BLOCKING for any variant this
             // binding doesn't know about yet rather than panicking.
             _ => PyReconnectMode::BLOCKING,

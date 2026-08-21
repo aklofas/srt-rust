@@ -34,7 +34,7 @@ use crate::stream_end_reason::TstStreamEndReason;
 /// failure, so `tst_get_last_error() == 0` still holds for callers using
 /// that as a "did the last call succeed" check). `KeepaliveFailed` /
 /// `TransportFailed` / `ProtocolError` write their `msg` detail; every
-/// other arm (including the `#[non_exhaustive]` fallback) writes an
+/// other arm (including the non-exhaustive fallback) writes an
 /// EMPTY message — so `tst_get_last_error_str()` always reflects THIS call
 /// once a reason has been recorded, never a stale message left over
 /// from some earlier, unrelated failure.
@@ -50,7 +50,7 @@ pub(crate) fn convert_end_reason(r: &StreamEndReason) -> TstStreamEndReason {
         }
         StreamEndReason::ProtocolError { msg } => (TstStreamEndReason::ProtocolError, msg.as_str()),
         StreamEndReason::Cancelled => (TstStreamEndReason::Cancelled, ""),
-        // StreamEndReason is #[non_exhaustive] on the tst-rtp side. A
+        // StreamEndReason is non-exhaustive on the tst-rtp side. A
         // future variant this binding doesn't know how to map yet
         // degrades to None with an empty detail rather than panicking —
         // "ended through a path this arc doesn't instrument" is exactly

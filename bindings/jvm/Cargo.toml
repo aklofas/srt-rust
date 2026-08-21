@@ -55,6 +55,14 @@ tst-rtp = { path = "../../crates/tst-rtp", default-features = false, features = 
 # (mirrors tst-py's rtp feature: dep:secrecy). Workspace-pinned (0.10).
 secrecy = { workspace = true }
 
+# `TSTRANS_LOG` bridge (Task D8) — the Rust core emits `tracing` events
+# that are otherwise silently discarded because nothing installs a
+# subscriber inside the JVM cdylib. Not optional/feature-gated: the
+# bridge itself is always compiled in, but only installs a subscriber
+# at runtime when `TSTRANS_LOG` is set (see `lib.rs`). Mirrors tst-py's
+# identical dependency (Task C7).
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
 [dependencies.rustls]
 version          = "0.23"
 default-features = false
@@ -62,3 +70,10 @@ features         = ["std", "ring"]
 
 [dependencies.rustls-pemfile]
 version = "2"
+
+[dev-dependencies]
+# Test-only: `lib.rs`'s init_tracing_bridge test asserts on
+# `tracing::dispatcher::has_been_set()`, which needs `tracing` in scope
+# (tracing-subscriber does not re-export it). Same version pin as
+# tst-rtp/tst-pipeline.
+tracing = { version = "0.1", default-features = false, features = ["std"] }

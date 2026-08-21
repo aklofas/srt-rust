@@ -96,6 +96,72 @@ def test_h264_receiver_single_au_loopback() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# 1b. Per-call timeout_ms                                                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_h264_receiver_recv_au_per_call_timeout_ms_raises_and_recovers() -> None:
+    """`recv_au(timeout_ms=N)` bounds a single call. A quiet socket raises
+    `RtpError(TIMEOUT)`; a real AU is still deliverable afterward on the
+    same receiver, proving the session stayed alive (retryable contract)."""
+    rx = tstrans.rtp.H264Receiver.listen("rtp://127.0.0.1:0?pt=96")
+    addr_str = rx.local_addr()
+    assert addr_str is not None
+    host, _, port_str = addr_str.rpartition(":")
+    port = int(port_str)
+
+    with pytest.raises(RtpError) as exc_info:
+        rx.recv_au(timeout_ms=200)
+    assert exc_info.value.kind == RtpErrorKind.TIMEOUT
+
+    # Hand-built IDR packet, identical layout to test_h264_receiver_single_au_loopback.
+    pkt = bytes([
+        0x80, 0x80 | 96,
+        0, 1,              # seq = 1
+        0, 0, 0x23, 0x28,  # ts = 9000
+        0, 0, 0, 9,        # ssrc = 9
+        0x65, 0xAB, 0xCD,  # IDR NALU
+    ])
+    tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    tx.sendto(pkt, (host, port))
+    tx.close()
+
+    au = rx.recv_au(timeout_ms=2000)
+    assert au is not None, "recv_au(timeout_ms=...) must still receive a real AU"
+    assert au.key_frame is True
+
+    rx.close()
+
+
+def test_h264_receiver_recv_au_timeout_ms_default_none_is_blocking() -> None:
+    """`recv_au()` with no args (`timeout_ms=None`) keeps the pre-existing
+    indefinite-block contract, called explicitly with `timeout_ms=None`
+    here to pin the default's identity."""
+    rx = tstrans.rtp.H264Receiver.listen("rtp://127.0.0.1:0?pt=96")
+    addr_str = rx.local_addr()
+    assert addr_str is not None
+    host, _, port_str = addr_str.rpartition(":")
+    port = int(port_str)
+
+    pkt = bytes([
+        0x80, 0x80 | 96,
+        0, 1,
+        0, 0, 0x23, 0x28,
+        0, 0, 0, 9,
+        0x65, 0xAB, 0xCD,
+    ])
+    tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    tx.sendto(pkt, (host, port))
+    tx.close()
+
+    au = rx.recv_au(timeout_ms=None)
+    assert au is not None
+    assert au.key_frame is True
+
+    rx.close()
+
+
+# --------------------------------------------------------------------------- #
 # 2. Iterator protocol                                                          #
 # --------------------------------------------------------------------------- #
 

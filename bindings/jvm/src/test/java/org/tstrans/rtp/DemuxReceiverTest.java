@@ -113,6 +113,13 @@ class DemuxReceiverTest {
      * microsecond count for the configured video PID once at least one event
      * has been demuxed. Reuses the same bind-retry + {@code MuxSender} burst
      * fixture as {@link #recvEventPersistentTimeoutRaisesCheckedTimeoutThenDeliversRealEvent}.
+     *
+     * <p>Binds with {@code ?recv_timeout=2000} as a backstop: {@code @Timeout}
+     * runs in {@code SAME_THREAD} mode by default and cannot interrupt a
+     * blocked native {@code recvEvent()} call, so a regression that stops the
+     * Video event from ever arriving must surface as a checked {@code
+     * RtpException(TIMEOUT)} test failure (propagated, uncaught) rather than
+     * wedging the gradle {@code test} task indefinitely.
      */
     @Test
     @Timeout(20)
@@ -125,7 +132,7 @@ class DemuxReceiverTest {
         for (int attempt = 0; attempt < 8 && rx == null; attempt++) {
             int candidate = freeUdpPort();
             try {
-                rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:" + candidate);
+                rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:" + candidate + "?recv_timeout=2000");
                 port = candidate;
             } catch (RtpException bindCollision) {
                 // port+1 (the RTCP companion) was taken; try a different ephemeral port.

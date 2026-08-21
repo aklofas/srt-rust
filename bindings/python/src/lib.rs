@@ -32,11 +32,32 @@ mod pipeline;
 
 use pyo3::prelude::*;
 
+/// `TSTRANS_LOG` bridge (Task C7) — the Rust core (`tst-core`/`tst-rtp`/
+/// `tst-pipeline`) emits `tracing` events, but embedding them in a
+/// Python process installs no subscriber, so every `info!`/`warn!`/
+/// `debug!` call is silently discarded — a field integrator lost a
+/// diagnosis day to exactly this. Iff `TSTRANS_LOG` is set at import
+/// time, install a stderr subscriber filtered by its value (the same
+/// syntax as `RUST_LOG`/`EnvFilter`); unset ⇒ install nothing, so a
+/// bare `import tstrans` has zero subscriber overhead beyond the env
+/// lookup. `try_init` (not `init`) so an embedding process that already
+/// installed its own subscriber keeps it — this bridge never displaces
+/// one.
+fn init_tracing_bridge() {
+    if let Ok(filter) = std::env::var("TSTRANS_LOG") {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+            .with_writer(std::io::stderr)
+            .try_init();
+    }
+}
+
 // `_py` is prefixed because it is not used directly in this
 // registration shell. CI runs `clippy -D warnings` so an unprefixed
 // unused parameter would fail the workspace.
 #[pymodule]
 fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    init_tracing_bridge();
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(errors::raise_mux_error_for_test, m)?)?;
     #[cfg(feature = "rtp")]

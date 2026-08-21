@@ -58,7 +58,7 @@ use crate::srt::errors::{
     accept_error_to_pyerr, bind_error_to_pyerr, connect_error_to_pyerr, transport_error_to_pyerr,
     url_error_to_pyerr,
 };
-use crate::srt::policy::PyReconnectPolicy;
+use crate::srt::policy::{PyManagedTransportStats, PyReconnectPolicy};
 use crate::srt::transport::{PyCancelHandle, PySocketStats};
 
 // ---------------------------------------------------------------------------
@@ -175,6 +175,10 @@ pub(crate) struct PyManagedMuxSender {
     /// inside the captured `Fn() -> Result<...>` closure by every
     /// `ManagedTransport::reconnect_and_drain` retry tick.
     factory_attempts: Arc<AtomicU64>,
+    /// Reconnect/gap telemetry observer, snapshotted from the
+    /// `ManagedTransport` BEFORE it moves into `RustMuxSender::new`
+    /// (same precedent as `cancel_handle()` on the basic-bytes shells).
+    stats_handle: tst_pipeline::ManagedStatsHandle,
 }
 
 #[pymethods]
@@ -248,11 +252,15 @@ impl PyManagedMuxSender {
         // 5. Wrap initial in a ManagedTransport, then hand to MuxSender.
         let policy_inner = policy.map(|p| p.inner).unwrap_or_default();
         let managed = ManagedTransport::new(initial, factory, policy_inner);
+        // Snapshot BEFORE the shell move — same precedent as
+        // ManagedSender's cancel_handle/stats_handle capture.
+        let stats_handle = managed.stats_handle();
         let sender =
             RustMuxSender::new(managed, muxer_cfg).map_err(|e| mux_error_to_pyerr(py, e))?;
         Ok(Self {
             inner: Some(sender),
             factory_attempts: attempts,
+            stats_handle,
         })
     }
 
@@ -551,6 +559,27 @@ impl PyManagedMuxSender {
         self.factory_attempts.load(Ordering::Acquire)
     }
 
+    /// Reconnect/gap telemetry: attempts, successes, current gap-buffer
+    /// depth, and drop counters. Mirror of `ManagedSender.reconnect_stats`.
+    ///
+    /// Requires the sender not be closed (mirrors the CLOSED check
+    /// every other managed getter runs); the counters themselves are
+    /// readable independent of the inner transport's connect state.
+    ///
+    /// Raises `SrtError(IO)` if the internal gap-buffer lock is
+    /// poisoned.
+    fn reconnect_stats(&self, py: Python<'_>) -> PyResult<Py<PyManagedTransportStats>> {
+        if self.inner.is_none() {
+            return Err(make_srt_error(py, "CLOSED", "ManagedMuxSender is closed"));
+        }
+        let stats = py
+            .allow_threads(|| self.stats_handle.stats())
+            .ok_or_else(|| {
+                make_srt_error(py, "IO", "reconnect stats unavailable: gap lock poisoned")
+            })?;
+        Py::new(py, PyManagedTransportStats::from_core(stats))
+    }
+
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
     /// Close the sender. Idempotent. Drops the underlying managed
@@ -613,6 +642,11 @@ type _BoxedMuxSenderAlias = BoxedMuxSender;
 /// a [`tstrans.mpegts.DemuxEvent.ReconnectDiscontinuity`] event before
 /// any post-reconnect events. Consumers should drop per-stream caches on
 /// receipt and rebuild from the next `ProgramMap` event.
+///
+/// `policy.mode` is send-side only: `ReconnectMode.BACKGROUND` on a
+/// policy handed to `ManagedDemuxReceiver` logs a warning on the Rust
+/// side and the receiver reconnects on the caller's thread anyway
+/// (i.e. it behaves as `ReconnectMode.BLOCKING`).
 ///
 /// Use as a context manager for guaranteed cleanup:
 /// ```python

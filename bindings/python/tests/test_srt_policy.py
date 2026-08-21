@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from tstrans.srt import BackoffStrategy, OverflowPolicy, ReconnectPolicy
+from tstrans.srt import BackoffStrategy, OverflowPolicy, ReconnectMode, ReconnectPolicy
 
 
 # --------------------------------------------------------------------------- #
@@ -34,10 +34,32 @@ def test_reconnect_policy_defaults_match_rust():
     assert p.max_attempts == 10
     assert p.gap_buffer_capacity == 256
     assert p.overflow_policy == OverflowPolicy.DROP_OLDEST
+    assert p.mode == ReconnectMode.BLOCKING
     # Default backoff is exponential 100ms..=10_000ms.
     assert p.backoff.kind == "exponential"
     assert p.backoff.base_ms == 100
     assert p.backoff.max_ms == 10_000
+
+
+# --------------------------------------------------------------------------- #
+# ReconnectMode enum-shape semantics                                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_reconnect_mode_round_trips_through_policy():
+    """`mode=ReconnectMode.BACKGROUND` must round-trip through the
+    `.mode` getter, compared with `==` (pyclass enum, not IntEnum
+    identity)."""
+    p = ReconnectPolicy(mode=ReconnectMode.BACKGROUND)
+    assert p.mode == ReconnectMode.BACKGROUND
+    assert p.mode != ReconnectMode.BLOCKING
+
+
+def test_reconnect_mode_default_is_blocking():
+    """Omitting `mode=` defaults to `ReconnectMode.BLOCKING`, matching
+    `tst_pipeline::ReconnectMode::default()`."""
+    p = ReconnectPolicy()
+    assert p.mode == ReconnectMode.BLOCKING
 
 
 # --------------------------------------------------------------------------- #
@@ -130,6 +152,12 @@ def test_reconnect_policy_repr_includes_all_four_fields():
     assert "BackoffStrategy.constant(ms=750)" in r
     assert "gap_buffer_capacity=128" in r
     assert "OverflowPolicy.REJECT" in r
+
+
+def test_reconnect_policy_repr_includes_mode():
+    """`__repr__` also shows the configured `mode`."""
+    p = ReconnectPolicy(mode=ReconnectMode.BACKGROUND)
+    assert "ReconnectMode.BACKGROUND" in repr(p)
 
 
 def test_reconnect_policy_repr_handles_none_max_attempts():

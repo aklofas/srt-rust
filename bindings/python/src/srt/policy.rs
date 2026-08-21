@@ -25,13 +25,17 @@ use pyo3::prelude::*;
 use pyo3::types::PyType;
 
 use tst_pipeline::{
-    BackoffStrategy as RustBackoff, OverflowPolicy as RustOverflow, ReconnectPolicy as RustPolicy,
+    BackoffStrategy as RustBackoff, ManagedTransportStats as RustManagedTransportStats,
+    OverflowPolicy as RustOverflow, ReconnectMode as RustReconnectMode,
+    ReconnectPolicy as RustPolicy,
 };
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBackoffStrategy>()?;
     m.add_class::<PyOverflowPolicy>()?;
+    m.add_class::<PyReconnectMode>()?;
     m.add_class::<PyReconnectPolicy>()?;
+    m.add_class::<PyManagedTransportStats>()?;
     Ok(())
 }
 
@@ -164,6 +168,52 @@ impl From<RustOverflow> for PyOverflowPolicy {
 }
 
 // ---------------------------------------------------------------------------
+// PyReconnectMode — IntEnum-shaped frozen PyClass.
+// ---------------------------------------------------------------------------
+
+/// Where `ManagedTransport` runs its reconnect loop after the inner
+/// transport breaks. Send-side only: the managed *receive* classes
+/// (`ManagedReceiver`, `ManagedDemuxReceiver`) log a warning and behave
+/// as `BLOCKING` if handed `BACKGROUND`.
+///
+/// - `BLOCKING` (default): reconnect runs on the caller's thread — the
+///   call that observed the break blocks until reconnect succeeds or
+///   `max_attempts` runs out.
+/// - `BACKGROUND`: reconnect runs on a dedicated per-outage worker
+///   thread; sends never block on backoff or the factory call while the
+///   worker is active. Pair with `reconnect_stats()` for drop/reconnect
+///   visibility — `Ok` in this mode means *accepted*, not *delivered*.
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
+#[pyclass(name = "ReconnectMode", module = "tstrans.srt", eq, eq_int)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PyReconnectMode {
+    BLOCKING = 0,
+    BACKGROUND = 1,
+}
+
+impl From<PyReconnectMode> for RustReconnectMode {
+    fn from(m: PyReconnectMode) -> Self {
+        match m {
+            PyReconnectMode::BLOCKING => RustReconnectMode::Blocking,
+            PyReconnectMode::BACKGROUND => RustReconnectMode::Background,
+        }
+    }
+}
+
+impl From<RustReconnectMode> for PyReconnectMode {
+    fn from(m: RustReconnectMode) -> Self {
+        match m {
+            RustReconnectMode::Blocking => PyReconnectMode::BLOCKING,
+            RustReconnectMode::Background => PyReconnectMode::BACKGROUND,
+            // `ReconnectMode` is #[non_exhaustive] on the Rust side (room
+            // for future modes); default to BLOCKING for any variant this
+            // binding doesn't know about yet rather than panicking.
+            _ => PyReconnectMode::BLOCKING,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PyReconnectPolicy.
 // ---------------------------------------------------------------------------
 
@@ -174,6 +224,7 @@ impl From<RustOverflow> for PyOverflowPolicy {
 /// - `backoff = BackoffStrategy.exponential(base_ms=100, max_ms=10_000)`
 /// - `gap_buffer_capacity = 256`
 /// - `overflow_policy = OverflowPolicy.DROP_OLDEST`
+/// - `mode = ReconnectMode.BLOCKING`
 ///
 /// Raises `ValueError` if `gap_buffer_capacity == 0`.
 #[pyclass(name = "ReconnectPolicy", module = "tstrans.srt", frozen)]
@@ -191,12 +242,14 @@ impl PyReconnectPolicy {
         backoff = None,
         gap_buffer_capacity = 256,
         overflow_policy = PyOverflowPolicy::DROP_OLDEST,
+        mode = PyReconnectMode::BLOCKING,
     ))]
     pub fn new(
         max_attempts: Option<u32>,
         backoff: Option<PyBackoffStrategy>,
         gap_buffer_capacity: usize,
         overflow_policy: PyOverflowPolicy,
+        mode: PyReconnectMode,
     ) -> PyResult<Self> {
         if gap_buffer_capacity == 0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -210,7 +263,7 @@ impl PyReconnectPolicy {
                 backoff: backoff_inner,
                 gap_buffer_capacity,
                 overflow_policy: overflow_policy.into(),
-                ..Default::default()
+                mode: mode.into(),
             },
         })
     }
@@ -242,6 +295,14 @@ impl PyReconnectPolicy {
         self.inner.overflow_policy.into()
     }
 
+    /// Where the reconnect loop runs: `ReconnectMode.BLOCKING` (default,
+    /// caller's thread) or `ReconnectMode.BACKGROUND` (dedicated worker
+    /// thread; send-side only).
+    #[getter]
+    pub fn mode(&self) -> PyReconnectMode {
+        self.inner.mode.into()
+    }
+
     fn __repr__(&self) -> String {
         let backoff_repr = PyBackoffStrategy {
             inner: self.inner.backoff.clone(),
@@ -251,15 +312,76 @@ impl PyReconnectPolicy {
             RustOverflow::DropOldest => "OverflowPolicy.DROP_OLDEST",
             RustOverflow::Reject => "OverflowPolicy.REJECT",
         };
+        let mode_repr = match self.inner.mode {
+            RustReconnectMode::Blocking => "ReconnectMode.BLOCKING",
+            RustReconnectMode::Background => "ReconnectMode.BACKGROUND",
+            _ => "ReconnectMode.BLOCKING",
+        };
         match self.inner.max_attempts {
             Some(n) => format!(
-                "ReconnectPolicy(max_attempts={}, backoff={}, gap_buffer_capacity={}, overflow_policy={})",
-                n, backoff_repr, self.inner.gap_buffer_capacity, overflow_repr,
+                "ReconnectPolicy(max_attempts={}, backoff={}, gap_buffer_capacity={}, overflow_policy={}, mode={})",
+                n, backoff_repr, self.inner.gap_buffer_capacity, overflow_repr, mode_repr,
             ),
             None => format!(
-                "ReconnectPolicy(max_attempts=None, backoff={}, gap_buffer_capacity={}, overflow_policy={})",
-                backoff_repr, self.inner.gap_buffer_capacity, overflow_repr,
+                "ReconnectPolicy(max_attempts=None, backoff={}, gap_buffer_capacity={}, overflow_policy={}, mode={})",
+                backoff_repr, self.inner.gap_buffer_capacity, overflow_repr, mode_repr,
             ),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyManagedTransportStats — frozen mirror of tst_pipeline::ManagedTransportStats
+// ---------------------------------------------------------------------------
+
+/// Snapshot of `ManagedSender` / `ManagedMuxSender` reconnect/gap
+/// telemetry. Returned by `reconnect_stats()`. Mirror of
+/// `tst_pipeline::ManagedTransportStats` (and the C ABI's
+/// `TstManagedTransportStats`) — same field order.
+///
+/// `reconnecting` is only ever `True` under `ReconnectMode.BACKGROUND`
+/// (always `False` in `BLOCKING` mode, since that mode's reconnect loop
+/// runs synchronously inside the call that observed the break rather
+/// than on a separate worker this flag could observe as "active").
+#[pyclass(
+    frozen,
+    get_all,
+    name = "ManagedTransportStats",
+    module = "tstrans.srt"
+)]
+pub(crate) struct PyManagedTransportStats {
+    pub reconnect_attempts: u64,
+    pub reconnect_successes: u64,
+    pub gap_len: u64,
+    pub gap_messages_dropped: u64,
+    pub gap_bytes_dropped: u64,
+    pub reconnecting: bool,
+}
+
+impl PyManagedTransportStats {
+    pub(crate) fn from_core(s: RustManagedTransportStats) -> Self {
+        Self {
+            reconnect_attempts: s.reconnect_attempts,
+            reconnect_successes: s.reconnect_successes,
+            gap_len: s.gap_len,
+            gap_messages_dropped: s.gap_messages_dropped,
+            gap_bytes_dropped: s.gap_bytes_dropped,
+            reconnecting: s.reconnecting,
+        }
+    }
+}
+
+#[pymethods]
+impl PyManagedTransportStats {
+    fn __repr__(&self) -> String {
+        format!(
+            "ManagedTransportStats(reconnect_attempts={}, reconnect_successes={}, gap_len={}, gap_messages_dropped={}, gap_bytes_dropped={}, reconnecting={})",
+            self.reconnect_attempts,
+            self.reconnect_successes,
+            self.gap_len,
+            self.gap_messages_dropped,
+            self.gap_bytes_dropped,
+            if self.reconnecting { "True" } else { "False" },
+        )
     }
 }

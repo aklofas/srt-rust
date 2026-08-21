@@ -28,7 +28,7 @@ use tst_rtp::StreamEndReason;
 /// a caller constructs a `StreamEndReason` member directly or receives
 /// one from this conversion).
 ///
-/// `StreamEndReason` is `#[non_exhaustive]` on the tst-rtp side; a
+/// `StreamEndReason` is non-exhaustive on the tst-rtp side; a
 /// future variant this binding doesn't know how to map yet returns
 /// `Ok(None)` rather than erroring — matching the "ended through a path
 /// this arc doesn't instrument" contract documented on
@@ -52,7 +52,7 @@ pub(crate) fn end_reason_to_py(py: Python<'_>, r: &StreamEndReason) -> PyResult<
 /// The free-text `msg` carried by `KeepaliveFailed` / `TransportFailed` /
 /// `ProtocolError`; `None` for the three detail-less variants
 /// (`CleanTeardown`, `SessionExpired`, `Cancelled`) and any future
-/// `#[non_exhaustive]` variant.
+/// non-exhaustive variant.
 pub(crate) fn end_reason_detail(r: &StreamEndReason) -> Option<&str> {
     match r {
         StreamEndReason::KeepaliveFailed { msg }

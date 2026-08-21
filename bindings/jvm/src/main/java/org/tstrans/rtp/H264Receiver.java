@@ -149,7 +149,9 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
      *     indefinitely, identically to {@link #recvAu()} (any persistent
      *     deadline armed by the {@code ?recv_timeout=<ms>} URL knob still
      *     applies in that case). A non-null value overrides the persistent
-     *     deadline for this one call.
+     *     deadline for this one call. A negative value behaves the same as
+     *     {@code null} (blocks indefinitely) — there is no separate
+     *     "immediate timeout" or rejected-argument case.
      * @return the next {@link H264AccessUnit}, or {@code null} at EOS (clean
      *     close or RTSP teardown — caller should exit the recv loop). A
      *     {@code null} return never means the deadline expired — expiry always

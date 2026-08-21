@@ -218,8 +218,13 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
      * u16} cast, no range check, same as the {@code pmtPid}/{@code pcrPid}
      * parameters elsewhere in this binding) or before any event has arrived.
      *
-     * <p>May block briefly if another thread is parked in {@code next()} —
-     * same registry-lock discipline as {@link #stats()}.
+     * <p><b>Blocking:</b> this takes the same internal resource lock a
+     * parked {@code next()} call holds — if an iteration is currently in
+     * flight on this receiver, {@code lastSeenMicros} blocks until it
+     * returns (an event, end of stream, or an error), which on a
+     * fully-quiet stream may be indefinite. Call between {@code next()}
+     * calls, or from the same thread driving the iteration, to avoid
+     * blocking.
      *
      * @param pid the stream PID to query
      * @return the last-seen timestamp in Unix-epoch microseconds, or

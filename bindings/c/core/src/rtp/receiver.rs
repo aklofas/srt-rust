@@ -19,10 +19,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tst_core::RecvTransport;
 use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_pipeline::{Receiver, ReceiverConfig, ShellErrorKind, TransportCancel};
-use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport};
+use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::error::{TstError, record_eos, record_shell_error, set_last_error};
 use crate::handle::Handle;
+use crate::rtp::end_reason::{TstStreamEndReason, convert_end_reason};
 use crate::stats::TstReceiverStats;
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,10 @@ pub struct TstRtpReceiver {
     /// caller-initiated shutdown (`TST_E_CLOSED`) from peer EOF
     /// (`TST_E_END_OF_STREAM`).
     pub(crate) was_cancelled: Arc<AtomicBool>,
+    /// End-reason handle snapshotted at `_open` time, same
+    /// capture-before-move timing as `cancel`. Read by
+    /// `tst_rtp_receiver_end_reason`.
+    pub(crate) end_reason: StreamEndReasonHandle,
 }
 
 // ---------------------------------------------------------------------------
@@ -84,11 +89,13 @@ pub unsafe extern "C" fn tst_rtp_recv_open(url: *const c_char) -> *mut TstRtpRec
             }
         };
         let cancel = transport.cancel_handle();
+        let end_reason = transport.end_reason_handle();
         let receiver = Receiver::new(transport, ReceiverConfig::default());
         Box::into_raw(Box::new(TstRtpReceiver {
             inner: Handle::new(receiver),
             cancel,
             was_cancelled: Arc::new(AtomicBool::new(false)),
+            end_reason,
         }))
     })
 }
@@ -235,6 +242,58 @@ pub unsafe extern "C" fn tst_rtp_receiver_cancel(p: *mut TstRtpReceiver) -> libc
     })
 }
 
+/// Read the recorded reason this `tst_rtp_receiver_t` receive session
+/// ended, if any.
+///
+/// Writes `TstStreamEndReason::None` (returns `0`) when the session
+/// hasn't ended yet, or ended through a path this arc doesn't
+/// instrument (e.g. a plain `rtp://` receiver that was never `_cancel`'d
+/// or `_close`'d). A recorded reason is data, not a getter failure —
+/// this only returns a nonzero code for a null-pointer argument.
+///
+/// For the `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
+/// reasons, the underlying detail message is also pushed onto the
+/// thread-local last-error message channel (code stays `TST_E_SUCCESS`,
+/// since a recorded end reason is not itself a getter failure) — call
+/// `tst_last_error_str()` immediately after this getter to read it.
+///
+/// Side-channel: reads directly off the end-reason handle captured at
+/// `_open` time WITHOUT acquiring this handle's data-path Mutex — same
+/// rationale as `tst_rtp_receiver_cancel` (a concurrent `_recv_ts` may
+/// be blocked holding it). This is what makes the getter safe to poll
+/// from a watchdog thread while another thread drives `_recv_ts`. One
+/// consequence: this call never itself returns `TST_E_CLOSED` — after
+/// `_close` the whole handle is freed, and calling anything on it,
+/// including this getter, is a use-after-free the caller must avoid
+/// (not something this function can detect from a dangling pointer).
+///
+/// # Safety
+///
+/// `p` must be a valid non-freed `*mut TstRtpReceiver` opened via
+/// `tst_rtp_recv_open`. `out` must point to a writable
+/// `TstStreamEndReason`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtp_receiver_end_reason(
+    p: *mut TstRtpReceiver,
+    out: *mut TstStreamEndReason,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null rtp receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    let reason = match handle.end_reason.get() {
+        Some(r) => convert_end_reason(&r),
+        None => TstStreamEndReason::None,
+    };
+    // SAFETY: out non-null per guard above.
+    unsafe { *out = reason };
+    0
+}
+
 /// Snapshot stats for a `tst_rtp_receiver_t` into `*out`.
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
@@ -357,6 +416,68 @@ mod tests {
         let mut n: usize = 0;
         let rc = unsafe { tst_rtp_receiver_recv_ts(handle, buf.as_mut_ptr(), buf.len(), &mut n) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
+        unsafe { tst_rtp_receiver_close(handle) };
+    }
+
+    #[test]
+    fn null_end_reason_returns_invalid_config() {
+        let mut out = TstStreamEndReason::None;
+        let rc = unsafe { tst_rtp_receiver_end_reason(std::ptr::null_mut(), &mut out) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_out_end_reason_returns_invalid_config() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0").unwrap();
+        let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let rc = unsafe { tst_rtp_receiver_end_reason(handle, std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+        unsafe { tst_rtp_receiver_close(handle) };
+    }
+
+    #[test]
+    fn fresh_receiver_end_reason_is_none() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0").unwrap();
+        let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let mut out = TstStreamEndReason::Cancelled; // seed with a non-None value
+        let rc = unsafe { tst_rtp_receiver_end_reason(handle, &mut out) };
+        assert_eq!(rc, 0);
+        assert!(matches!(out, TstStreamEndReason::None));
+        unsafe { tst_rtp_receiver_close(handle) };
+    }
+
+    /// `_cancel` alone only flags the transport; the reason is recorded
+    /// by the underlying `RtpRecvTransport` the moment a recv attempt
+    /// actually observes the cancel signal (see `recv_raw`'s
+    /// cancel-checked-first loop) — so this drives one `_recv_ts` call
+    /// after cancelling to make the reason observable, matching what a
+    /// real caller's recv loop would do.
+    #[test]
+    fn cancel_then_recv_records_cancelled_end_reason() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0").unwrap();
+        let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let cancel_rc = unsafe { tst_rtp_receiver_cancel(handle) };
+        assert_eq!(cancel_rc, 0);
+
+        let mut buf = [0u8; 188];
+        let mut n: usize = 0;
+        let recv_rc =
+            unsafe { tst_rtp_receiver_recv_ts(handle, buf.as_mut_ptr(), buf.len(), &mut n) };
+        assert_eq!(recv_rc, TstError::Closed as i32);
+
+        let mut out = TstStreamEndReason::None;
+        let rc = unsafe { tst_rtp_receiver_end_reason(handle, &mut out) };
+        assert_eq!(rc, 0);
+        assert!(matches!(out, TstStreamEndReason::Cancelled));
         unsafe { tst_rtp_receiver_close(handle) };
     }
 }

@@ -184,7 +184,9 @@ include = [
     "TstPublisherKind",
     # RTSP client builder handle (rtp feature — emitted inside #if defined(TST_HAS_RTP))
     "TstRtspClientBuilder",
-    # RTP stream-end reason (rtp feature)
+    # RTP stream-end reason — unconditional (defined outside the rtp
+    # module so cbindgen emits it without a per-variant #if; only the
+    # two getters that read it are TST_HAS_RTP-gated)
     "TstStreamEndReason",
     # T10: RTSP server stats structs (rtp feature)
     "TstServerStats",

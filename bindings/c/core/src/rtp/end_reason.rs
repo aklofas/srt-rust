@@ -1,4 +1,10 @@
-//! `TstStreamEndReason` — C mirror of `tst_rtp::StreamEndReason`.
+//! `tst_rtp::StreamEndReason` → [`TstStreamEndReason`] conversion.
+//!
+//! The C-visible enum itself lives in `crate::stream_end_reason` (outside
+//! this `#[cfg(feature = "rtp")]`-gated module, so cbindgen emits it
+//! unconditionally — see that module's doc for why). This module holds
+//! only the conversion logic, which genuinely does need the `rtp`
+//! feature (it names the real `tst_rtp::StreamEndReason`).
 //!
 //! Read via `tst_rtp_receiver_end_reason` (on `TstRtpReceiver`) and
 //! `tst_rtp_demux_receiver_end_reason` (on `TstRtpDemuxReceiver`). Both
@@ -10,39 +16,7 @@
 use tst_rtp::StreamEndReason;
 
 use crate::error::{TstError, set_last_error};
-
-/// Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`
-/// with one addition — `None` (0) — for "hasn't ended yet, or ended
-/// through a path this arc doesn't instrument" (the case
-/// `StreamEndReasonHandle::get()` reports as `Option::None`, e.g. a plain
-/// `rtp://` receiver that was never `_cancel`'d or `_close`'d).
-/// Discriminants 1-6 are cross-surface stable — the Python and JVM
-/// bindings use the same numbering.
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TstStreamEndReason {
-    /// The session hasn't ended yet, or ended through a path this arc
-    /// doesn't instrument.
-    None = 0,
-    /// The peer closed the connection in an orderly way, with no
-    /// protocol or transport error.
-    CleanTeardown = 1,
-    /// The server no longer honors the session — a keepalive ping was
-    /// answered `454 Session Not Found`.
-    SessionExpired = 2,
-    /// The keepalive background thread failed to encode or send a ping.
-    /// Detail message: see the getter doc.
-    KeepaliveFailed = 3,
-    /// A hard I/O error on the underlying transport. Detail message:
-    /// see the getter doc.
-    TransportFailed = 4,
-    /// The peer violated the wire protocol. Detail message: see the
-    /// getter doc.
-    ProtocolError = 5,
-    /// The caller explicitly cancelled or closed the transport — not a
-    /// wire-level failure.
-    Cancelled = 6,
-}
+use crate::stream_end_reason::TstStreamEndReason;
 
 /// Convert a recorded [`StreamEndReason`] to its C discriminant.
 ///

@@ -1,7 +1,7 @@
 //! `org.tstrans.rtp` + `org.tstrans` (RTSP) Rust→Java error mapping.
 //!
 //! RTP transport errors (`tst_core::TransportError` / `tst_rtp::ConnectError`)
-//! map onto the three `RtpException.Kind` variants — ported 1:1 from tst-py's
+//! map onto the four `RtpException.Kind` variants — ported 1:1 from tst-py's
 //! `bindings/python/src/rtp/transport.rs` (`transport_error_to_pyerr` +
 //! `connect_error_to_pyerr`).
 //!
@@ -49,9 +49,11 @@ fn throw_rtp_inner(env: &mut JNIEnv, kind: &str, message: &str) -> jni::errors::
 
 /// Map a `TransportError` from `send_bytes` / `recv_bytes` onto an
 /// `RtpException`. Mirrors tst-py `transport_error_to_pyerr`:
-/// - `ExplicitClose` → `CANCELLED`
-/// - `TooLarge`      → `MALFORMED_PACKET`
-/// - all others (`Backpressure`, `Broken`, `Closed`) → `TRANSPORT`
+/// - `ExplicitClose`  → `CANCELLED`
+/// - `TooLarge`       → `MALFORMED_PACKET`
+/// - `Backpressure`   → `TIMEOUT` (recv deadline expired; retryable —
+///   the transport/session is still alive)
+/// - all others (`Broken`, `Closed`) → `TRANSPORT`
 pub(crate) fn transport_error_to_rtp(env: &mut JNIEnv, e: &TransportError) {
     match e {
         TransportError::ExplicitClose => {
@@ -61,6 +63,9 @@ pub(crate) fn transport_error_to_rtp(env: &mut JNIEnv, e: &TransportError) {
             let msg = format!("payload too large: {len} bytes exceeds {max}-byte cap");
             throw_rtp(env, "MALFORMED_PACKET", &msg)
         }
+        // A configured recv deadline (`?recv_timeout=` / a future per-call
+        // timeout) expired — retryable, the transport/session is still alive.
+        TransportError::Backpressure { msg, .. } => throw_rtp(env, "TIMEOUT", msg),
         other => throw_rtp(env, "TRANSPORT", &other.to_string()),
     }
 }

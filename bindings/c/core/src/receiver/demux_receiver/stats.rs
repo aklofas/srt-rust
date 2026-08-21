@@ -139,20 +139,13 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stream_last_seen_micros(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out_epoch_micros.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out_epoch_micros pointer");
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::demux_receiver_get_stream_last_seen_micros(
+            &handle.inner,
+            pid,
+            out_epoch_micros,
+        )
     }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = rx.stats();
-        let micros = stats
-            .per_stream
-            .get(&pid)
-            .map(|ss| crate::stats::last_seen_epoch_micros(ss.last_seen))
-            .unwrap_or(0);
-        unsafe { *out_epoch_micros = micros };
-        0
-    })
 }
 
 /// Reset stats counters for a `tst_demux_receiver_t` to zero.

@@ -26,13 +26,14 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jboolean, jint, jlong, jobject};
 
 use tst_rtp::rtsp::client::RtspClient as RustRtspClient;
-use tst_rtp::{H264DepayConfig, H264Receiver, ParameterSetInjection};
+use tst_rtp::{H264Au, H264DepayConfig, H264Receiver, ParameterSetInjection};
 
 use crate::handle::HandleRegistry;
 
@@ -246,55 +247,102 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nRecvAu<'local>(
         match result {
             // EOS (cancel / clean RTSP teardown): return null
             Ok(None) => JObject::null().into_raw(),
-            Ok(Some(au)) => {
-                // Build H264AccessUnit Java object. Every field is copied:
-                // - annexb: byte[] heap copy (JDK<22 rule — never direct ByteBuffer over Rust memory)
-                // - pts: long (i64 ticks)
-                // - keyFrame: boolean
-                // - rtpTimestamp: long (u32 widened to i64)
-                let annexb_arr = match env.byte_array_from_slice(&au.annexb) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-                        return JObject::null().into_raw();
-                    }
-                };
-                let pts = au.pts.as_ticks();
-                let key_frame: jboolean = u8::from(au.key_frame);
-                let rtp_timestamp = i64::from(au.rtp_timestamp);
-
-                // Construct `new H264AccessUnit(byte[], long, boolean, long)`.
-                match env.ensure_local_capacity(4) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-                        return JObject::null().into_raw();
-                    }
-                }
-                let obj = match env.new_object(
-                    "org/tstrans/rtp/H264AccessUnit",
-                    "([BJZJ)V",
-                    &[
-                        JValue::Object(&annexb_arr.into()),
-                        JValue::Long(pts),
-                        JValue::Bool(key_frame),
-                        JValue::Long(rtp_timestamp),
-                    ],
-                ) {
-                    Ok(o) => o,
-                    Err(e) => {
-                        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-                        return JObject::null().into_raw();
-                    }
-                };
-                obj.into_raw()
-            }
+            Ok(Some(au)) => build_h264_access_unit(env, &au),
             Err(e) => {
                 transport_error_to_rtp(env, &e);
                 JObject::null().into_raw()
             }
         }
     })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `H264Receiver.nRecvAuTimeout(handle, timeoutMs)` — per-call-deadline recv
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `H264Receiver.nRecvAuTimeout(handle, timeoutMs)` — block for at most
+/// `timeoutMs` ms for the next H.264 Access Unit. `timeoutMs < 0` blocks
+/// indefinitely via the plain `recv_au` path — byte-identical to `nRecvAu`, so
+/// any persistent deadline armed by the `?recv_timeout=` URL knob still
+/// applies. `timeoutMs >= 0` takes a one-shot `H264Receiver::recv_au_timeout`
+/// override for this call only. Mirrors tst-py
+/// `PyH264Receiver.recv_au(timeout_ms=...)`.
+///
+/// Unlike `RtpRecvTransport::recv_timeout`, `recv_au_timeout` reports deadline
+/// expiry as `Err(TransportError::Backpressure)`, not `Ok(None)` — so no
+/// hand-mapping is needed here: `transport_error_to_rtp` already maps
+/// `Backpressure` to `RtpException(TIMEOUT)`, and `Ok(None)` stays EOS-only.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nRecvAuTimeout<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    timeout_ms: jlong,
+) -> jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let Some(result) = REGISTRY.with_poisoning(handle as u64, |jdr| {
+            if timeout_ms < 0 {
+                jdr.inner.recv_au()
+            } else {
+                jdr.inner
+                    .recv_au_timeout(Duration::from_millis(timeout_ms as u64))
+            }
+        }) else {
+            return JObject::null().into_raw();
+        };
+
+        match result {
+            // EOS (cancel / clean RTSP teardown): return null. NEVER reached on
+            // deadline expiry — that's `Err(Backpressure)`, handled below.
+            Ok(None) => JObject::null().into_raw(),
+            Ok(Some(au)) => build_h264_access_unit(env, &au),
+            Err(e) => {
+                transport_error_to_rtp(env, &e);
+                JObject::null().into_raw()
+            }
+        }
+    })
+}
+
+/// Build a `org.tstrans.rtp.H264AccessUnit` Java object from a Rust
+/// [`H264Au`]. Shared by `nRecvAu` and `nRecvAuTimeout`. Every field is
+/// copied: `annexb` is a heap-copied `byte[]` (JDK&lt;22 rule — never a direct
+/// `ByteBuffer` over Rust memory), `pts` is `long` (i64 ticks), `keyFrame` is
+/// `boolean`, `rtpTimestamp` is `long` (u32 widened to i64). Returns null
+/// (after throwing) on a JNI allocation/construction failure.
+fn build_h264_access_unit(env: &mut JNIEnv, au: &H264Au) -> jobject {
+    let annexb_arr = match env.byte_array_from_slice(&au.annexb) {
+        Ok(a) => a,
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            return JObject::null().into_raw();
+        }
+    };
+    let pts = au.pts.as_ticks();
+    let key_frame: jboolean = u8::from(au.key_frame);
+    let rtp_timestamp = i64::from(au.rtp_timestamp);
+
+    // Construct `new H264AccessUnit(byte[], long, boolean, long)`.
+    if let Err(e) = env.ensure_local_capacity(4) {
+        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+        return JObject::null().into_raw();
+    }
+    match env.new_object(
+        "org/tstrans/rtp/H264AccessUnit",
+        "([BJZJ)V",
+        &[
+            JValue::Object(&annexb_arr.into()),
+            JValue::Long(pts),
+            JValue::Bool(key_frame),
+            JValue::Long(rtp_timestamp),
+        ],
+    ) {
+        Ok(o) => o.into_raw(),
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            JObject::null().into_raw()
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

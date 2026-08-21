@@ -102,6 +102,40 @@ class H264ReceiverTest {
         }
     }
 
+    // ── Test 1a: recvAu(Integer) per-call timeout, then real delivery ────────
+
+    /**
+     * A quiet {@code H264Receiver} (no {@code ?recv_timeout=} URL knob) must
+     * raise {@code RtpException(TIMEOUT)} from {@code recvAu(200)}, and must
+     * stay usable afterward: a real IDR packet (same fixture as
+     * {@link #udpLoopbackSingleIdrPacket()}) delivered via {@code recvAu(2000)}.
+     */
+    @Test
+    void recvAuPerCallTimeoutRaisesTimeoutThenDeliversRealAu() throws Exception {
+        try (H264Receiver rx = H264Receiver.listen("rtp://127.0.0.1:0?pt=96")) {
+            String addrStr = rx.localAddr();
+            assertNotNull(addrStr);
+            int port = Integer.parseInt(addrStr.substring(addrStr.lastIndexOf(':') + 1));
+
+            RtpException ex = assertThrows(RtpException.class, () -> rx.recvAu(200));
+            assertEquals(RtpException.Kind.TIMEOUT, ex.kind());
+
+            // Receiver stays alive after a TIMEOUT (retryable): send the canned
+            // IDR packet and confirm recvAu(2000) delivers it.
+            try (DatagramSocket tx = new DatagramSocket(
+                    new InetSocketAddress("127.0.0.1", 0))) {
+                DatagramPacket pkt = new DatagramPacket(IDR_PACKET, IDR_PACKET.length,
+                    new InetSocketAddress("127.0.0.1", port));
+                tx.send(pkt);
+            }
+            H264AccessUnit au = rx.recvAu(2000);
+            assertNotNull(au, "recvAu(2000) must return the delivered AU");
+            byte[] expectedAnnexb = {0, 0, 0, 1, 0x65, (byte)0xAB, (byte)0xCD};
+            assertArrayEquals(expectedAnnexb, au.annexb());
+            assertTrue(au.keyFrame());
+        }
+    }
+
     // ── Test 1b: for-each iterator collects 2 AUs then terminates ────────────
 
     /**

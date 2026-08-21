@@ -3,6 +3,7 @@ package org.tstrans.rtp;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.tstrans.RtpException;
 
 class RtpTransportTest {
@@ -92,6 +93,68 @@ class RtpTransportTest {
             // same (still-quiet) socket raises TIMEOUT again, not TRANSPORT.
             RtpException ex2 = assertThrows(RtpException.class, r::recv);
             assertEquals(RtpException.Kind.TIMEOUT, ex2.kind());
+        }
+    }
+
+    /** Build a single 188-byte MPEG-TS packet (0x47 sync byte + filler). The
+     *  RTP recv path enforces MP2T shape (188-byte aligned, 0x47-prefixed) and
+     *  silently drops anything else — see {@code is_valid_mp2t_payload} in
+     *  {@code tst-rtp/src/transport.rs} — so tests exercising real delivery
+     *  through {@link Receiver#recv} must use TS-shaped payloads, not
+     *  arbitrary bytes. */
+    private static byte[] tsPacket(byte filler) {
+        byte[] pkt = new byte[188];
+        pkt[0] = 0x47;
+        java.util.Arrays.fill(pkt, 1, pkt.length, filler);
+        return pkt;
+    }
+
+    @Test
+    void recvPerCallTimeoutRaisesTimeoutThenDeliversRealBytes() throws Exception {
+        // No `?recv_timeout=` URL knob here — the deadline comes solely from
+        // the per-call `recv(Integer)` argument.
+        try (Receiver r = Receiver.fromUrl("rtp://127.0.0.1:50005")) {
+            RtpException ex = assertThrows(RtpException.class, () -> r.recv(200));
+            assertEquals(RtpException.Kind.TIMEOUT, ex.kind());
+
+            // The receiver stays alive after a TIMEOUT (retryable): a real send
+            // must be delivered on a subsequent recv(timeoutMs) call.
+            byte[] sent = tsPacket((byte) 0xAB);
+            try (Sender s = Sender.fromUrl("rtp://127.0.0.1:50005")) {
+                s.send(sent);
+            }
+            byte[] received = r.recv(2000);
+            assertArrayEquals(sent, received);
+        }
+    }
+
+    @Test
+    @Timeout(5)
+    void recvNullTimeoutBlocksLikeNoArgRecv() throws Exception {
+        // `recv((Integer) null)` must behave exactly like `recv()`: block past
+        // a short delay rather than expiring, then return the delivered bytes.
+        // The send is delayed on another thread so a bug that flattened `null`
+        // to a short numeric deadline (instead of the -1 "block forever"
+        // sentinel) would surface as a spurious TIMEOUT instead of silently
+        // passing on an already-buffered datagram.
+        try (Receiver r = Receiver.fromUrl("rtp://127.0.0.1:50006")) {
+            byte[] sent = tsPacket((byte) 0xCD);
+            Thread sender = new Thread(() -> {
+                try {
+                    Thread.sleep(300);
+                    try (Sender s = Sender.fromUrl("rtp://127.0.0.1:50006")) {
+                        s.send(sent);
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            sender.setDaemon(true);
+            sender.start();
+
+            byte[] received = r.recv((Integer) null);
+            assertArrayEquals(sent, received);
+            sender.join(2_000);
         }
     }
 }

@@ -26,11 +26,12 @@ pub mod builders;
 
 #[cfg(feature = "std")]
 pub use builders::{
-    TstOverflowPolicy, TstRawSenderConfig, TstReconnectPolicy, TstSenderConfig, TstTsFramingMode,
-    tst_raw_sender_config_free, tst_raw_sender_config_new, tst_reconnect_policy_free,
-    tst_reconnect_policy_new, tst_reconnect_policy_set_backoff_constant_ms,
-    tst_reconnect_policy_set_backoff_exponential_ms, tst_reconnect_policy_set_gap_buffer_capacity,
-    tst_reconnect_policy_set_max_attempts, tst_reconnect_policy_set_overflow_policy,
+    TstOverflowPolicy, TstRawSenderConfig, TstReconnectMode, TstReconnectPolicy, TstSenderConfig,
+    TstTsFramingMode, tst_raw_sender_config_free, tst_raw_sender_config_new,
+    tst_reconnect_policy_free, tst_reconnect_policy_new,
+    tst_reconnect_policy_set_backoff_constant_ms, tst_reconnect_policy_set_backoff_exponential_ms,
+    tst_reconnect_policy_set_gap_buffer_capacity, tst_reconnect_policy_set_max_attempts,
+    tst_reconnect_policy_set_mode, tst_reconnect_policy_set_overflow_policy,
     tst_sender_config_free, tst_sender_config_new, tst_sender_config_set_framing_mode,
     tst_sender_config_set_max_unsynced_bytes,
 };
@@ -215,7 +216,35 @@ mod tests {
                 tst_reconnect_policy_set_overflow_policy(p, TstOverflowPolicy::Reject),
                 0,
             );
+            assert_eq!(
+                tst_reconnect_policy_set_mode(p, TstReconnectMode::Background),
+                0,
+            );
             tst_reconnect_policy_free(p);
+        }
+    }
+
+    #[test]
+    fn reconnect_policy_set_mode_updates_inner() {
+        unsafe {
+            let p = tst_reconnect_policy_new();
+            // Default is Blocking (mirrors tst_pipeline::ReconnectPolicy::default()).
+            assert_eq!((*p).inner.mode, tst_pipeline::ReconnectMode::Blocking);
+            assert_eq!(
+                tst_reconnect_policy_set_mode(p, TstReconnectMode::Background),
+                0,
+            );
+            assert_eq!((*p).inner.mode, tst_pipeline::ReconnectMode::Background);
+            tst_reconnect_policy_free(p);
+        }
+    }
+
+    #[test]
+    fn reconnect_policy_set_mode_null_returns_invalid_config() {
+        unsafe {
+            let rc =
+                tst_reconnect_policy_set_mode(core::ptr::null_mut(), TstReconnectMode::Background);
+            assert!(rc < 0);
         }
     }
 

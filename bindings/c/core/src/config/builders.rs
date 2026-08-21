@@ -11,7 +11,8 @@ use crate::error::{TstError, set_last_error};
 use crate::panic::ffi_catch;
 use core::time::Duration;
 use tst_pipeline::{
-    BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, SenderConfig, TsFramingMode,
+    BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectMode, ReconnectPolicy, SenderConfig,
+    TsFramingMode,
 };
 
 // ------------------------------------------------------------------
@@ -235,6 +236,44 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_overflow_policy(
         cfg.inner.overflow_policy = match policy {
             TstOverflowPolicy::DropOldest => OverflowPolicy::DropOldest,
             TstOverflowPolicy::Reject => OverflowPolicy::Reject,
+        };
+        0
+    })
+}
+
+/// Where a `ManagedTransport`'s reconnect loop runs after the inner
+/// transport breaks.
+///
+/// - `Blocking` (default): reconnect runs on the caller's thread — a sink
+///   outage blocks the caller inside a send call until reconnect succeeds
+///   or `max_attempts` runs out.
+/// - `Background`: reconnect runs on a dedicated per-outage worker thread.
+///   Sends never wait out backoff or a factory call while the transport is
+///   down; they enqueue into the gap buffer under the configured overflow
+///   policy instead. On a managed *receive* open, `Background` is not
+///   supported: the open logs a warning and degrades to `Blocking`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum TstReconnectMode {
+    Blocking = 0,
+    Background = 1,
+}
+
+/// Set the reconnect-loop placement. See `TstReconnectMode` for the
+/// semantics of each mode. Default: `Blocking`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_reconnect_policy_set_mode(
+    p: *mut TstReconnectPolicy,
+    mode: TstReconnectMode,
+) -> crate::c_types::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.mode = match mode {
+            TstReconnectMode::Blocking => ReconnectMode::Blocking,
+            TstReconnectMode::Background => ReconnectMode::Background,
         };
         0
     })

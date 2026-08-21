@@ -1381,13 +1381,31 @@ void watchdog(DemuxReceiver rx, int pid, AtomicBoolean stop) {
         if (seen != null && System.currentTimeMillis() * 1_000 - seen > staleAfterUs) {
             System.out.println("pid " + Integer.toHexString(pid) + " has gone quiet");
         }
-        Thread.sleep(1_000);
+        try {
+            Thread.sleep(1_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
     }
 }
 ```
 
+**Blocking caveat:** `lastSeenMicros` takes the same internal resource lock a
+parked `next()` call holds, so on a receiver whose consumer thread is
+currently blocked in `next()` waiting on a fully-quiet stream, the watchdog's
+call blocks too — indefinitely, until an item finally arrives (or the
+consumer's own deadline, if any, expires). A separate watchdog thread is
+therefore not truly independent of the consumer's recv cadence. Two ways to
+keep it responsive: poll `lastSeenMicros` from the *consumer* thread itself,
+between `next()` calls, rather than from a separate thread; or pair it with
+`?recv_timeout=<ms>` on the receiver URL (see [Recv deadlines](#recv-deadlines-recv_timeout--per-call-overloads)
+below) so `next()` returns — and releases the lock — on its own cadence even
+when the stream is silent, letting a separate watchdog thread's poll go
+through between those returns.
+
 The same method exists on `org.tstrans.srt.DemuxReceiver` and
-`org.tstrans.srt.ManagedDemuxReceiver`.
+`org.tstrans.srt.ManagedDemuxReceiver` (same blocking caveat).
 
 ### Recv deadlines (`?recv_timeout=` / per-call overloads)
 

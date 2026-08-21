@@ -62,7 +62,9 @@ public final class Receiver extends NativeHandle {
      *     indefinitely, identically to {@link #recv()} (any persistent
      *     deadline armed by the {@code ?recv_timeout=<ms>} URL knob still
      *     applies in that case). A non-null value overrides the persistent
-     *     deadline for this one call.
+     *     deadline for this one call. A negative value behaves the same as
+     *     {@code null} (blocks indefinitely) — there is no separate
+     *     "immediate timeout" or rejected-argument case.
      * @throws IllegalStateException if the receiver is closed
      * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT}
      *     otherwise; {@code TIMEOUT} if {@code timeoutMs} elapses, or (when

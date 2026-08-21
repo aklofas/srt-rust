@@ -215,11 +215,13 @@ site keeps working unchanged) close the same gap:
 - Per-call `recv(Integer timeoutMs)` / `recvAu(Integer timeoutMs)`
   overloads (the one-shot deadline; explicit argument wins over any
   configured persistent deadline for that call) plus the persistent
-  `?recv_timeout=<ms>` URL query key on `rtp://` receiver URLs,
-  honored by both `Receiver` and `DemuxReceiver` — no separate JVM
-  setter, the URL is the only knob. Either path's expiry throws
-  `RtpException(TIMEOUT)`; the receiver stays open, call again to
-  retry.
+  `?recv_timeout=<ms>` URL query key on `rtp://` (and `rtsp(s)://`)
+  URLs, honored by `Receiver`, `DemuxReceiver`, and `H264Receiver.listen`
+  — and, for a URL-configured RTSP session, carried through
+  automatically by `RtspSession.intoDemuxReceiver()` /
+  `intoH264Receiver()` too — no separate JVM setter, the URL is the
+  only knob. Either path's expiry throws `RtpException(TIMEOUT)`; the
+  receiver stays open, call again to retry.
 - Public `DemuxReceiver.recvEvent()` — a checked receive that
   surfaces `RtpException` / `DemuxException` directly (including
   `TIMEOUT`) rather than the iterator-style `next()`'s wrapped
@@ -231,19 +233,21 @@ site keeps working unchanged) close the same gap:
   fields. Send-side only, matching Rust: `ManagedReceiver` /
   `ManagedDemuxReceiver` log a warning and reconnect as `BLOCKING`
   regardless of what the policy asks for.
-- `StreamEndReason` (Java enum, ordinal-pinned against the Rust/C
-  enums) + `endReason()` / `endDetail()` on `Receiver`, `DemuxReceiver`
-  (rtp), and `H264Receiver`. Like Python and unlike the C ABI (which
-  reads a `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
-  message through the shared thread-local last-error channel),
-  `endDetail()` reads the Rust enum's `msg` field directly — a
-  recorded end reason is data, not a failure. Because a Java handle is
-  freed on `close()` (unlike Python's object, which can still answer
-  after the underlying resource is gone), `close()` now returns and
-  caches an `EndReasonSnapshot` at the moment it exclusively owns the
-  resource, so `endReason()` / `endDetail()` keep answering correctly
-  after `close()` — see `Receiver`'s Javadoc for the read-after-close
-  contract.
+- `StreamEndReason` (Java enum, wire-value-pinned against the Rust/C
+  enums — the class deliberately never uses Java `ordinal()`) +
+  `endReason()` / `endDetail()` on `Receiver`, `DemuxReceiver` (rtp),
+  and `H264Receiver`. Like Python and unlike the C ABI (which reads a
+  `KeepaliveFailed` / `TransportFailed` / `ProtocolError` message
+  through the shared thread-local last-error channel), `endDetail()`
+  reads the Rust enum's `msg` field directly — a recorded end reason
+  is data, not a failure. Because a Java handle is freed on `close()`
+  (unlike Python's object, which can still answer after the underlying
+  resource is gone), the private native teardown call now computes and
+  returns the close-time `EndReasonSnapshot`, which the Java wrapper
+  caches at the moment it exclusively owns the resource — the public
+  `close()` itself stays `void`. `endReason()` / `endDetail()` keep
+  answering correctly after `close()` — see `Receiver`'s Javadoc for
+  the read-after-close contract.
 - `lastSeenMicros(pid)` on `rtp.DemuxReceiver`, `srt.DemuxReceiver`,
   and `srt.ManagedDemuxReceiver` — an epoch-microsecond boxed `Long`,
   or `null` if `pid` was never seen. Deliberately differs from the C

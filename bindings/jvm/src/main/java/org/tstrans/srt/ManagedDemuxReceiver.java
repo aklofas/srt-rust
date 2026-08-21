@@ -260,6 +260,14 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
      * counters (not the live transport), so it is unaffected by a
      * mid-reconnect gap.
      *
+     * <p><b>Blocking:</b> this takes the same internal resource lock a
+     * parked {@code next()} call holds — if an iteration is currently in
+     * flight on this receiver, {@code lastSeenMicros} blocks until it
+     * returns (an event, end of stream, or an error), which on a
+     * fully-quiet stream may be indefinite. Call between {@code next()}
+     * calls, or from the same thread driving the iteration, to avoid
+     * blocking.
+     *
      * @param pid the stream PID to query
      * @return the last-seen timestamp in Unix-epoch microseconds, or
      *     {@code null}

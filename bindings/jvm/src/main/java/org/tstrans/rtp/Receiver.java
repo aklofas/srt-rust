@@ -18,6 +18,12 @@ import org.tstrans.RtpException;
 public final class Receiver extends NativeHandle {
     static { NativeLoader.load(); }
 
+    // Populated by nativeClose from nClose's close-time snapshot (see
+    // endReason()/endDetail()'s javadoc for why: once closed, peekHandle()
+    // is 0 and there is no handle left to pass to a live-getter native).
+    private volatile StreamEndReason closedEndReason;
+    private volatile String closedEndDetail;
+
     Receiver(long h) { setHandle(h); }
 
     /** Bind a receiver to {@code url} ({@code rtp://host:port}, unicast or
@@ -84,15 +90,45 @@ public final class Receiver extends NativeHandle {
         return new CancelHandle(nCancelHandle(peekHandle()));
     }
 
+    /**
+     * Why the receive session ended, or {@code null} if it hasn't ended yet
+     * (or ended through a path this arc doesn't instrument). Still readable
+     * after {@link #close()} — the close path snapshots the reason before
+     * the underlying native resource is freed.
+     */
+    public StreamEndReason endReason() {
+        long h = peekHandle();
+        if (h == 0) return closedEndReason;
+        return StreamEndReason.fromWireOrdinal(nEndReason(h));
+    }
+
+    /**
+     * Free-text detail for {@link #endReason()} — the message carried by
+     * {@code KEEPALIVE_FAILED} / {@code TRANSPORT_FAILED} /
+     * {@code PROTOCOL_ERROR}; {@code null} for every other reason (including
+     * "hasn't ended yet"). Still readable after {@link #close()}.
+     */
+    public String endDetail() {
+        long h = peekHandle();
+        if (h == 0) return closedEndDetail;
+        return nEndDetail(h);
+    }
+
     /** Close the receiver. Idempotent. */
     @Override public void close() { super.close(); }
 
-    @Override protected void nativeClose(long h) { nClose(h); }
+    @Override protected void nativeClose(long h) {
+        Object[] snapshot = nClose(h);
+        closedEndReason = StreamEndReason.fromWireOrdinal((Integer) snapshot[0]);
+        closedEndDetail = (String) snapshot[1];
+    }
 
     private static native long   nFromUrl(String url) throws RtpException;
     private static native byte[] nRecv(long handle) throws RtpException;
     private static native byte[] nRecvTimeout(long handle, long timeoutMs) throws RtpException;
     private static native SocketStats nSocketStats(long handle);
     private static native long   nCancelHandle(long handle);
-    private static native void   nClose(long handle);
+    private static native int    nEndReason(long handle);
+    private static native String nEndDetail(long handle);
+    private static native Object[] nClose(long handle);
 }

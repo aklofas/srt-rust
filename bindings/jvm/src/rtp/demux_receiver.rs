@@ -32,14 +32,14 @@ use std::sync::{Arc, Mutex};
 
 use jni::JNIEnv;
 use jni::objects::{GlobalRef, JClass, JObject, JString, JThrowable, JValue};
-use jni::sys::{jboolean, jint, jlong, jobject};
+use jni::sys::{jboolean, jint, jlong, jobject, jobjectArray};
 
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_pipeline::{
     DemuxReceiver as RustDemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource,
 };
-use tst_rtp::RtpRecvTransport;
 use tst_rtp::builder::RtpRecvSocketBuilder;
+use tst_rtp::{RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::handle::HandleRegistry;
 use crate::mpegts::{build_demux_config_from_args, convert_event, throw_demux_error};
@@ -56,6 +56,14 @@ use super::stats::build_socket_stats;
 /// the byte-sink closure (which runs on the receiver thread inside recv_event).
 struct JniRtpDemuxReceiver {
     inner: RustDemuxReceiver<RtpRecvTransport>,
+    /// Pulled from the underlying `RtpRecvTransport::end_reason_handle()`
+    /// BEFORE it moves into `RustDemuxReceiver::new`/`with_demux_options`
+    /// below (the shell, generic over `RecvTransport`, has no
+    /// `end_reason_handle()` delegate of its own) — same capture-before-move
+    /// shape as `end_reason` on `transport::JniRtpReceiver`. See that
+    /// module's `end_reason` doc for why `nClose` (not the getters) builds
+    /// the post-close snapshot.
+    end_reason: StreamEndReasonHandle,
     sink_error: Arc<Mutex<Option<GlobalRef>>>,
 }
 
@@ -119,6 +127,14 @@ pub(crate) fn demux_receiver_handle_from_transport(
     transport: RtpRecvTransport,
     opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> jlong {
+    // Pulled BEFORE `transport` moves into the pipeline shell below — see
+    // the `end_reason` field doc for why. `transport` here already carries
+    // the owning RtspClient's shared end-reason slot when this is reached
+    // via an RTSP-session conversion (PR-A wired that into the transport
+    // before handing it off), so this handle observes reasons recorded by
+    // the RTSP keepalive/pump threads too, not just this receiver's own
+    // close — no extra plumbing needed for that path.
+    let end_reason = transport.end_reason_handle();
     let receiver = match opts {
         None => RustDemuxReceiver::new(transport),
         Some(opts) => RustDemuxReceiver::with_demux_options(transport, opts),
@@ -130,6 +146,7 @@ pub(crate) fn demux_receiver_handle_from_transport(
         .expect("RtpRecvTransport always returns Some(cancel_handle)");
     let jdr = JniRtpDemuxReceiver {
         inner: receiver,
+        end_reason,
         sink_error: Arc::new(Mutex::new(None)),
     };
     REGISTRY.insert_with_cancel(jdr, Some(Box::new(move || cancel.cancel()))) as jlong
@@ -354,23 +371,81 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nStats<'local>(
     })
 }
 
+/// `nEndReason(handle)` — why the receive session ended, as the wire-pinned
+/// ordinal (see `end_reason`'s module doc); `-1` if it hasn't ended yet, or
+/// on a closed/absent handle (the closed case never reaches this native —
+/// `DemuxReceiver.endReason()` reads the Java-side snapshot once
+/// `peekHandle()` is 0).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nEndReason(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jint {
+    crate::panic::jni_catch(&mut env, -1, |_env| {
+        REGISTRY
+            .with(handle as u64, |jdr| {
+                super::end_reason::end_reason_ordinal(jdr.end_reason.get().as_ref())
+            })
+            .unwrap_or(-1)
+    })
+}
+
+/// `nEndDetail(handle)` — free-text detail for `nEndReason`; `null` for a
+/// detail-less reason, "hasn't ended yet", or a closed/absent handle.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nEndDetail<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let detail = REGISTRY
+            .with(handle as u64, |jdr| {
+                jdr.end_reason
+                    .get()
+                    .and_then(|r| super::end_reason::end_reason_detail(&r).map(str::to_owned))
+            })
+            .flatten();
+        match detail {
+            Some(d) => match env.new_string(&d) {
+                Ok(s) => s.into(),
+                Err(_) => JObject::null(),
+            },
+            None => JObject::null(),
+        }
+    })
+}
+
 /// `nClose(handle)` — cancel-first, then take + drop the inner receiver and free
 /// the box. Cancelling before locking wakes a parked `nNext` so this never
 /// deadlocks against it. No-op on a zero handle.
+///
+/// Returns the 2-element close-time end-reason snapshot (see `end_reason`'s
+/// module doc) — computed here, from the resource this call already
+/// exclusively owns, since the registry entry (and any further
+/// `nEndReason`/`nEndDetail` call on this handle) is gone once this
+/// function returns.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nClose(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) {
+) -> jobjectArray {
     // `REGISTRY.close` fires the cancel hook FIRST (waking any parked recv WITHOUT
     // taking the resource lock), THEN takes + tears down the receiver under the
     // lock — blocking briefly until the woken recv releases it. Atomic +
     // idempotent: a double close finds the id gone → no-op.
-    crate::panic::jni_catch(&mut env, (), |_env| {
-        if let Some(mut jdr) = REGISTRY.close(handle as u64) {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let reason = if let Some(mut jdr) = REGISTRY.close(handle as u64) {
             jdr.inner.close();
-        }
+            jdr.end_reason.get()
+        } else {
+            None
+        };
+        super::end_reason::build_close_snapshot(env, reason)
+            .map(|arr| arr.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     })
 }
 

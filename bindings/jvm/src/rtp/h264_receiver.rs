@@ -30,7 +30,7 @@ use std::time::Duration;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JObjectArray, JString, JValue};
-use jni::sys::{jboolean, jint, jlong, jobject};
+use jni::sys::{jboolean, jint, jlong, jobject, jobjectArray};
 
 use tst_rtp::rtsp::client::RtspClient as RustRtspClient;
 use tst_rtp::{H264Au, H264DepayConfig, H264Receiver, ParameterSetInjection};
@@ -495,6 +495,55 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nCancelHandle(
     })
 }
 
+/// `H264Receiver.nEndReason(handle)` — why the receive session ended, as the
+/// wire-pinned ordinal (see `end_reason`'s module doc); `-1` if it hasn't
+/// ended yet, or on a closed/absent handle (the closed case never reaches
+/// this native — `H264Receiver.endReason()` reads the Java-side snapshot
+/// once `peekHandle()` is 0). Unlike `Receiver`/`DemuxReceiver`,
+/// `H264Receiver` has no `end_reason_handle()` — this reads the live
+/// receiver's own `&self` getter directly.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nEndReason(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jint {
+    crate::panic::jni_catch(&mut env, -1, |_env| {
+        REGISTRY
+            .with(handle as u64, |jdr| {
+                super::end_reason::end_reason_ordinal(jdr.inner.end_reason().as_ref())
+            })
+            .unwrap_or(-1)
+    })
+}
+
+/// `H264Receiver.nEndDetail(handle)` — free-text detail for `nEndReason`;
+/// `null` for a detail-less reason, "hasn't ended yet", or a closed/absent
+/// handle.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nEndDetail<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let detail = REGISTRY
+            .with(handle as u64, |jdr| {
+                jdr.inner
+                    .end_reason()
+                    .and_then(|r| super::end_reason::end_reason_detail(&r).map(str::to_owned))
+            })
+            .flatten();
+        match detail {
+            Some(d) => match env.new_string(&d) {
+                Ok(s) => s.into(),
+                Err(_) => JObject::null(),
+            },
+            None => JObject::null(),
+        }
+    })
+}
+
 /// `H264Receiver.nClose(handle)` — cancel-first (wakes a parked recv), then take
 /// + close the inner receiver and free the box. Atomic + idempotent.
 ///
@@ -502,18 +551,24 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nCancelHandle(
 /// (see [`JniRtspControl`]): best-effort TEARDOWN fires first (so the server
 /// stops streaming), then the data plane closes — mirroring
 /// `RtspSession.nClose`'s teardown contract.
+///
+/// Returns the 2-element close-time end-reason snapshot (see `end_reason`'s
+/// module doc) — read here, right after `slot.inner.close()` records
+/// `Cancelled` (first-writer-wins) and before `slot` drops, because the
+/// registry entry (and any further `nEndReason`/`nEndDetail` call on this
+/// handle) is gone once this function returns.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nClose(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) {
-    crate::panic::jni_catch(&mut env, (), |_env| {
+) -> jobjectArray {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
         // `REGISTRY.close` fires the cancel hook FIRST (waking any parked recv_au
         // WITHOUT taking the resource lock), THEN takes + drops the slot under the
         // lock (blocking briefly until the woken recv releases it). Atomic +
         // idempotent: a double close finds the id gone → no-op.
-        if let Some(mut slot) = REGISTRY.close(handle as u64) {
+        let reason = if let Some(mut slot) = REGISTRY.close(handle as u64) {
             if let Some(ctrl) = slot.rtsp.take() {
                 if !ctrl.torn_down.load(Ordering::Relaxed) {
                     if let Ok(mut guard) = ctrl.client.lock() {
@@ -525,6 +580,12 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nClose(
                 }
             }
             slot.inner.close();
-        }
+            slot.inner.end_reason()
+        } else {
+            None
+        };
+        super::end_reason::build_close_snapshot(env, reason)
+            .map(|arr| arr.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     })
 }

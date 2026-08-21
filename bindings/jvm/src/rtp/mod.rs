@@ -3,6 +3,7 @@
 pub(crate) mod errors;
 mod client;
 mod demux_receiver;
+pub(crate) mod end_reason;
 pub(crate) mod h264_receiver;
 mod mux_sender;
 mod server;

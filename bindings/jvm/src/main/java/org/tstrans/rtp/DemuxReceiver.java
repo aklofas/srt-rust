@@ -51,6 +51,12 @@ import org.tstrans.mpegts.DemuxerConfig;
 public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
+    // Populated by nativeClose from nClose's close-time snapshot (see
+    // endReason()/endDetail()'s javadoc for why: once closed, peekHandle()
+    // is 0 and there is no handle left to pass to a live-getter native).
+    private volatile StreamEndReason closedEndReason;
+    private volatile String closedEndDetail;
+
     DemuxReceiver(long h) { setHandle(h); }
 
     /**
@@ -223,7 +229,35 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
         return nIsAlive(peekHandle());
     }
 
-    @Override protected void nativeClose(long h) { nClose(h); }
+    /**
+     * Why the receive session ended, or {@code null} if it hasn't ended yet
+     * (or ended through a path this arc doesn't instrument). Still readable
+     * after {@link #close()} — the close path snapshots the reason before
+     * the underlying native resource is freed.
+     */
+    public StreamEndReason endReason() {
+        long h = peekHandle();
+        if (h == 0) return closedEndReason;
+        return StreamEndReason.fromWireOrdinal(nEndReason(h));
+    }
+
+    /**
+     * Free-text detail for {@link #endReason()} — the message carried by
+     * {@code KEEPALIVE_FAILED} / {@code TRANSPORT_FAILED} /
+     * {@code PROTOCOL_ERROR}; {@code null} for every other reason (including
+     * "hasn't ended yet"). Still readable after {@link #close()}.
+     */
+    public String endDetail() {
+        long h = peekHandle();
+        if (h == 0) return closedEndDetail;
+        return nEndDetail(h);
+    }
+
+    @Override protected void nativeClose(long h) {
+        Object[] snapshot = nClose(h);
+        closedEndReason = StreamEndReason.fromWireOrdinal((Integer) snapshot[0]);
+        closedEndDetail = (String) snapshot[1];
+    }
 
     // --- Natives ---
 
@@ -234,6 +268,8 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
     private static native DemuxEvent nNext(long handle) throws RtpException, DemuxException;
     private static native void nAddByteSink(long handle, Consumer<byte[]> callback);
     private static native TransportStats nStats(long handle);
-    private static native void nClose(long handle);
     private static native boolean nIsAlive(long handle);
+    private static native int nEndReason(long handle);
+    private static native String nEndDetail(long handle);
+    private static native Object[] nClose(long handle);
 }

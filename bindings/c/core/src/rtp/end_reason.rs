@@ -46,39 +46,46 @@ pub enum TstStreamEndReason {
 
 /// Convert a recorded [`StreamEndReason`] to its C discriminant.
 ///
-/// `KeepaliveFailed` / `TransportFailed` / `ProtocolError` carry a `msg`
-/// detail string with no home on a plain `repr(C)` enum. Rather than add
-/// a new leak-prone owned-string field to every caller's out-param, the
-/// detail rides the existing thread-local last-error message channel —
-/// [`set_last_error`] is called with [`TstError::Success`] (the getter
-/// itself did not fail; a recorded end reason is data) so
-/// `tst_get_last_error() == 0` still holds for callers using that as a
-/// "did the last call succeed" check, while `tst_last_error_str()`
-/// picks up the extra detail immediately after the getter call.
+/// Only called by `tst_rtp_receiver_end_reason` /
+/// `tst_rtp_demux_receiver_end_reason` when they already hold a `Some`
+/// from `StreamEndReasonHandle::get()` — i.e. every arm here corresponds
+/// to an ACTUALLY-RECORDED reason, never the "hasn't ended yet" case
+/// (that short-circuits to `TstStreamEndReason::None` at the call site
+/// without reaching this function at all — see the getters' doc for why
+/// that split matters to the last-error contract).
+///
+/// Every arm therefore unconditionally writes the thread-local
+/// last-error message channel — [`set_last_error`] with
+/// [`TstError::Success`] (a recorded end reason is data, not a getter
+/// failure, so `tst_get_last_error() == 0` still holds for callers using
+/// that as a "did the last call succeed" check). `KeepaliveFailed` /
+/// `TransportFailed` / `ProtocolError` write their `msg` detail; every
+/// other arm (including the `#[non_exhaustive]` fallback) writes an
+/// EMPTY message — so `tst_last_error_str()` always reflects THIS call
+/// once a reason has been recorded, never a stale message left over
+/// from some earlier, unrelated failure.
 pub(crate) fn convert_end_reason(r: &StreamEndReason) -> TstStreamEndReason {
-    match r {
-        StreamEndReason::CleanTeardown => TstStreamEndReason::CleanTeardown,
-        StreamEndReason::SessionExpired => TstStreamEndReason::SessionExpired,
+    let (converted, msg): (TstStreamEndReason, &str) = match r {
+        StreamEndReason::CleanTeardown => (TstStreamEndReason::CleanTeardown, ""),
+        StreamEndReason::SessionExpired => (TstStreamEndReason::SessionExpired, ""),
         StreamEndReason::KeepaliveFailed { msg } => {
-            set_last_error(TstError::Success, msg);
-            TstStreamEndReason::KeepaliveFailed
+            (TstStreamEndReason::KeepaliveFailed, msg.as_str())
         }
         StreamEndReason::TransportFailed { msg } => {
-            set_last_error(TstError::Success, msg);
-            TstStreamEndReason::TransportFailed
+            (TstStreamEndReason::TransportFailed, msg.as_str())
         }
-        StreamEndReason::ProtocolError { msg } => {
-            set_last_error(TstError::Success, msg);
-            TstStreamEndReason::ProtocolError
-        }
-        StreamEndReason::Cancelled => TstStreamEndReason::Cancelled,
+        StreamEndReason::ProtocolError { msg } => (TstStreamEndReason::ProtocolError, msg.as_str()),
+        StreamEndReason::Cancelled => (TstStreamEndReason::Cancelled, ""),
         // StreamEndReason is #[non_exhaustive] on the tst-rtp side. A
-        // future variant this binding doesn't know how to map yet falls
-        // back to None — "ended through a path this arc doesn't
-        // instrument" is exactly true of it from the C ABI's
-        // perspective until the mapping above is extended.
-        _ => TstStreamEndReason::None,
-    }
+        // future variant this binding doesn't know how to map yet
+        // degrades to None with an empty detail rather than panicking —
+        // "ended through a path this arc doesn't instrument" is exactly
+        // true of it from the C ABI's perspective until the mapping
+        // above is extended.
+        _ => (TstStreamEndReason::None, ""),
+    };
+    set_last_error(TstError::Success, msg);
+    converted
 }
 
 #[cfg(test)]
@@ -86,27 +93,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clean_teardown_maps_without_touching_last_error() {
-        assert!(matches!(
-            convert_end_reason(&StreamEndReason::CleanTeardown),
-            TstStreamEndReason::CleanTeardown
-        ));
+    fn clean_teardown_maps_and_sets_empty_last_error_detail() {
+        crate::error::clear_last_error_for_test();
+        let converted = convert_end_reason(&StreamEndReason::CleanTeardown);
+        assert!(matches!(converted, TstStreamEndReason::CleanTeardown));
+        assert_eq!(
+            crate::error::test_last_error_code(),
+            TstError::Success as i32
+        );
+        assert_eq!(crate::error::test_last_error_msg(), "");
     }
 
     #[test]
-    fn cancelled_maps() {
-        assert!(matches!(
-            convert_end_reason(&StreamEndReason::Cancelled),
-            TstStreamEndReason::Cancelled
-        ));
+    fn cancelled_maps_and_sets_empty_last_error_detail() {
+        crate::error::clear_last_error_for_test();
+        let converted = convert_end_reason(&StreamEndReason::Cancelled);
+        assert!(matches!(converted, TstStreamEndReason::Cancelled));
+        assert_eq!(
+            crate::error::test_last_error_code(),
+            TstError::Success as i32
+        );
+        assert_eq!(crate::error::test_last_error_msg(), "");
     }
 
     #[test]
-    fn session_expired_maps() {
-        assert!(matches!(
-            convert_end_reason(&StreamEndReason::SessionExpired),
-            TstStreamEndReason::SessionExpired
-        ));
+    fn session_expired_maps_and_sets_empty_last_error_detail() {
+        crate::error::clear_last_error_for_test();
+        let converted = convert_end_reason(&StreamEndReason::SessionExpired);
+        assert!(matches!(converted, TstStreamEndReason::SessionExpired));
+        assert_eq!(
+            crate::error::test_last_error_code(),
+            TstError::Success as i32
+        );
+        assert_eq!(crate::error::test_last_error_msg(), "");
     }
 
     #[test]

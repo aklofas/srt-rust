@@ -240,6 +240,14 @@ pub(crate) fn clear_last_error_for_test() {
 /// recent failure on this thread (or `TST_E_SUCCESS` if there has been
 /// none since thread start).
 ///
+/// **Exception — the RTP end-reason getters:** `tst_rtp_receiver_end_reason`
+/// and `tst_rtp_demux_receiver_end_reason` reset this to `TST_E_SUCCESS`
+/// (with a detail message on [`tst_get_last_error_str`], possibly empty)
+/// EVERY time they report an actually-recorded end reason — even though
+/// they are not themselves failing; see their doc for the full contract.
+/// A pending failure from an earlier call must be read before calling
+/// one of those getters, or it is overwritten.
+///
 /// **Storage:** per-thread (`thread_local!`) under the default `std` build
 /// (the desktop cdylib/staticlib — the per-thread wording above is exact).
 /// In a `no_std` build the slot is instead a single **process-global**
@@ -255,6 +263,12 @@ pub unsafe extern "C" fn tst_get_last_error() -> crate::c_types::c_int {
 /// Pointer to the most recent error message on this thread. Valid until
 /// the next tst-c call on the same thread. Never NULL — empty string when
 /// no error.
+///
+/// **Exception — the RTP end-reason getters:** see the note on
+/// [`tst_get_last_error`] — `tst_rtp_receiver_end_reason` and
+/// `tst_rtp_demux_receiver_end_reason` overwrite this message (to the
+/// recorded reason's detail, or an empty string when the reason carries
+/// none) on every call that reports an actually-recorded reason.
 ///
 /// **`no_std` builds:** the backing slot is process-global rather than
 /// per-thread (see [`tst_get_last_error`]), so "the next tst-c call"

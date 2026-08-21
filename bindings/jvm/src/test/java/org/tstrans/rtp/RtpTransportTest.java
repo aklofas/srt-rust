@@ -129,7 +129,7 @@ class RtpTransportTest {
     }
 
     @Test
-    @Timeout(5)
+    @Timeout(10)
     void recvNullTimeoutBlocksLikeNoArgRecv() throws Exception {
         // `recv((Integer) null)` must behave exactly like `recv()`: block past
         // a short delay rather than expiring, then return the delivered bytes.
@@ -137,7 +137,21 @@ class RtpTransportTest {
         // to a short numeric deadline (instead of the -1 "block forever"
         // sentinel) would surface as a spurious TIMEOUT instead of silently
         // passing on an already-buffered datagram.
-        try (Receiver r = Receiver.fromUrl("rtp://127.0.0.1:50006")) {
+        //
+        // A generous persistent `?recv_timeout=4000` backstop bounds the native
+        // call itself: `recv((Integer) null)` maps to the untimed `recv_bytes`
+        // path, which still honors this URL-armed deadline (same mechanism
+        // `nRecv`'s existing tests exercise). The 300 ms delayed send clears
+        // comfortably inside the 4 s window, so this still proves null doesn't
+        // flatten to a short deadline — but if a real bug or a lost packet ever
+        // left nothing to receive, the call throws RtpException(TIMEOUT) loudly
+        // after 4 s instead of parking forever. @Timeout(5) alone is NOT a
+        // sufficient guard here: it cannot interrupt a thread blocked in a
+        // native socket read, so an unbounded native call guarded only by
+        // @Timeout is a real, unkillable-hang risk in CI (this exact class of
+        // bug pinned a Gradle daemon for 44 minutes during this test's
+        // development — see task-D2-report.md).
+        try (Receiver r = Receiver.fromUrl("rtp://127.0.0.1:50006?recv_timeout=4000")) {
             byte[] sent = tsPacket((byte) 0xCD);
             Thread sender = new Thread(() -> {
                 try {

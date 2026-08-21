@@ -890,41 +890,43 @@ the trigger that would unblock it.
   flapping (e.g. for alarm thresholds / backoff tuning) beyond the
   existing rebuild count.
 
-## Background reconnect — bindings parity (Python / JVM)
+## Background reconnect — bindings parity (C / Python / JVM) — RESOLVED 2026-08-21
 
-- **Status:** C ABI mirror shipped 2026-08-20 (ABI minor 20):
-  `TstReconnectMode` + `tst_reconnect_policy_set_mode` on
+- **Status:** RESOLVED. `ReconnectMode::Background`,
+  `ManagedTransport::stats_handle()`, and `ManagedStatsHandle` /
+  `ManagedTransportStats` (send-side reconnect/gap telemetry) are now
+  reachable from all three bindings: the C ABI mirror
+  (`TstReconnectMode` + `tst_reconnect_policy_set_mode` on
   `tst_reconnect_policy_t`, plus `tst_managed_transport_stats_t` +
-  `tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`
-  (send-side only, matching Rust). Python and JVM still have no mirror:
-  `ReconnectMode::Background`, `ManagedTransport::stats_handle()`, and
-  `ManagedStatsHandle` / `ManagedTransportStats` are unreachable from
-  either binding, which only get `ReconnectMode::Blocking` (the
-  unchanged pre-existing behavior).
-- **Why deferred (Python / JVM):** Ships C-first now that the ABI
-  mirror has landed — no Python or JVM consumer has asked for it yet.
-- **Trigger to revisit:** A binding consumer running a
-  single-threaded relay pump against a managed sink — the same shape
-  that motivated the Rust-side feature — asks for that
-  backoff-decoupled send path from Python or JVM.
+  `tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`, ABI
+  minor 20) shipped in PR #165; the Python mirror (`ReconnectMode`
+  incl. `BACKGROUND`, `.reconnect_stats()`, `ManagedTransportStats`)
+  shipped in PR #166; the JVM mirror (`ReconnectMode.BACKGROUND`,
+  `.reconnectStats()`, `ManagedTransportStats`) shipped in PR #167.
+  All three stay send-side only, matching the Rust-side scope — see
+  the "Reconnect counters on `ManagedTransport` stats" entry above for
+  the still-deferred receive-side residue (unaffected by this arc).
 
-## Last-activity-wall-clock gauges per stream (Python / JVM)
+## Last-activity-wall-clock gauges per stream (C / Python / JVM) — RESOLVED 2026-08-21
 
-- **Status:** `StreamStats.last_seen: Option<SystemTime>` (stamped on
-  every mux push / demux emit, `std` builds only) got its C ABI mirror
-  2026-08-20 (ABI minor 20) — NOT by growing `tst_stream_stats_t`
-  (still byte-size-asserted, plain-integer counters only), but as a new
-  getter, `tst_*_get_stream_last_seen_micros`, on all six demux-receiver
-  handle families (plain + managed SRT, RIST, RTP, TCP, UDP). Returns a
-  `uint64_t` Unix epoch microsecond timestamp, `0` if the PID has never
-  been observed. Python and JVM still have no mirror.
-- **Why deferred (Python / JVM):** Ships C-first now that the ABI
-  getter shape is proven — no Python or JVM consumer has asked for it
-  yet; in the meantime they can derive staleness from `items` deltas +
-  their own wall-clock sampling cadence.
-- **Trigger to revisit:** A Python or JVM consumer ships a watchdog
-  that needs per-stream staleness without holding two snapshots, or
-  asks for millisecond-resolution event timing in the stats surface.
+- **Status:** RESOLVED. `StreamStats.last_seen: Option<SystemTime>`
+  (stamped on every mux push / demux emit, `std` builds only) is now
+  reachable from all three bindings. The C ABI mirror shipped
+  2026-08-20 (ABI minor 20, PR #165) — NOT by growing
+  `tst_stream_stats_t` (still byte-size-asserted, plain-integer
+  counters only), but as a new getter,
+  `tst_*_get_stream_last_seen_micros`, on all six demux-receiver
+  handle families (plain + managed SRT, RIST, RTP, TCP, UDP), returning
+  a `uint64_t` Unix epoch microsecond timestamp (`0` if the PID has
+  never been observed). The Python mirror (`last_seen_micros(pid) ->
+  Optional[int]` on `rtp.DemuxReceiver`, `srt.DemuxReceiver`, and
+  `srt.ManagedDemuxReceiver`) shipped in PR #166. The JVM mirror
+  (`lastSeenMicros(pid) -> Long`, same three receiver classes) shipped
+  in PR #167 — narrower than the C ABI's six families because neither
+  binding exposes standalone RIST/TCP/UDP receiver classes today.
+  Python and JVM diverge from the C getter's `0`-if-unseen sentinel —
+  both use their native nullable idiom (`None` / boxed `null`)
+  instead, since neither has a bare-integer ABI constraint.
 
 ## Per-stream PMT descriptor surface at the C ABI
 
@@ -1734,28 +1736,25 @@ the trigger that would unblock it.
   reconstruction, or RTCP RR feedback to the sender is needed for
   adaptive bitrate control.
 
-## RTP receive-deadline bindings parity (Python / JVM)
+## RTP receive-deadline bindings parity (C / Python / JVM) — RESOLVED 2026-08-21
 
-- **Status:** C ABI covered 2026-08-20 — no new symbols needed. The
-  `?recv_timeout=<ms>` URL key (already reaching all four Rust
-  constructors) is now also honored by `tst_rtp_recv_open` /
-  `tst_rtp_demux_receiver_open` (previously only the RTSP-converted
-  path applied it); expiry surfaces as the existing `TST_E_BUFFER_FULL`
-  (-4), retryable, documented on `tst_rtp_receiver_recv_ts` /
-  `tst_rtp_demux_receiver_next_event`. `H264Receiver::recv_au_timeout`,
-  `RtpRecvTransport::recv_timeout`, and the configured-knob
-  `RtpRecvTransport::set_recv_timeout` remain Rust/C-URL-only — Python
-  and JVM have no mirror (no `timeout_ms` kwarg / boxed-`Integer`
-  parameter, no typed `TIMEOUT` error kind).
-- **Why deferred (Python / JVM):** shipped Rust/C-first from an
-  integrator field report (a healthy-but-stalled RTSP session — no
-  error, no EOS — previously required a ~150-line reader-thread +
-  `sync_channel` + cancel-handle watchdog around the blocking
-  `recv_au`). No Python or JVM consumer has asked for the typed
-  deadline variant yet.
-- **Trigger to revisit:** the first Python or JVM consumer asking for a
-  stall watchdog — the Python wheel consumers currently wrap `recv_au`
-  with a reader thread for this purpose.
+- **Status:** RESOLVED. The `?recv_timeout=<ms>` URL key (already
+  reaching all four Rust constructors) plus a typed per-call deadline
+  are now honored across all three bindings. C ABI covered 2026-08-20
+  (PR #165, no new symbols needed): `tst_rtp_recv_open` /
+  `tst_rtp_demux_receiver_open` now also honor `?recv_timeout=`
+  (previously only the RTSP-converted path applied it); expiry
+  surfaces as the existing `TST_E_BUFFER_FULL` (-4), retryable,
+  documented on `tst_rtp_receiver_recv_ts` /
+  `tst_rtp_demux_receiver_next_event`. Python (PR #166) gained
+  `timeout_ms: Optional[int]` keyword args on `recv()`/`recv_au()`
+  (layered on top of, not replacing, the URL-configured persistent
+  deadline) and a typed `RtpError(TIMEOUT)`. JVM (PR #167) mirrors it
+  with `recv(Integer timeoutMs)` / `recvAu(Integer timeoutMs)`
+  overloads plus a new `RtpException.Kind.TIMEOUT`, and additionally
+  ships a checked `DemuxReceiver.recvEvent()` so a demux-side timeout
+  is also a typed `TIMEOUT` rather than an ambiguous EOS-shaped `null`
+  from the plain iterator-style `next()`.
 
 ## `MuxSender::finish` bindings parity
 
@@ -1963,36 +1962,29 @@ the trigger that would unblock it.
   and decide the telemetry story (count it in `forced_cuts` or a dedicated
   counter).
 
-## Python/JVM `tracing` diagnostics bridge + structured stream-end reason
+## Python/JVM `tracing` diagnostics bridge + structured stream-end reason — RESOLVED 2026-08-21
 
-- **Status:** The Rust core logs meaningful diagnostics via `tracing`
-  (the interleaved pump WARNs on read errors, malformed frames, queue
-  floods; the keepalive WARNs on 454), but the Python and JVM bindings
-  install no subscriber, so all of it vanishes in the bindings that most
-  integrators run. From Python, a dying RTSP session is largely
-  indistinguishable from a clean end of stream (`recv_au()` returns
-  `None` for both a server-side teardown and a pump failure), and
-  `RtspClient::is_session_alive` is not exposed through any binding. A
-  field integrator lost a diagnosis day to exactly this gap.
-- **Why deferred:** The right shape needs design: an opt-in stderr
-  bridge (e.g. `tracing-subscriber` fmt gated on a `TSTRANS_LOG` env
-  var, or `pyo3-log` into Python's `logging`) is easy, but the more
-  valuable piece is a structured "why did the stream end" surface on the
-  session/receiver objects (clean teardown vs read error vs session
-  expiry vs pump failure), which touches the public API of three
-  bindings and deserves its own pass rather than riding a bugfix PR.
-  (2026-08-20: the structured surface shipped Rust-side —
+- **Status:** RESOLVED. The Rust core logs meaningful diagnostics via
+  `tracing` (the interleaved pump WARNs on read errors, malformed
+  frames, queue floods; the keepalive WARNs on 454); previously the
+  Python and JVM bindings installed no subscriber, so all of it
+  vanished, and a dying RTSP session was largely indistinguishable
+  from a clean end of stream (`recv_au()` returning `None` for both).
+  Both pieces now ship in both bindings. The structured "why did the
+  stream end" surface shipped Rust-side 2026-08-20 —
   `tst_rtp::StreamEndReason` / `StreamEndReasonHandle`,
   `RtpRecvTransport::{end_reason, end_reason_handle}`,
   `H264Receiver::end_reason` — see
   [troubleshooting.md](/docs/troubleshooting.md#why-did-my-rtsp-stream-end)
-  — and got its C ABI mirror the same day (ABI minor 20):
+  — with a same-day C ABI mirror (ABI minor 20, PR #165):
   `TstStreamEndReason` + `tst_rtp_{receiver,demux_receiver}_end_reason`.
-  The `TSTRANS_LOG` bridge and the Python/JVM mirror of the structured
-  surface remain unshipped.)
-- **Trigger to revisit:** the next bindings-surface wave, or the next
-  field report where a Python/JVM integrator cannot tell why a stream
-  ended.
+  The opt-in `TSTRANS_LOG` stderr bridge (an `EnvFilter`-driven
+  `tracing-subscriber` install, `try_init` so a host's own subscriber
+  is never displaced) and the structured `end_reason()`/`end_detail()`
+  mirror both shipped in Python (PR #166) and JVM (PR #167) — JVM's
+  bridge installs from `JNI_OnLoad`, the one guaranteed one-time
+  native-library entry point (Python's installs from the `_native`
+  module-init hook).
 
 ## ASan under the JVM test suite (tst-jni)
 

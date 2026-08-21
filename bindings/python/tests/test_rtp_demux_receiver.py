@@ -200,6 +200,10 @@ def test_demux_receiver_url_knob_iteration_resumes_after_timeout() -> None:
         with pytest.raises(RtpError) as exc_info:
             next(it)
         assert exc_info.value.kind == RtpErrorKind.TIMEOUT
+        # A deadline expiry is not a recorded end reason — the session is
+        # still alive, so `end_reason()` stays None (pins the
+        # deadline-expiry-records-no-reason seam against `StreamEndReason`).
+        assert rx.end_reason() is None
 
         # Deliver muxed TS bytes on the same port *before* resuming the
         # iterator, so the datagrams are already queued in the kernel

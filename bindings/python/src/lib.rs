@@ -42,12 +42,18 @@ use pyo3::prelude::*;
 /// bare `import tstrans` has zero subscriber overhead beyond the env
 /// lookup. `try_init` (not `init`) so an embedding process that already
 /// installed its own subscriber keeps it — this bridge never displaces
-/// one.
+/// one. ANSI color codes are gated on `stderr` actually being a
+/// terminal (`std::io::IsTerminal`, stable since 1.85) — a piped or
+/// redirected stderr (log files, `subprocess.run(capture_output=True)`)
+/// gets plain text, no stray escape sequences.
 fn init_tracing_bridge() {
+    use std::io::IsTerminal;
+
     if let Ok(filter) = std::env::var("TSTRANS_LOG") {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
             .with_writer(std::io::stderr)
+            .with_ansi(std::io::stderr().is_terminal())
             .try_init();
     }
 }

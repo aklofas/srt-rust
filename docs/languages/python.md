@@ -601,10 +601,10 @@ with ManagedMuxSender.from_url(
     ...
     stats = s.reconnect_stats()   # ManagedTransportStats
     if stats.reconnecting:
-        print(f"outage in progress, {stats.gap_len} bytes queued")
+        print(f"outage in progress, {stats.gap_len} messages queued")
 ```
 
-`reconnect_stats()` (also on `ManagedMuxSender`) returns a frozen
+`reconnect_stats()` (also on `ManagedSender`) returns a frozen
 `ManagedTransportStats` (`reconnect_attempts`, `reconnect_successes`,
 `gap_len`, `gap_messages_dropped`, `gap_bytes_dropped`, `reconnecting`)
 regardless of `mode` — `reconnecting` just stays `False` under the

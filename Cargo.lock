@@ -2033,6 +2033,8 @@ dependencies = [
  "rustls",
  "rustls-pemfile",
  "secrecy",
+ "tracing",
+ "tracing-subscriber",
  "tst-core",
  "tst-pipeline",
  "tst-rtp",

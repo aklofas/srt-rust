@@ -71,6 +71,9 @@ pub struct TstRtpDemuxReceiver {
 ///
 /// `?pkt_size=` is send-side only and is rejected on receive URLs.
 ///
+/// `?recv_timeout=<ms>` configures a persistent receive deadline (see
+/// [`tst_rtp_demux_receiver_next_event`]'s doc for how expiry surfaces).
+///
 /// # Safety
 ///
 /// `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
@@ -90,13 +93,17 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
         if let Some(ref iface) = rtp_url.iface {
             builder.iface(iface.clone());
         }
-        let transport = match builder.listen() {
+        let mut transport = match builder.listen() {
             Ok(t) => t,
             Err(e) => {
                 set_last_error(TstError::RtpTransport, &format!("rtp listen: {e}"));
                 return std::ptr::null_mut();
             }
         };
+        // See the matching comment in `tst_rtp_recv_open`: the builder above
+        // starts from a fresh `RtpUrl` that drops the originally-parsed
+        // `rtp_url`'s `recv_timeout`, so it's applied explicitly here.
+        transport.set_recv_timeout(rtp_url.recv_timeout);
         let cancel = transport.cancel_handle();
         let end_reason = transport.end_reason_handle();
         let receiver = if let Some(cfg) = unsafe { demux_cfg.as_ref() } {
@@ -161,6 +168,10 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_close(p: *mut TstRtpDemuxReceive
 /// - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
 /// - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
 /// - `TST_E_TRANSPORT` (-8) on transport failure
+/// - `TST_E_BUFFER_FULL` (-4) if the receiver was opened with
+///   `?recv_timeout=<ms>` and no event arrived before the configured
+///   deadline — retryable, the session stays alive (the same code SRT's
+///   recv-deadline expiry already returns to C consumers)
 /// - `TST_E_INVALID_TS` (-3) on a demuxer error
 /// - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
 ///
@@ -275,7 +286,7 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_cancel(p: *mut TstRtpDemuxReceiv
 /// `TST_E_SUCCESS` with a detail message — the `KeepaliveFailed` /
 /// `TransportFailed` / `ProtocolError` reasons write their underlying
 /// detail; `CleanTeardown` / `SessionExpired` / `Cancelled` write an
-/// EMPTY message (so `tst_last_error_str()` never carries a stale
+/// EMPTY message (so `tst_get_last_error_str()` never carries a stale
 /// message left over from some earlier, unrelated failure once a reason
 /// has been recorded). Read any pending failure from an earlier call
 /// BEFORE calling this getter, or it is overwritten — see the exception
@@ -673,6 +684,32 @@ mod tests {
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(s.to_str().unwrap(), "");
 
+        unsafe { tst_rtp_demux_receiver_close(handle) };
+    }
+
+    /// `?recv_timeout=` must actually arm the transport through
+    /// `tst_rtp_demux_receiver_open` — regression test for the gap where
+    /// the open path reconstructed a fresh `RtpUrl` (host/port/iface only)
+    /// instead of retaining the parsed URL's `recv_timeout`, silently
+    /// dropping the knob. A quiet socket (no sender) must return
+    /// `TST_E_BUFFER_FULL` well inside the 5 s CI-flake margin, not block
+    /// indefinitely.
+    #[test]
+    fn url_recv_timeout_arms_transport_via_open() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0?recv_timeout=200").unwrap();
+        let handle = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let mut ev = TstEvent::default();
+        let start = std::time::Instant::now();
+        let rc = unsafe { tst_rtp_demux_receiver_next_event(handle, &mut ev) };
+        let elapsed = start.elapsed();
+        assert_eq!(rc, TstError::BufferFull as i32, "expected deadline expiry");
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "next_event blocked past the configured 200ms deadline: {elapsed:?}"
+        );
         unsafe { tst_rtp_demux_receiver_close(handle) };
     }
 }

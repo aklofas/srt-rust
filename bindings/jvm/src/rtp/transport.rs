@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
@@ -278,6 +279,62 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecv(
                     std::ptr::null_mut()
                 }
             },
+            Err(e) => {
+                transport_error_to_rtp(env, &e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Receive one MPEG-TS payload chunk (RTP header already stripped), bounded by
+/// a per-call deadline. `timeout_ms < 0` blocks indefinitely via the plain
+/// `recv_bytes` path — byte-identical to `nRecv`, so any persistent deadline
+/// armed by the `?recv_timeout=` URL knob still applies. `timeout_ms >= 0`
+/// takes a one-shot `RtpRecvTransport::recv_timeout` override for this call
+/// only. Mirrors tst-py `PyReceiver.recv(timeout_ms=...)`.
+///
+/// `recv_timeout`'s `Ok(None)` return means the deadline elapsed (the
+/// transport/session stays alive) — hand-mapped to `RtpException(TIMEOUT)`
+/// below, since that outcome never reaches `transport_error_to_rtp` (which
+/// only sees `Err`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecvTimeout(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    timeout_ms: jlong,
+) -> jbyteArray {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let Some(res) = REGISTRY_RECEIVER.with_poisoning(handle as u64, |w| {
+            if timeout_ms < 0 {
+                let n = w.inner.recv_bytes(w.scratch.as_mut_slice())?;
+                Ok(Some(w.scratch[..n].to_vec()))
+            } else {
+                let dur = Duration::from_millis(timeout_ms as u64);
+                match w.inner.recv_timeout(w.scratch.as_mut_slice(), dur)? {
+                    Some(n) => Ok(Some(w.scratch[..n].to_vec())),
+                    None => Ok(None),
+                }
+            }
+        }) else {
+            crate::error::throw_closed(env, "Receiver");
+            return std::ptr::null_mut();
+        };
+        match res {
+            Ok(Some(bytes)) => match env.byte_array_from_slice(&bytes) {
+                Ok(arr) => arr.into_raw(),
+                // Allocating the Java array failed (effectively OOM). Throw rather
+                // than return null silently, matching `nRecv`.
+                Err(_) => {
+                    throw_rtp(env, "TRANSPORT", "failed to allocate received packet");
+                    std::ptr::null_mut()
+                }
+            },
+            Ok(None) => {
+                throw_rtp(env, "TIMEOUT", "recv deadline elapsed");
+                std::ptr::null_mut()
+            }
             Err(e) => {
                 transport_error_to_rtp(env, &e);
                 std::ptr::null_mut()

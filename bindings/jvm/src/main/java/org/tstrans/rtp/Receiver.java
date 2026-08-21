@@ -39,11 +39,33 @@ public final class Receiver extends NativeHandle {
      *
      * @throws IllegalStateException if the receiver is closed
      * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT} otherwise;
-     *     {@code TIMEOUT} if a configured recv deadline expires
+     *     {@code TIMEOUT} if a configured persistent recv deadline (the
+     *     {@code ?recv_timeout=<ms>} URL knob) expires
+     * @see #recv(Integer) for a per-call deadline instead of (or on top of) a
+     *     persistent one
      */
     public byte[] recv() throws RtpException {
         ensureOpen("Receiver is closed");
         return nRecv(peekHandle());
+    }
+
+    /**
+     * Receive one TS payload chunk, bounded by a per-call deadline.
+     *
+     * @param timeoutMs milliseconds to wait for a packet; {@code null} blocks
+     *     indefinitely, identically to {@link #recv()} (any persistent
+     *     deadline armed by the {@code ?recv_timeout=<ms>} URL knob still
+     *     applies in that case). A non-null value overrides the persistent
+     *     deadline for this one call.
+     * @throws IllegalStateException if the receiver is closed
+     * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT}
+     *     otherwise; {@code TIMEOUT} if {@code timeoutMs} elapses, or (when
+     *     {@code timeoutMs} is {@code null}) a configured persistent recv
+     *     deadline expires
+     */
+    public byte[] recv(Integer timeoutMs) throws RtpException {
+        ensureOpen("Receiver is closed");
+        return nRecvTimeout(peekHandle(), timeoutMs == null ? -1L : (long) timeoutMs);
     }
 
     /** Snapshot of wire-level statistics (never null in normal operation). */
@@ -69,6 +91,7 @@ public final class Receiver extends NativeHandle {
 
     private static native long   nFromUrl(String url) throws RtpException;
     private static native byte[] nRecv(long handle) throws RtpException;
+    private static native byte[] nRecvTimeout(long handle, long timeoutMs) throws RtpException;
     private static native SocketStats nSocketStats(long handle);
     private static native long   nCancelHandle(long handle);
     private static native void   nClose(long handle);

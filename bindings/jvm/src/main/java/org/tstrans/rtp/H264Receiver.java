@@ -124,12 +124,39 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
      *     or RTSP teardown — caller should exit the recv loop)
      * @throws RtpException {@code CANCELLED} if the cancel handle was fired
      *     explicitly; {@code TRANSPORT} on a hard I/O error; {@code TIMEOUT} if
-     *     a configured recv deadline expires
+     *     a configured persistent recv deadline (the {@code ?recv_timeout=<ms>}
+     *     URL knob) expires
      * @throws IllegalStateException if the receiver is already closed
+     * @see #recvAu(Integer) for a per-call deadline instead of (or on top of) a
+     *     persistent one
      */
     public H264AccessUnit recvAu() throws RtpException {
         ensureOpen("H264Receiver is closed");
         return nRecvAu(peekHandle());
+    }
+
+    /**
+     * Receive the next reassembled H.264 Access Unit, bounded by a per-call
+     * deadline.
+     *
+     * @param timeoutMs milliseconds to wait for an AU; {@code null} blocks
+     *     indefinitely, identically to {@link #recvAu()} (any persistent
+     *     deadline armed by the {@code ?recv_timeout=<ms>} URL knob still
+     *     applies in that case). A non-null value overrides the persistent
+     *     deadline for this one call.
+     * @return the next {@link H264AccessUnit}, or {@code null} at EOS (clean
+     *     close or RTSP teardown — caller should exit the recv loop). A
+     *     {@code null} return never means the deadline expired — expiry always
+     *     throws {@code RtpException(TIMEOUT)}.
+     * @throws RtpException {@code CANCELLED} if the cancel handle was fired
+     *     explicitly; {@code TRANSPORT} on a hard I/O error; {@code TIMEOUT} if
+     *     {@code timeoutMs} elapses, or (when {@code timeoutMs} is {@code null})
+     *     a configured persistent recv deadline expires
+     * @throws IllegalStateException if the receiver is already closed
+     */
+    public H264AccessUnit recvAu(Integer timeoutMs) throws RtpException {
+        ensureOpen("H264Receiver is closed");
+        return nRecvAuTimeout(peekHandle(), timeoutMs == null ? -1L : (long) timeoutMs);
     }
 
     /**
@@ -262,6 +289,7 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
         int parameterSetInjection, byte[][] initialParameterSets,
         long maxAuBytes) throws RtpException;
     private static native H264AccessUnit nRecvAu(long handle) throws RtpException;
+    private static native H264AccessUnit nRecvAuTimeout(long handle, long timeoutMs) throws RtpException;
     private static native H264DepayStats nDepayStats(long handle);
     private static native RtpStats nRtpStats(long handle);
     private static native SocketStats nSocketStats(long handle);

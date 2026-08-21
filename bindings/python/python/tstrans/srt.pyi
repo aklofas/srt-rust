@@ -511,6 +511,24 @@ class OverflowPolicy:
     REJECT: OverflowPolicy
 
 
+class ReconnectMode:
+    """Where `ManagedTransport` runs its reconnect loop after the inner
+    transport breaks. IntEnum-shaped PyClass — compare with `==`, not
+    `is`.
+
+    - `BLOCKING` (default): reconnect runs on the caller's thread; the
+      call that observed the break blocks until reconnect succeeds or
+      `max_attempts` runs out.
+    - `BACKGROUND`: reconnect runs on a dedicated per-outage worker
+      thread. Send-side only — `ManagedReceiver` / `ManagedDemuxReceiver`
+      log a warning and behave as `BLOCKING` if handed `BACKGROUND`.
+      Pair with `reconnect_stats()` for drop/reconnect visibility.
+    """
+
+    BLOCKING: ReconnectMode
+    BACKGROUND: ReconnectMode
+
+
 class ReconnectPolicy:
     """Tuning for `ManagedSender` / `ManagedReceiver` /
     `ManagedMuxSender` / `ManagedDemuxReceiver` reconnect behavior.
@@ -520,6 +538,7 @@ class ReconnectPolicy:
     - `backoff = BackoffStrategy.exponential(base_ms=100, max_ms=10_000)`
     - `gap_buffer_capacity = 256`
     - `overflow_policy = OverflowPolicy.DROP_OLDEST`
+    - `mode = ReconnectMode.BLOCKING`
 
     Raises `ValueError` if `gap_buffer_capacity == 0`.
     """
@@ -531,6 +550,7 @@ class ReconnectPolicy:
         backoff: Optional[BackoffStrategy] = ...,
         gap_buffer_capacity: int = ...,
         overflow_policy: OverflowPolicy = ...,
+        mode: ReconnectMode = ...,
     ) -> None: ...
     @property
     def max_attempts(self) -> Optional[int]: ...
@@ -540,6 +560,26 @@ class ReconnectPolicy:
     def gap_buffer_capacity(self) -> int: ...
     @property
     def overflow_policy(self) -> OverflowPolicy: ...
+    @property
+    def mode(self) -> ReconnectMode: ...
+    def __repr__(self) -> str: ...
+
+
+class ManagedTransportStats:
+    """Snapshot of `ManagedSender` / `ManagedMuxSender` reconnect/gap
+    telemetry. Returned by `reconnect_stats()`. Frozen, `get_all`-shaped
+    PyClass — mirror of `tst_pipeline::ManagedTransportStats`.
+
+    `reconnecting` is only ever `True` under `ReconnectMode.BACKGROUND`
+    (always `False` in `BLOCKING` mode).
+    """
+
+    reconnect_attempts: int
+    reconnect_successes: int
+    gap_len: int
+    gap_messages_dropped: int
+    gap_bytes_dropped: int
+    reconnecting: bool
     def __repr__(self) -> str: ...
 
 
@@ -572,6 +612,7 @@ class ManagedSender:
     def cancel_handle(self) -> CancelHandle: ...
     def socket_stats(self) -> SocketStats: ...
     def srt_stats(self) -> SrtStats: ...
+    def reconnect_stats(self) -> ManagedTransportStats: ...
     def close(self) -> None: ...
     def is_alive(self) -> bool: ...
     def __enter__(self) -> ManagedSender: ...
@@ -595,6 +636,10 @@ class ManagedReceiver:
 
     `srt_stats()` raises `SrtError(IO)` today (same drift as
     `ManagedSender`). Use `socket_stats()` for the 16-field view.
+
+    `policy.mode` is send-side only: `ReconnectMode.BACKGROUND` on a
+    policy handed here logs a warning and this receiver reconnects on
+    the caller's thread anyway (behaves as `ReconnectMode.BLOCKING`).
     """
 
     @staticmethod
@@ -712,6 +757,7 @@ class ManagedMuxSender:
 
     def stats(self) -> Tuple[SocketStats, MuxerStats]: ...
     def reconnect_attempts(self) -> int: ...
+    def reconnect_stats(self) -> ManagedTransportStats: ...
     def close(self) -> None: ...
     def is_alive(self) -> bool: ...
     def __enter__(self) -> ManagedMuxSender: ...
@@ -740,6 +786,10 @@ class ManagedDemuxReceiver:
     `ManagedRecvTransport` doesn't expose a separate SRT stats
     accessor; the SRT-flavored fields are already in the `SocketStats`
     shape. Reserved for future projection if a richer accessor lands.
+
+    `policy.mode` is send-side only: `ReconnectMode.BACKGROUND` on a
+    policy handed here logs a warning and this receiver reconnects on
+    the caller's thread anyway (behaves as `ReconnectMode.BLOCKING`).
     """
 
     @staticmethod

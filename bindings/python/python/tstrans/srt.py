@@ -11,6 +11,8 @@ Submodule contents are populated by `tstrans._native.srt`:
 - `ReconnectPolicy`, `BackoffStrategy`, `OverflowPolicy`           (Wave B T6)
 - `ManagedSender`, `ManagedReceiver`, `ManagedMuxSender`,
   `ManagedDemuxReceiver`                                           (Wave C T7+T8)
+- `ReconnectMode`, `ManagedTransportStats` (`reconnect_stats()` on
+  `ManagedSender`/`ManagedMuxSender`)          (bindings-parity-bundle C4)
 """
 
 from __future__ import annotations
@@ -46,6 +48,10 @@ BackoffStrategy = _srt.BackoffStrategy
 OverflowPolicy = _srt.OverflowPolicy
 ReconnectPolicy = _srt.ReconnectPolicy
 
+# Background-reconnect parity — ReconnectMode + reconnect_stats().
+ReconnectMode = _srt.ReconnectMode
+ManagedTransportStats = _srt.ManagedTransportStats
+
 # Wave C T7 — auto-reconnect basic-bytes wrappers.
 ManagedSender = _srt.ManagedSender
 ManagedReceiver = _srt.ManagedReceiver
@@ -73,6 +79,8 @@ __all__: list[str] = [
     "BackoffStrategy",
     "OverflowPolicy",
     "ReconnectPolicy",
+    "ReconnectMode",
+    "ManagedTransportStats",
     # T7 managed basic
     "ManagedSender",
     "ManagedReceiver",

@@ -62,7 +62,7 @@ use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtU
 
 use crate::errors::make_srt_error;
 use crate::srt::errors::{transport_error_to_pyerr, url_error_to_pyerr};
-use crate::srt::policy::PyReconnectPolicy;
+use crate::srt::policy::{PyManagedTransportStats, PyReconnectPolicy};
 use crate::srt::transport::{PyCancelHandle, PySocketStats, PySrtStats};
 
 /// Build a fresh caller-mode `SrtTransport` from a URL string. Used by
@@ -156,6 +156,11 @@ pub(crate) struct PyManagedSender {
     /// `Some(...)` (it wraps both the latched-close flag and the
     /// current inner transport's cancel handle).
     cancel: Arc<dyn TransportCancel + Send + Sync>,
+    /// Reconnect/gap telemetry observer, snapshotted from the
+    /// `ManagedTransport` BEFORE it moves into `PlSender::new` (same
+    /// pattern as `cancel_handle` above — the handle keeps reading live
+    /// counters after the shell takes ownership).
+    stats_handle: tst_pipeline::ManagedStatsHandle,
 }
 
 #[pymethods]
@@ -205,16 +210,20 @@ impl PyManagedSender {
         };
 
         let managed = ManagedTransport::new(initial, factory, policy_inner);
-        // Snapshot the cancel handle BEFORE we move `managed` into the
-        // pipeline shell — `ManagedTransport::cancel_handle` always
-        // returns `Some` because it wraps both the latched flag and
-        // the inner transport's cancel snapshot.
+        // Snapshot the cancel handle AND the stats handle BEFORE we move
+        // `managed` into the pipeline shell — `ManagedTransport::
+        // cancel_handle` always returns `Some` because it wraps both the
+        // latched flag and the inner transport's cancel snapshot;
+        // `stats_handle()` is documented to be obtained before the shell
+        // move (mirrors the cancel_handle precedent).
         let cancel = Transport::cancel_handle(&managed)
             .expect("ManagedTransport::cancel_handle is documented as always Some");
+        let stats_handle = managed.stats_handle();
         let inner = PlSender::new(managed, SenderConfig::default());
         Ok(Self {
             inner: Some(inner),
             cancel,
+            stats_handle,
         })
     }
 
@@ -328,6 +337,30 @@ impl PyManagedSender {
         ))
     }
 
+    /// Reconnect/gap telemetry: attempts, successes, current gap-buffer
+    /// depth, and drop counters. Always readable — unlike
+    /// `socket_stats`/`srt_stats`, it does not require a live inner
+    /// transport (the counters live in a side channel that survives
+    /// reconnect cycles), but it DOES require the sender itself not be
+    /// closed (mirrors the CLOSED check every other managed getter runs).
+    ///
+    /// `reconnecting` is only ever `True` under `ReconnectMode.BACKGROUND`.
+    ///
+    /// Raises `SrtError(IO)` if the internal gap-buffer lock is
+    /// poisoned (an unwind inside another thread while holding it) —
+    /// a read-only telemetry path must not panic.
+    fn reconnect_stats(&self, py: Python<'_>) -> PyResult<Py<PyManagedTransportStats>> {
+        if self.inner.is_none() {
+            return Err(make_srt_error(py, "CLOSED", "managed sender is closed"));
+        }
+        let stats = py
+            .allow_threads(|| self.stats_handle.stats())
+            .ok_or_else(|| {
+                make_srt_error(py, "IO", "reconnect stats unavailable: gap lock poisoned")
+            })?;
+        Py::new(py, PyManagedTransportStats::from_core(stats))
+    }
+
     /// Close. Latches the cancel flag (so any in-flight reconnect
     /// loop exits) and tears down the inner transport. Idempotent.
     fn close(&mut self) {
@@ -378,6 +411,11 @@ impl PyManagedSender {
 ///
 /// `reconnect_attempts()` exposes the total successful reconnect count
 /// (does NOT include the initial bind+accept).
+///
+/// `policy.mode` is send-side only: `ReconnectMode.BACKGROUND` on a
+/// policy handed to `ManagedReceiver` logs a warning on the Rust side
+/// and the receiver reconnects on the caller's thread anyway (i.e. it
+/// behaves as `ReconnectMode.BLOCKING`).
 #[pyclass(name = "ManagedReceiver", module = "tstrans.srt")]
 pub(crate) struct PyManagedReceiver {
     inner: Option<PlReceiver<ManagedRecvTransport<SrtTransport>>>,

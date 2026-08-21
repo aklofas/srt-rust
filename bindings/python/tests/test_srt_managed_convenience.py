@@ -216,6 +216,37 @@ def test_managed_mux_sender_accepts_policy_and_reports_attempts() -> None:
         receiver.close()
 
 
+def test_managed_mux_sender_reconnect_stats_healthy_link() -> None:
+    """On a healthy link (no break yet), `reconnect_stats()` must return
+    the typed `ManagedTransportStats` object with all counters at zero
+    and `reconnecting` False."""
+    port = _free_tcp_port()
+    sender, receiver = _make_managed_pair(port)
+    try:
+        stats = sender.reconnect_stats()
+        assert isinstance(stats, tstrans.srt.ManagedTransportStats)
+        assert stats.reconnect_attempts == 0
+        assert stats.reconnect_successes == 0
+        assert stats.gap_len == 0
+        assert stats.gap_messages_dropped == 0
+        assert stats.gap_bytes_dropped == 0
+        assert stats.reconnecting is False
+    finally:
+        sender.close()
+        receiver.close()
+
+
+def test_managed_mux_sender_reconnect_stats_closed_raises() -> None:
+    """`reconnect_stats()` on a closed sender raises `SrtError(CLOSED)`."""
+    port = _free_tcp_port()
+    sender, receiver = _make_managed_pair(port)
+    sender.close()
+    receiver.close()
+    with pytest.raises(SrtError) as exc_info:
+        sender.reconnect_stats()
+    assert exc_info.value.kind == SrtErrorKind.CLOSED
+
+
 # --------------------------------------------------------------------------- #
 # Test 3: demux_config dataclass propagation                                  #
 # --------------------------------------------------------------------------- #

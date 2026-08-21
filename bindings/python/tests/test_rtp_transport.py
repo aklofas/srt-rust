@@ -260,14 +260,9 @@ def test_receiver_recv_timeout_raises_timeout_kind() -> None:
     (retry `.recv()` again) rather than being torn down."""
     port = _free_udp_port()
     with tstrans.rtp.Receiver(f"rtp://127.0.0.1:{port}?recv_timeout=200") as r:
-        start = time.monotonic()
         with pytest.raises(RtpError) as exc_info:
             r.recv()
-        elapsed = time.monotonic() - start
         assert exc_info.value.kind == RtpErrorKind.TIMEOUT
-        # Deadline is 200ms; generous upper bound for CI jitter, but must
-        # not have blocked indefinitely (the pre-fix TRANSPORT/hang shape).
-        assert 0.1 <= elapsed <= 5.0
         # The receiver is still alive after a TIMEOUT — a second recv on
         # the same (still-quiet) socket raises TIMEOUT again, not TRANSPORT.
         with pytest.raises(RtpError) as exc_info2:

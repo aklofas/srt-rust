@@ -83,3 +83,27 @@ pub(crate) fn build_srt_stats<'local>(
         ],
     )
 }
+
+/// Build an `org.tstrans.srt.ManagedTransportStats` record from a Rust
+/// `tst_pipeline::ManagedTransportStats`. Field order matches the Java record
+/// ctor exactly (5 longs + 1 bool, in declaration order): reconnectAttempts,
+/// reconnectSuccesses, gapLen, gapMessagesDropped, gapBytesDropped, reconnecting.
+pub(crate) fn build_managed_transport_stats<'local>(
+    env: &mut JNIEnv<'local>,
+    s: &tst_pipeline::ManagedTransportStats,
+) -> jni::errors::Result<JObject<'local>> {
+    env.ensure_local_capacity(4)?;
+    let sig = "(JJJJJZ)V"; // 5 longs, 1 bool
+    env.new_object(
+        "org/tstrans/srt/ManagedTransportStats",
+        sig,
+        &[
+            JValue::Long(s.reconnect_attempts as i64),
+            JValue::Long(s.reconnect_successes as i64),
+            JValue::Long(s.gap_len as i64),
+            JValue::Long(s.gap_messages_dropped as i64),
+            JValue::Long(s.gap_bytes_dropped as i64),
+            JValue::Bool(u8::from(s.reconnecting)),
+        ],
+    )
+}

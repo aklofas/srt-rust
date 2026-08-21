@@ -421,6 +421,157 @@ class SrtManagedLiveTest {
         receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
     }
 
+    // ── Test 2c — ManagedSender.reconnectStats() healthy-link all-zero (D5) ───
+
+    /**
+     * D5: {@link ManagedSender#reconnectStats()} on the happy path (no outage)
+     * returns a {@link ManagedTransportStats} snapshot with every counter at
+     * zero and {@code reconnecting()==false}. Same peer/receiver shape as
+     * {@link #managedSenderSrtStatsThrowsIo}.
+     */
+    @Test
+    void managedSenderReconnectStatsHealthyLinkAllZero() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+
+        Thread receiverThread = new Thread(() -> {
+            Listener listener = null;
+            Socket sock = null;
+            Receiver r = null;
+            try {
+                listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
+                    .listener()
+                    .listen();
+                portFuture.complete(listener.localAddr().port());
+
+                sock = listener.accept(null);
+                r = sock.intoReceiver();
+                while (true) {
+                    try {
+                        r.recvBytes();
+                    } catch (SrtException e) {
+                        if (e.kind() == SrtException.Kind.CLOSED
+                                || e.kind() == SrtException.Kind.BROKEN) {
+                            break;
+                        }
+                        throw e;
+                    }
+                }
+            } catch (Exception ex) {
+                portFuture.completeExceptionally(ex);
+            } finally {
+                if (r != null) r.close();
+                if (sock != null) sock.close();
+                if (listener != null) listener.close();
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        int port;
+        try {
+            port = portFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            receiverThread.interrupt();
+            throw new AssertionError("receiver thread failed to publish port", e);
+        }
+
+        byte[] preMuxedTs = muxToBytes(); // a valid TS chunk; content is irrelevant to the stats read
+
+        try (ManagedSender s = ManagedSender.fromUrl(
+                "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS)) {
+            s.sendBytes(preMuxedTs);
+            ManagedTransportStats stats = s.reconnectStats();
+            assertEquals(0L, stats.reconnectAttempts(), "no reconnect should have occurred");
+            assertEquals(0L, stats.reconnectSuccesses(), "no reconnect should have occurred");
+            assertEquals(0L, stats.gapLen(), "healthy link never queues into the gap buffer");
+            assertEquals(0L, stats.gapMessagesDropped(), "healthy link never drops");
+            assertEquals(0L, stats.gapBytesDropped(), "healthy link never drops");
+            assertFalse(stats.reconnecting(),
+                "BLOCKING mode (the default) never reports reconnecting==true");
+            Thread.sleep(500);
+        }
+
+        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
+    // ── Test 1b — ManagedMuxSender.reconnectStats() healthy-link all-zero (D5) ─
+
+    /**
+     * D5 twin of {@link #managedSenderReconnectStatsHealthyLinkAllZero} for
+     * {@link ManagedMuxSender}. Peer is a plain {@link Receiver} draining bytes —
+     * the test subject is the stats accessor, not the mux/demux round trip
+     * already covered by {@link #managedMuxSenderToDemuxReceiverByteFaithful}.
+     */
+    @Test
+    void managedMuxSenderReconnectStatsHealthyLinkAllZero() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+
+        Thread receiverThread = new Thread(() -> {
+            Listener listener = null;
+            Socket sock = null;
+            Receiver r = null;
+            try {
+                listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
+                    .listener()
+                    .listen();
+                portFuture.complete(listener.localAddr().port());
+
+                sock = listener.accept(null);
+                r = sock.intoReceiver();
+                while (true) {
+                    try {
+                        r.recvBytes();
+                    } catch (SrtException e) {
+                        if (e.kind() == SrtException.Kind.CLOSED
+                                || e.kind() == SrtException.Kind.BROKEN) {
+                            break;
+                        }
+                        throw e;
+                    }
+                }
+            } catch (Exception ex) {
+                portFuture.completeExceptionally(ex);
+            } finally {
+                if (r != null) r.close();
+                if (sock != null) sock.close();
+                if (listener != null) listener.close();
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        int port;
+        try {
+            port = portFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            receiverThread.interrupt();
+            throw new AssertionError("receiver thread failed to publish port", e);
+        }
+
+        try (ManagedMuxSender s = ManagedMuxSender.fromUrl(
+                "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS,
+                roundtripConfig())) {
+            s.sendVideo(syntheticH264Idr(), 0L, true);
+            ManagedTransportStats stats = s.reconnectStats();
+            assertEquals(0L, stats.reconnectAttempts(), "no reconnect should have occurred");
+            assertEquals(0L, stats.reconnectSuccesses(), "no reconnect should have occurred");
+            assertEquals(0L, stats.gapLen(), "healthy link never queues into the gap buffer");
+            assertEquals(0L, stats.gapMessagesDropped(), "healthy link never drops");
+            assertEquals(0L, stats.gapBytesDropped(), "healthy link never drops");
+            assertFalse(stats.reconnecting(),
+                "BLOCKING mode (the default) never reports reconnecting==true");
+            Thread.sleep(500);
+        }
+
+        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
     // ── Test 3 — ManagedDemuxReceiver.srtStats() returns SocketStats ──────────
 
     @Test

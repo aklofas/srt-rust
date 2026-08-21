@@ -181,4 +181,23 @@ class SrtManagedTest {
         );
         assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
     }
+
+    /**
+     * Pins {@link ManagedTransportStats}'s record field order (declaration order
+     * = accessor order = ctor arg order for a Java record) — construct with six
+     * distinct values and confirm each accessor returns the one at its position.
+     * Guards against a future field reorder silently desyncing from the JNI
+     * builder's positional {@code JValue} list (Rust side never sees this test;
+     * it only pins the Java-side contract the natives must match).
+     */
+    @Test
+    void managedTransportStatsFieldOrderPinned() {
+        ManagedTransportStats s = new ManagedTransportStats(1L, 2L, 3L, 4L, 5L, true);
+        assertEquals(1L, s.reconnectAttempts());
+        assertEquals(2L, s.reconnectSuccesses());
+        assertEquals(3L, s.gapLen());
+        assertEquals(4L, s.gapMessagesDropped());
+        assertEquals(5L, s.gapBytesDropped());
+        assertTrue(s.reconnecting());
+    }
 }

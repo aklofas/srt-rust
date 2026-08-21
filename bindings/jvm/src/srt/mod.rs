@@ -34,10 +34,9 @@ static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniCancel>> = LazyLock::new(Hand
 /// any other value. `overflow_policy`: 0 = DropOldest, 1 = Reject — throws
 /// `CONFIG_INVALID` on any other value. `mode`: 0 = Blocking, 1 = Background —
 /// an out-of-range ordinal defensively degrades to Blocking rather than
-/// throwing (mirrors `ReconnectMode`'s `#[non_exhaustive]` + `#[default]`
-/// Blocking arm on the Rust side, so a JAR built against a future variant
-/// still loads against an older native). `max_attempts_present == false` →
-/// retry forever.
+/// throwing (mirrors `ReconnectMode`'s non-exhaustive-enum + default-Blocking
+/// arm on the Rust side, so a JAR built against a future variant still loads
+/// against an older native). `max_attempts_present == false` → retry forever.
 ///
 /// Returns `None` (with a pending `SrtException`) on an invalid ordinal;
 /// callers must propagate the `None` as a `return 0` early-exit.

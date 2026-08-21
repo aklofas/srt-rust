@@ -222,6 +222,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
     backoff_max_ms: jlong,
     gap_buffer_capacity: jint,
     overflow_policy: jint,
+    mode: jint,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         // Build the MuxerConfig FIRST — a pending MuxException is thrown on Err(()).
@@ -282,6 +283,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
+            mode,
         ) else {
             return 0;
         };
@@ -771,6 +773,7 @@ fn build_demux_from_url(
     backoff_max_ms: jlong,
     gap_buffer_capacity: jint,
     overflow_policy: jint,
+    mode: jint,
 ) -> jlong {
     let url_str: String = match env.get_string(url) {
         Ok(s) => s.into(),
@@ -808,6 +811,7 @@ fn build_demux_from_url(
         backoff_max_ms,
         gap_buffer_capacity,
         overflow_policy,
+        mode,
     ) else {
         return 0;
     };
@@ -878,6 +882,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrl<'local
     backoff_max_ms: jlong,
     gap_buffer_capacity: jint,
     overflow_policy: jint,
+    mode: jint,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         build_demux_from_url(
@@ -891,6 +896,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrl<'local
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
+            mode,
         )
     })
 }
@@ -909,6 +915,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrlWithCon
     backoff_max_ms: jlong,
     gap_buffer_capacity: jint,
     overflow_policy: jint,
+    mode: jint,
     strict: jint,
     pes_cap_per_pid: jlong,
     pes_cap_total: jlong,
@@ -943,6 +950,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrlWithCon
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
+            mode,
         )
     })
 }

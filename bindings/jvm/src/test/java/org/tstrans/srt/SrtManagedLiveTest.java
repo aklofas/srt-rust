@@ -345,6 +345,82 @@ class SrtManagedLiveTest {
         receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
     }
 
+    // ── Test 2b — ManagedSender construction + send accepts a BACKGROUND policy ──
+
+    /**
+     * {@link ReconnectMode#BACKGROUND} smoke test (D4): a {@link ManagedSender}
+     * constructed with a BACKGROUND-mode {@link ReconnectPolicy} connects and
+     * sends successfully on the happy path (no outage, so the per-outage worker
+     * never spins up — this proves the flattened {@code mode} arg survives the
+     * JNI round trip and is accepted by {@code build_reconnect_policy} without
+     * throwing, not the reconnect behavior itself, which is covered on the Rust
+     * side). Same peer/receiver shape as {@link #managedSenderSrtStatsThrowsIo}.
+     */
+    @Test
+    void managedSenderBackgroundModeSendSucceeds() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+
+        Thread receiverThread = new Thread(() -> {
+            Listener listener = null;
+            Socket sock = null;
+            Receiver r = null;
+            try {
+                listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
+                    .listener()
+                    .listen();
+                portFuture.complete(listener.localAddr().port());
+
+                sock = listener.accept(null);
+                r = sock.intoReceiver();
+                while (true) {
+                    try {
+                        r.recvBytes();
+                    } catch (SrtException e) {
+                        if (e.kind() == SrtException.Kind.CLOSED
+                                || e.kind() == SrtException.Kind.BROKEN) {
+                            break;
+                        }
+                        throw e;
+                    }
+                }
+            } catch (Exception ex) {
+                portFuture.completeExceptionally(ex);
+            } finally {
+                if (r != null) r.close();
+                if (sock != null) sock.close();
+                if (listener != null) listener.close();
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        int port;
+        try {
+            port = portFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            receiverThread.interrupt();
+            throw new AssertionError("receiver thread failed to publish port", e);
+        }
+
+        byte[] preMuxedTs = muxToBytes();
+
+        ReconnectPolicy backgroundPolicy = ReconnectPolicy.builder()
+            .mode(ReconnectMode.BACKGROUND)
+            .build();
+        try (ManagedSender s = ManagedSender.fromUrl(
+                "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS,
+                backgroundPolicy)) {
+            s.sendBytes(preMuxedTs); // must not throw
+            assertTrue(s.isAlive(), "sender must be alive after a successful send");
+            Thread.sleep(500);
+        }
+
+        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
     // ── Test 3 — ManagedDemuxReceiver.srtStats() returns SocketStats ──────────
 
     @Test

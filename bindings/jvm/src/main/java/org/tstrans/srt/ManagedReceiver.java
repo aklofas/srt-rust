@@ -26,6 +26,11 @@ import org.tstrans.SrtException;
  * today (same drift as {@code ManagedSender}). Use {@link #socketStats()} for
  * the 16-field scheme-neutral view.
  *
+ * <p><b>Reconnect mode:</b> {@link ReconnectMode#BACKGROUND} in the supplied
+ * {@link ReconnectPolicy} is send-side only. A receiver accepts it structurally
+ * (it rides the shared {@link PolicyArgs} flattening) but the Rust side logs a
+ * warning and reconnects as {@link ReconnectMode#BLOCKING} regardless.
+ *
  * <p>Mirrors {@code tstrans.srt.ManagedReceiver} in tst-py.
  */
 public final class ManagedReceiver extends NativeHandle {
@@ -68,7 +73,7 @@ public final class ManagedReceiver extends NativeHandle {
             url,
             p.maxAttemptsPresent(), p.maxAttempts(),
             p.backoffKind(), p.backoffBaseMs(), p.backoffMaxMs(),
-            p.gapBufferCapacity(), p.overflowPolicy());
+            p.gapBufferCapacity(), p.overflowPolicy(), p.mode());
         if (h == 0) {
             throw new SrtException(SrtException.Kind.IO, "nFromUrl returned 0 without throwing");
         }
@@ -192,7 +197,7 @@ public final class ManagedReceiver extends NativeHandle {
         String url,
         boolean maxAttemptsPresent, int maxAttempts,
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
-        int gapBufferCapacity, int overflowPolicy) throws SrtException;
+        int gapBufferCapacity, int overflowPolicy, int mode) throws SrtException;
     private static native byte[]  nRecvBytes(long handle, int maxLen) throws SrtException;
     private static native long    nReconnectAttempts(long handle);
     private static native long    nCancelHandle(long handle);

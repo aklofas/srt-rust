@@ -102,7 +102,7 @@ public final class ManagedMuxSender extends NativeHandle {
             programConfig.dataDescBytes(), programConfig.dataDescLens(),
             p.maxAttemptsPresent(), p.maxAttempts(),
             p.backoffKind(), p.backoffBaseMs(), p.backoffMaxMs(),
-            p.gapBufferCapacity(), p.overflowPolicy());
+            p.gapBufferCapacity(), p.overflowPolicy(), p.mode());
         if (h == 0) {
             // nFromUrl throws a pending SrtException/MuxException; JNI re-raises.
             // Unreachable in practice, but satisfies the compiler.
@@ -403,7 +403,7 @@ public final class ManagedMuxSender extends NativeHandle {
         byte[] dataDescBytes, int[] dataDescLens,
         boolean maxAttemptsPresent, int maxAttempts,
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
-        int gapBufferCapacity, int overflowPolicy) throws SrtException, MuxException;
+        int gapBufferCapacity, int overflowPolicy, int mode) throws SrtException, MuxException;
 
     private static native void nSendVideo(long handle, byte[] nal, long pts, boolean keyFrame)
         throws MuxException, SrtException;

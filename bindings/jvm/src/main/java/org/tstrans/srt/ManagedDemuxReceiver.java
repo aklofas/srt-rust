@@ -52,6 +52,12 @@ import org.tstrans.mpegts.DemuxerConfig;
  * {@link #reconnectAttempts()} counts every reconnect-factory invocation since
  * construction (an ATTEMPT counter).
  *
+ * <p><b>Reconnect mode:</b> {@link ReconnectMode#BACKGROUND} in the supplied
+ * {@link ReconnectPolicy} is send-side only. This receiver accepts it
+ * structurally (it rides the shared {@link PolicyArgs} flattening) but the
+ * Rust side logs a warning and reconnects as {@link ReconnectMode#BLOCKING}
+ * regardless.
+ *
  * <p><b>Closing:</b> use try-with-resources or call {@link #close()} explicitly.
  * After close, further calls throw {@code IllegalStateException}.
  *
@@ -95,7 +101,7 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
             url,
             p.maxAttemptsPresent(), p.maxAttempts(),
             p.backoffKind(), p.backoffBaseMs(), p.backoffMaxMs(),
-            p.gapBufferCapacity(), p.overflowPolicy());
+            p.gapBufferCapacity(), p.overflowPolicy(), p.mode());
         if (h == 0) {
             throw new SrtException(SrtException.Kind.IO, "nFromUrl returned 0 without throwing");
         }
@@ -133,7 +139,7 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
             url,
             p.maxAttemptsPresent(), p.maxAttempts(),
             p.backoffKind(), p.backoffBaseMs(), p.backoffMaxMs(),
-            p.gapBufferCapacity(), p.overflowPolicy(),
+            p.gapBufferCapacity(), p.overflowPolicy(), p.mode(),
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
             demuxConfig.av1Carriage().ordinal(), demuxConfig.auCellCapPerPid(),
@@ -269,11 +275,11 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
     private static native long nFromUrl(String url,
         boolean maxAttemptsPresent, int maxAttempts,
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
-        int gapBufferCapacity, int overflowPolicy) throws SrtException;
+        int gapBufferCapacity, int overflowPolicy, int mode) throws SrtException;
     private static native long nFromUrlWithConfig(String url,
         boolean maxAttemptsPresent, int maxAttempts,
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
-        int gapBufferCapacity, int overflowPolicy,
+        int gapBufferCapacity, int overflowPolicy, int mode,
         int strict, long pesCapPerPid, long pesCapTotal, boolean cfi,
         int av1, long auCellCap, boolean lenientPsi, long syncBufCap) throws SrtException;
     private static native DemuxEvent nNext(long handle) throws SrtException, DemuxException;

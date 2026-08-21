@@ -29,7 +29,7 @@ class SrtReconnectPolicyOrdinalTest {
                     String.class,
                     boolean.class, int.class,
                     int.class, long.class, long.class,
-                    int.class, int.class);
+                    int.class, int.class, int.class);
             N_FROM_URL.setAccessible(true);
         } catch (NoSuchMethodException e) {
             throw new ExceptionInInitializerError(e);
@@ -37,9 +37,11 @@ class SrtReconnectPolicyOrdinalTest {
     }
 
     /**
-     * Invoke {@code ManagedSender.nFromUrl} with the given ordinal values. All
-     * other args use structurally-valid defaults; the ordinal check fires before
-     * the initial connection attempt so no listening server is required.
+     * Invoke {@code ManagedSender.nFromUrl} with the given ordinal values
+     * ({@code mode} pinned to the always-valid 0 = BLOCKING; it is not under
+     * test here). All other args use structurally-valid defaults; the ordinal
+     * check fires before the initial connection attempt so no listening server
+     * is required.
      */
     private static void invokeNFromUrl(int backoffKind, int overflowPolicy) throws Throwable {
         try {
@@ -51,7 +53,8 @@ class SrtReconnectPolicyOrdinalTest {
                     /* backoffBaseMs      */ 100L,
                     /* backoffMaxMs       */ 10_000L,
                     /* gapBufferCapacity  */ 256,
-                    /* overflowPolicy     */ overflowPolicy);
+                    /* overflowPolicy     */ overflowPolicy,
+                    /* mode               */ 0);
         } catch (InvocationTargetException e) {
             throw e.getCause();
         }

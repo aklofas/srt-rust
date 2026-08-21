@@ -130,7 +130,7 @@ type ManagedSenderInner = PlSender<ManagedTransport<SrtTransport>>;
 static REGISTRY_SENDER: LazyLock<HandleRegistry<ManagedSenderInner>> =
     LazyLock::new(HandleRegistry::new);
 
-/// Allocate a `ManagedSender` from an SRT caller-mode URL + the 7 flattened
+/// Allocate a `ManagedSender` from an SRT caller-mode URL + the 8 flattened
 /// reconnect-policy args. Returns a `jlong` handle on success; throws
 /// `SrtException` and returns 0 on any error.
 #[unsafe(no_mangle)]
@@ -146,6 +146,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
     backoff_max_ms: jlong,
     gap_buffer_capacity: jint,
     overflow_policy: jint,
+    mode: jint,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let url_str: String = match env.get_string(&url) {
@@ -185,6 +186,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
+            mode,
         ) else {
             return 0;
         };
@@ -393,7 +395,7 @@ struct JniManagedReceiver {
 static REGISTRY_RECEIVER: LazyLock<HandleRegistry<JniManagedReceiver>> =
     LazyLock::new(HandleRegistry::new);
 
-/// Allocate a `ManagedReceiver` from an SRT listener-mode URL + the 7 flattened
+/// Allocate a `ManagedReceiver` from an SRT listener-mode URL + the 8 flattened
 /// reconnect-policy args. Returns a `jlong` handle on success; throws
 /// `SrtException` and returns 0 on any error.
 #[unsafe(no_mangle)]
@@ -409,6 +411,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
     backoff_max_ms: jlong,
     gap_buffer_capacity: jint,
     overflow_policy: jint,
+    mode: jint,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let url_str: String = match env.get_string(&url) {
@@ -444,6 +447,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
+            mode,
         ) else {
             return 0;
         };

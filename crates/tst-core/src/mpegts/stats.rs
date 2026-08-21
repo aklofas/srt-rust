@@ -27,6 +27,18 @@ pub struct StreamStats {
     ///
     /// `std`-only: no wall clock exists under `no_std` (the field is absent
     /// entirely on that build).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demux_receiver_get_stream_last_seen_micros` /
+    /// `tst_managed_demux_receiver_get_stream_last_seen_micros` /
+    /// `tst_rist_demux_receiver_get_stream_last_seen_micros` /
+    /// `tst_rtp_demux_receiver_get_stream_last_seen_micros` /
+    /// `tst_tcp_demux_receiver_get_stream_last_seen_micros` /
+    /// `tst_udp_demux_receiver_get_stream_last_seen_micros` — see
+    /// `bindings/c/include/tstrans.h`. Exposed as a Unix epoch microsecond
+    /// `uint64_t` getter, not a struct-copied field (`tst_stream_stats_t`
+    /// stays byte-size-asserted, plain-integer counters only).
     #[cfg(feature = "std")]
     pub last_seen: Option<std::time::SystemTime>,
 }

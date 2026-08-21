@@ -162,6 +162,13 @@ impl ManagedStatsHandle {
     /// Snapshot. Returns `None` only if the gap-buffer lock is poisoned
     /// (matches `socket_stats`'s None-on-poison shape — a read-only
     /// telemetry path must not panic).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_sender_get_reconnect_stats` /
+    /// `tst_managed_mux_sender_get_reconnect_stats` /
+    /// `tst_managed_raw_sender_get_reconnect_stats` — see
+    /// `bindings/c/include/tstrans.h`.
     pub fn stats(&self) -> Option<ManagedTransportStats> {
         use std::sync::atomic::Ordering;
         let gap = self.gap.lock().ok()?;

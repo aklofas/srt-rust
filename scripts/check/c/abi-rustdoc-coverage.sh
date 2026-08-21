@@ -82,6 +82,7 @@ ALLOWLIST=(
     "tst_reconnect_policy_set_gap_buffer_capacity"
     "tst_reconnect_policy_set_max_attempts"
     "tst_reconnect_policy_set_overflow_policy"
+    "tst_reconnect_policy_set_mode"
 
     # --- managed-transport wrappers (ride 3.6.4/3.6.5 backfill on
     #     ManagedTransport / ManagedRecvTransport methods) ---
@@ -299,6 +300,15 @@ ALLOWLIST=(
     "tst_rtp_demux_receiver_get_stream_codec_stats"
     "tst_rtp_demux_receiver_get_stream_stats"
     "tst_rtp_demux_receiver_reset_stats"
+
+    # --- Bindings-parity bundle, item 8 (2026-08-20): RTP stream-end
+    #     reason getters. Same rationale as the RTP data-path block above
+    #     — TstRtpReceiver/TstRtpDemuxReceiver are tst-c–only projections;
+    #     the underlying StreamEndReasonHandle::get() lives in tst-rtp,
+    #     outside this script's SRC_DIRS (tst-pipeline/tst-srt/tst-core),
+    #     so no in-scope Rust cross-ref is possible.
+    "tst_rtp_receiver_end_reason"
+    "tst_rtp_demux_receiver_end_reason"
 
     # --- Plan A5a UDP entry points (full RTP parity, minus cancel) ---
     #     tst-c–only projections of pipeline Sender/Receiver/MuxSender/

@@ -440,7 +440,37 @@ Set `TSTRANS_LOG=tst_rtp=debug` (`EnvFilter` syntax, same as
 pump/keepalive `tracing` events on stderr — the same signal
 `end_reason()` distills into a single enum member.
 
-JVM has no mirror yet — see the "Python/JVM `tracing` diagnostics
-bridge + structured stream-end reason" entry in
+**JVM** (`org.tstrans.rtp`) mirrors this too: `Receiver`,
+`DemuxReceiver`, and `H264Receiver` each expose `endReason()` (a
+`StreamEndReason` member, or `null`) and `endDetail()` (the free-text
+message for `KEEPALIVE_FAILED` / `TRANSPORT_FAILED` /
+`PROTOCOL_ERROR`, `null` otherwise) — both stay readable after
+`close()`:
+
+```java
+import org.tstrans.rtp.*;
+
+try (RtspSession session = RtspClient.connectH264(cfg);
+     H264Receiver rx = session.intoH264Receiver()) {
+    for (var au : rx) {
+        // ...
+    }
+    // loop exited (EOS or a caught error) — ask why
+    StreamEndReason reason = rx.endReason();
+    if (reason == StreamEndReason.SESSION_EXPIRED) {
+        // re-DESCRIBE + SETUP
+    } else if (reason == StreamEndReason.KEEPALIVE_FAILED || reason == StreamEndReason.TRANSPORT_FAILED) {
+        System.out.println("stream died: " + rx.endDetail());
+    }
+}
+```
+
+Set `TSTRANS_LOG=tst_rtp=debug` (`EnvFilter` syntax, same as
+`RUST_LOG`) in the process environment before the JVM loads
+`libtstjni` (the bridge installs from `JNI_OnLoad`) to also see the
+underlying pump/keepalive `tracing` events on stderr.
+
+See the "Python/JVM `tracing` diagnostics bridge + structured
+stream-end reason" entry in
 [deferred-features.md](/docs/project/deferred-features.md) for the
-bindings-parity status.
+bindings-parity history.

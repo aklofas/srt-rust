@@ -196,15 +196,76 @@ same gap:
   so an embedding process that already installed its own subscriber
   keeps it.
 
-See the [Python guide](docs/languages/python.md) for recipes. JVM
-remains unchanged by either the reconnect work or the `tst-rtp` work
-above — see the "Background reconnect — bindings parity", "RTP
-receive-deadline bindings parity", "Last-activity-wall-clock gauges per
-stream", and "Python/JVM `tracing` diagnostics bridge + structured
-stream-end reason" entries in
-[docs/project/deferred-features.md](docs/project/deferred-features.md).
-(The JVM null-argument fix under **Fixed** below is a separate,
-JVM-only behavior change.)
+See the [Python guide](docs/languages/python.md) for recipes.
+
+**JVM bindings** (`tstrans-jvm`, additive — no existing call breaks;
+`recv()` / `recvAu()` gain new overloads, but every pre-existing call
+site keeps working unchanged) close the same gap:
+
+- `RtpException.Kind.TIMEOUT` (new enum constant) —
+  `TransportError::Backpressure` now maps to `TIMEOUT` instead of
+  `TRANSPORT` across `rtp.Receiver.recv()`, `rtp.DemuxReceiver`, and
+  `rtp.H264Receiver.recvAu()`. Only raised when a deadline is actually
+  configured; a receiver with none still blocks indefinitely. Adding
+  the constant meant updating `RtpException`'s bucket-count assertion
+  and every `@throws` doc that exhaustively enumerated `Kind` — both
+  fixed in lockstep with the addition, not after.
+- Per-call `recv(Integer timeoutMs)` / `recvAu(Integer timeoutMs)`
+  overloads (the one-shot deadline; explicit argument wins over any
+  configured persistent deadline for that call) plus the persistent
+  `?recv_timeout=<ms>` URL query key on `rtp://` receiver URLs,
+  honored by both `Receiver` and `DemuxReceiver` — no separate JVM
+  setter, the URL is the only knob. Either path's expiry throws
+  `RtpException(TIMEOUT)`; the receiver stays open, call again to
+  retry.
+- Public `DemuxReceiver.recvEvent()` — a checked receive that
+  surfaces `RtpException` / `DemuxException` directly (including
+  `TIMEOUT`) rather than the iterator-style `next()`'s wrapped
+  unchecked `RuntimeException`, so a demux-side timeout is a typed
+  `TIMEOUT` and not an ambiguous EOS-shaped `null`.
+- `ReconnectMode` (`BLOCKING` / `BACKGROUND`) + `ReconnectPolicy.Builder#mode(ReconnectMode)`
+  + `reconnectStats() -> ManagedTransportStats` on `ManagedSender` /
+  `ManagedMuxSender`; `ManagedTransportStats` mirrors the six Rust
+  fields. Send-side only, matching Rust: `ManagedReceiver` /
+  `ManagedDemuxReceiver` log a warning and reconnect as `BLOCKING`
+  regardless of what the policy asks for.
+- `StreamEndReason` (Java enum, ordinal-pinned against the Rust/C
+  enums) + `endReason()` / `endDetail()` on `Receiver`, `DemuxReceiver`
+  (rtp), and `H264Receiver`. Like Python and unlike the C ABI (which
+  reads a `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
+  message through the shared thread-local last-error channel),
+  `endDetail()` reads the Rust enum's `msg` field directly — a
+  recorded end reason is data, not a failure. Because a Java handle is
+  freed on `close()` (unlike Python's object, which can still answer
+  after the underlying resource is gone), `close()` now returns and
+  caches an `EndReasonSnapshot` at the moment it exclusively owns the
+  resource, so `endReason()` / `endDetail()` keep answering correctly
+  after `close()` — see `Receiver`'s Javadoc for the read-after-close
+  contract.
+- `lastSeenMicros(pid)` on `rtp.DemuxReceiver`, `srt.DemuxReceiver`,
+  and `srt.ManagedDemuxReceiver` — an epoch-microsecond boxed `Long`,
+  or `null` if `pid` was never seen. Deliberately differs from the C
+  ABI's `0`-sentinel convention (the C getters have no nullable type)
+  — matches Python's `None` convention.
+- `TSTRANS_LOG` environment variable — an opt-in stderr `tracing`
+  bridge installed from `JNI_OnLoad` (the one guaranteed one-time
+  native-library entry point; `System.load` calls it before any
+  `Java_org_tstrans_*` native is reachable), same `EnvFilter` syntax
+  as `RUST_LOG`/Python's bridge (e.g. `TSTRANS_LOG=tst_rtp=debug`).
+  Unset means zero subscriber overhead beyond the env lookup;
+  `try_init` (not `init`) so a host process that already installed its
+  own subscriber keeps it. ANSI color codes are gated on `stderr`
+  actually being a terminal, so a redirected/captured stderr (e.g. a
+  Gradle test's captured output) gets plain text.
+
+See the [JVM guide](docs/languages/jvm.md) for recipes. All four
+binding-parity gaps this arc closes — background reconnect, the
+recv-deadline knob, the last-activity gauge, and the tracing bridge /
+structured stream-end reason — are now resolved across C, Python, and
+JVM; see the corresponding entries in
+[docs/project/deferred-features.md](docs/project/deferred-features.md)
+for the full history. (The JVM null-argument fix under **Fixed** below
+is a separate, JVM-only behavior change from an earlier arc.)
 
 ### Fixed
 

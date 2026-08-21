@@ -1078,6 +1078,15 @@ Gotchas:
 - **Register before iterating** (or between `next()` calls) — `addByteSink` is
   not safe to call concurrently with an in-flight `next()`.
 
+### Per-stream staleness: `lastSeenMicros`
+
+`rx.lastSeenMicros(pid)` returns the epoch-microsecond timestamp of the most
+recent item this receiver emitted for `pid`, or `null` if `pid` was never
+seen — a cheap staleness check with no `stats()` snapshot-diffing required.
+See the watchdog recipe under [RTP convenience](#rtp-convenience-muxsender--demuxreceiver)
+below (the method is identical here). The same method also exists on
+`org.tstrans.srt.ManagedDemuxReceiver`.
+
 ## SRT managed reconnect (`Managed*`)
 
 The four `Managed*` shells add **automatic reconnect** to the plain SRT
@@ -1183,6 +1192,43 @@ carefully, they are not uniform across the four shells:**
   reconnect-factory invocation since construction (a failed-and-retried rebuild
   still bumps the counter).
 - **`ManagedSender` has no `reconnectAttempts()`.**
+
+### Background reconnect (`ReconnectMode`)
+
+Set `.mode(ReconnectMode.BACKGROUND)` on the `ReconnectPolicy.Builder` handed to
+`ManagedSender` / `ManagedMuxSender` to move the reconnect loop off the
+caller's thread — a dedicated per-outage worker owns backoff + the factory
+call, and `send`/`sendVideo`/… enqueue into the gap buffer under
+`overflowPolicy` instead of blocking:
+
+```java
+import org.tstrans.srt.ManagedMuxSender;
+import org.tstrans.srt.ReconnectPolicy;
+import org.tstrans.srt.ReconnectMode;
+import org.tstrans.srt.ManagedTransportStats;
+
+ReconnectPolicy policy = ReconnectPolicy.builder()
+    .mode(ReconnectMode.BACKGROUND)  // default is BLOCKING
+    .build();
+
+try (ManagedMuxSender s = ManagedMuxSender.fromUrl(
+        "srt://host:9000?mode=caller&latency=120", program, policy)) {
+    // ...
+    ManagedTransportStats stats = s.reconnectStats();
+    if (stats.reconnecting()) {
+        System.out.println("outage in progress, " + stats.gapLen() + " messages queued");
+    }
+}
+```
+
+`reconnectStats()` (also on `ManagedSender`) returns a frozen
+`ManagedTransportStats` (`reconnectAttempts`, `reconnectSuccesses`,
+`gapLen`, `gapMessagesDropped`, `gapBytesDropped`, `reconnecting`) regardless
+of `mode` — `reconnecting()` just stays `false` under the default `BLOCKING`
+mode, since that mode's reconnect runs synchronously inside the call that
+observed the break rather than on a separate worker. `BACKGROUND` is
+send-side only: handing it to `ManagedReceiver` / `ManagedDemuxReceiver` logs
+a warning and those classes reconnect on the caller's thread anyway.
 
 ## RTP transport (`org.tstrans.rtp`)
 
@@ -1321,6 +1367,74 @@ try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://0.0.0.0:5004")) {
 - `addByteSink` callbacks run on the receiver's own thread and must not re-enter
   the receiver. Sample payloads and byte-sink buffers are heap `byte[]` copies.
 
+`rx.lastSeenMicros(pid)` returns the Unix-epoch microsecond timestamp of the
+most recent item this receiver emitted for `pid`, or `null` if that PID has
+never been seen — a per-stream staleness check that needs no `stats()`
+snapshot-diffing. A watchdog thread can poll it directly:
+
+```java
+long staleAfterUs = 5_000_000;  // 5 s
+
+void watchdog(DemuxReceiver rx, int pid, AtomicBoolean stop) {
+    while (!stop.get()) {
+        Long seen = rx.lastSeenMicros(pid);
+        if (seen != null && System.currentTimeMillis() * 1_000 - seen > staleAfterUs) {
+            System.out.println("pid " + Integer.toHexString(pid) + " has gone quiet");
+        }
+        Thread.sleep(1_000);
+    }
+}
+```
+
+The same method exists on `org.tstrans.srt.DemuxReceiver` and
+`org.tstrans.srt.ManagedDemuxReceiver`.
+
+### Recv deadlines (`?recv_timeout=` / per-call overloads)
+
+Both `Receiver.recv()` and `DemuxReceiver` iteration block indefinitely by
+default — fine for a live camera, less fine for a quiet socket you want to
+notice going quiet. `?recv_timeout=<ms>` on a `rtp://` (or `rtsp(s)://`) URL
+arms a persistent receive deadline: a `recv()` / `recvEvent()` call that
+would otherwise block forever instead throws `RtpException(TIMEOUT)` after
+`<ms>` milliseconds of silence, and the receiver stays open — call again to
+keep waiting:
+
+```java
+import org.tstrans.RtpException;
+import org.tstrans.rtp.DemuxReceiver;
+import org.tstrans.mpegts.DemuxEvent;
+
+try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://0.0.0.0:5004?recv_timeout=5000")) {
+    while (true) {
+        DemuxEvent event;
+        try {
+            event = rx.recvEvent();
+        } catch (RtpException e) {
+            if (e.kind() == RtpException.Kind.TIMEOUT) {
+                System.out.println("quiet for 5s — still connected, just nothing to say");
+                continue;
+            }
+            throw e;
+        }
+        if (event == null) {
+            break;  // clean end of stream
+        }
+        // ... process event ...
+    }
+}
+```
+
+`Receiver.recv(Integer timeoutMs)` and `H264Receiver.recvAu(Integer timeoutMs)`
+take a per-call override instead (or in addition — the explicit argument
+always wins over a configured URL deadline for that one call; pass `null` to
+fall back to the configured deadline, or block indefinitely if none is
+configured). `RtspClientConfig`'s URL accepts the same `?recv_timeout=` key;
+it carries through `intoDemuxReceiver()` / `intoH264Receiver()` automatically.
+`TIMEOUT` is retryable — the transport and session are both still alive,
+unlike `CANCELLED` or `TRANSPORT`. Use `recvEvent()`, not the `Iterator`
+(`for (var event : rx)`), when you need to catch `TIMEOUT` as a checked
+exception — the iterator wraps it in an unchecked `RuntimeException`.
+
 ## RTSP client (`org.tstrans.rtp`)
 
 Connect to an RTSP server, drive OPTIONS/DESCRIBE/SETUP/PLAY, and demux the RTP
@@ -1362,6 +1476,21 @@ try (RtspSession session = RtspClient.connect(cfg);
   `DigestAuth.algorithm` is retained for introspection only; the server's
   `WWW-Authenticate` challenge selects the actual digest algorithm.
 - **`stats()`** returns a zeroed `RtspStats` for now (RTCP counters wire in later).
+- **Why did the stream end?** When a `for (var event : rx)` loop exits or a
+  call throws, `rx.endReason()` (on `Receiver`, `DemuxReceiver`, and
+  `H264Receiver` alike) answers with a `StreamEndReason` member —
+  `CLEAN_TEARDOWN`, `SESSION_EXPIRED`, `KEEPALIVE_FAILED`,
+  `TRANSPORT_FAILED`, `PROTOCOL_ERROR`, or `CANCELLED` — or `null` if the
+  session hasn't ended yet (or ended through a path this arc doesn't
+  instrument, e.g. a plain `rtp://` receiver with no owning `RtspClient`).
+  `rx.endDetail()` carries the free-text message for the three failure
+  variants. Both stay readable after `close()` — the receiver snapshots
+  them at close time, before the underlying native handle is freed. Set
+  `TSTRANS_LOG=tst_rtp=debug` before the first `System.load` of the
+  native library (i.e. before touching any `org.tstrans.*` class) to
+  also see the underlying pump/keepalive `tracing` events on stderr.
+  Full recipe + the Rust-side rationale:
+  [Why did my RTSP stream end?](/docs/troubleshooting.md#why-did-my-rtsp-stream-end).
 
 ## RTSP server (`org.tstrans.rtp`)
 
@@ -1644,6 +1773,17 @@ Gotchas:
   a single `NonConformantKind` enum plus a human-readable `issue` String
   (and the optional CFI / multi-cell-reason fields). Match on `kind` for
   programmatic dispatch; read `issue` for the human-facing detail.
+- **`TSTRANS_LOG` bridges the Rust core's `tracing` events to stderr.**
+  Set it in the process environment before the JVM loads `libtstjni`
+  (`EnvFilter` syntax, same as `RUST_LOG` — e.g.
+  `TSTRANS_LOG=tst_rtp=debug`) to see diagnostics (keepalive failures,
+  pump warnings, …) that otherwise vanish silently — nothing installs a
+  subscriber by default. The bridge installs from `JNI_OnLoad`, the JVM's
+  one guaranteed one-time native-library entry point (called during
+  `System.load`, before any `org.tstrans.*` native method is reachable).
+  Unset means zero overhead beyond the one env lookup at load time; if
+  the host process already installed its own `tracing` subscriber, this
+  bridge never displaces it.
 
 ## Where this binding differs from the Rust core
 
@@ -1674,6 +1814,19 @@ Gotchas:
 - **Single fat JAR** bundles the per-platform native library
   (`.so` / `.dylib` / `.dll`); the `NativeLoader` extracts the correct one
   at runtime. No per-platform classifier.
+- **`endDetail()` reads the Rust enum field directly, not a
+  last-error channel.** The C ABI's `TstStreamEndReason` accessors read
+  a recorded `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
+  message through the shared thread-local last-error channel
+  (`tst_get_last_error_str`), resetting it on every call. This binding
+  has no such channel — `endDetail()` reads the `msg` field straight
+  off the Rust `StreamEndReason` value (same approach as Python). A
+  recorded end reason is data, not a failure, so it never touches
+  `RtpException`.
+- **`lastSeenMicros(pid)` returns `null`, not `0`, for "never
+  seen".** The C ABI has no nullable type in its getter shape, so it
+  uses a `0` sentinel; this binding's boxed `Long` `null` is the honest
+  absent value (same convention as Python's `None`).
 
 The Rust page's "Where this binding differs from the Rust core" section
 treats Rust as the canonical surface; everything here is a subset of it.

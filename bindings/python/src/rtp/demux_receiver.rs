@@ -32,7 +32,8 @@
 //!
 //! Error mapping:
 //! - `DemuxReceiverErrorSource::Transport(...)` → `RtpError(TRANSPORT)`
-//!   (or `CANCELLED` / `MALFORMED_PACKET` per `TransportError` variant)
+//!   (or `CANCELLED` / `MALFORMED_PACKET` / `TIMEOUT` per `TransportError`
+//!   variant — see `transport_error_to_rtp_pyerr` below)
 //! - `DemuxReceiverErrorSource::Demux(...)`     → `DemuxError`
 //! - Construction-time `ConnectError`            → `RtpError(TRANSPORT)`
 //!
@@ -74,6 +75,9 @@ fn transport_error_to_rtp_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
             let msg = format!("payload too large: {len} bytes exceeds {max}-byte cap");
             make_rtp_error(py, "MALFORMED_PACKET", &msg)
         }
+        // A configured recv deadline (`?recv_timeout=` / `set_recv_timeout`)
+        // expired — retryable, the transport/session is still alive.
+        TransportError::Backpressure { msg, .. } => make_rtp_error(py, "TIMEOUT", &msg),
         other => make_rtp_error(py, "TRANSPORT", &other.to_string()),
     }
 }

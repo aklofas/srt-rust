@@ -175,26 +175,32 @@
  *   `tst_muxer_push_video_misp_to_with_dts`, `tst_misp_time_extract`,
  *   `TST_E_MISP_TIME` (-45), `TST_E_MISP_TIME_MALFORMED` (-46).
  *   Additive — no struct growth, no signature changes.
- * - `20` (bindings-parity bundle, items 7-9, 2026-08-20): four addition
- *   groups, all gated behind their existing feature defines (`TST_HAS_SRT`
- *   / `TST_HAS_RTP` / `TST_HAS_RIST` / `TST_HAS_TCP` / `TST_HAS_UDP` as
- *   applicable) — no existing symbol, signature, or struct layout changed:
+ * - `20` (bindings-parity bundle, items 6-9, 2026-08-20): four addition
+ *   groups, all additive — no existing symbol, signature, or struct
+ *   layout changed:
  *   - **Background reconnect (item 7):** `TstReconnectMode` enum
  *     (`Blocking = 0`, `Background = 1`) + `tst_reconnect_policy_set_mode`
- *     setter on the opaque `tst_reconnect_policy_t` builder (`TST_HAS_SRT`
- *     — the managed family is SRT-only); the 48-byte
- *     `tst_managed_transport_stats_t` (5×`uint64_t` + `bool` + explicit
- *     7-byte pad, `_Static_assert`-pinned) plus three getters —
+ *     setter on the opaque `tst_reconnect_policy_t` builder — both
+ *     **unconditional**, like the rest of the reconnect-policy family
+ *     (the builder module carries no feature gate; only the `Managed*`
+ *     consumers are SRT-only). Also unconditional: the 48-byte
+ *     `tst_managed_transport_stats_t` struct (5×`uint64_t` + `bool` +
+ *     explicit 7-byte pad, `_Static_assert`-pinned). `TST_HAS_SRT` gates
+ *     only the three getters that read it —
  *     `tst_managed_sender_get_reconnect_stats`,
  *     `tst_managed_mux_sender_get_reconnect_stats`,
- *     `tst_managed_raw_sender_get_reconnect_stats` (`TST_HAS_SRT`;
- *     send-side only, matching Rust's `ManagedTransport::stats_handle()` —
- *     the recv-side managed handles get no getter).
+ *     `tst_managed_raw_sender_get_reconnect_stats` (send-side only,
+ *     matching Rust's `ManagedTransport::stats_handle()` — the recv-side
+ *     managed handles get no getter).
  *   - **Stream-end reason (item 8, RTP half):** `TstStreamEndReason` enum
  *     (`None = 0`, `CleanTeardown = 1`, `SessionExpired = 2`,
  *     `KeepaliveFailed = 3`, `TransportFailed = 4`, `ProtocolError = 5`,
- *     `Cancelled = 6`) + `tst_rtp_receiver_end_reason` /
- *     `tst_rtp_demux_receiver_end_reason` getters (`TST_HAS_RTP`).
+ *     `Cancelled = 6`) is defined outside the `rtp` module — also
+ *     **unconditional**, same reasoning as `TstReconnectMode` above (and
+ *     avoids cbindgen re-emitting a per-variant `#if` guard, which a
+ *     feature-gated enum definition would). `TST_HAS_RTP` gates only the
+ *     two getters that read it — `tst_rtp_receiver_end_reason` /
+ *     `tst_rtp_demux_receiver_end_reason`.
  *     **Last-error detail contract:** on every call that reports an
  *     *actually-recorded* reason, the getter resets the thread-local
  *     last-error channel to `TST_E_SUCCESS` (0) with either the real
@@ -333,7 +339,6 @@ typedef enum tst_overflow_policy {
   TST_OVERFLOW_POLICY_REJECT = 1,
 } tst_overflow_policy;
 
-#if defined(TST_HAS_RTP)
 /**
  * Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`
  * with one addition — `None` (0) — for "hasn't ended yet, or ended
@@ -344,57 +349,42 @@ typedef enum tst_overflow_policy {
  * bindings use the same numbering.
  */
 typedef enum tst_stream_end_reason {
-#if defined(TST_HAS_RTP)
   /**
    * The session hasn't ended yet, or ended through a path this arc
    * doesn't instrument.
    */
   TST_STREAM_END_REASON_NONE = 0,
-#endif
-#if defined(TST_HAS_RTP)
   /**
    * The peer closed the connection in an orderly way, with no
    * protocol or transport error.
    */
   TST_STREAM_END_REASON_CLEAN_TEARDOWN = 1,
-#endif
-#if defined(TST_HAS_RTP)
   /**
    * The server no longer honors the session — a keepalive ping was
    * answered `454 Session Not Found`.
    */
   TST_STREAM_END_REASON_SESSION_EXPIRED = 2,
-#endif
-#if defined(TST_HAS_RTP)
   /**
    * The keepalive background thread failed to encode or send a ping.
    * Detail message: see the getter doc.
    */
   TST_STREAM_END_REASON_KEEPALIVE_FAILED = 3,
-#endif
-#if defined(TST_HAS_RTP)
   /**
    * A hard I/O error on the underlying transport. Detail message:
    * see the getter doc.
    */
   TST_STREAM_END_REASON_TRANSPORT_FAILED = 4,
-#endif
-#if defined(TST_HAS_RTP)
   /**
    * The peer violated the wire protocol. Detail message: see the
    * getter doc.
    */
   TST_STREAM_END_REASON_PROTOCOL_ERROR = 5,
-#endif
-#if defined(TST_HAS_RTP)
   /**
    * The caller explicitly cancelled or closed the transport — not a
    * wire-level failure.
    */
   TST_STREAM_END_REASON_CANCELLED = 6,
-#endif
 } tst_stream_end_reason;
-#endif
 
 typedef enum tst_ts_framing_mode {
   TST_TS_FRAMING_MODE_RECOVER = 0,

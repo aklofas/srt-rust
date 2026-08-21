@@ -443,6 +443,38 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nStats<'local>(
     })
 }
 
+/// `nLastSeenMicros(handle, pid)` — Unix-epoch microsecond timestamp the
+/// stream identified by `pid` last carried a demuxed item through this
+/// receiver (last emitted event); `-1` if `pid` was never seen — including
+/// an unrecognized PID (no range check beyond the native `u16` truncating
+/// cast, same as `pmtPid`/`pcrPid` elsewhere in this binding) — or a
+/// timestamp predating the Unix epoch. Boxed to `Long` (`null` for `-1`) at
+/// the Java layer. Same registry-lock discipline as `nStats`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nLastSeenMicros(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    pid: jint,
+) -> jlong {
+    crate::panic::jni_catch(&mut env, -1, |env| {
+        let Some(last_seen) = REGISTRY.with(handle as u64, |jdr| {
+            jdr.inner
+                .stats()
+                .per_stream
+                .get(&(pid as u16))
+                .and_then(|s| s.last_seen)
+        }) else {
+            crate::error::throw_closed(env, "DemuxReceiver");
+            return -1;
+        };
+        last_seen
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_micros() as i64)
+            .unwrap_or(-1)
+    })
+}
+
 /// `nClose(handle)` — close the underlying transport and drop the box. No-op on a
 /// zero handle so a double `close()` is safe.
 #[unsafe(no_mangle)]

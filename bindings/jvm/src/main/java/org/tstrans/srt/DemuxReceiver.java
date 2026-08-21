@@ -209,6 +209,28 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
     }
 
     /**
+     * Wall-clock time the stream identified by {@code pid} last carried a
+     * demuxed item through this receiver (last emitted event), as a
+     * Unix-epoch microsecond count. {@code null} if {@code pid} was never
+     * seen — including an unrecognized PID (plain {@code int}-to-{@code
+     * u16} cast, no range check, same as the {@code pmtPid}/{@code pcrPid}
+     * parameters elsewhere in this binding) or before any event has arrived.
+     *
+     * <p>May block briefly if another thread is parked in {@code next()} —
+     * same registry-lock discipline as {@link #stats()}.
+     *
+     * @param pid the stream PID to query
+     * @return the last-seen timestamp in Unix-epoch microseconds, or
+     *     {@code null}
+     * @throws IllegalStateException if the receiver is closed
+     */
+    public Long lastSeenMicros(int pid) {
+        ensureOpen("DemuxReceiver is closed");
+        long v = nLastSeenMicros(peekHandle(), pid);
+        return v < 0 ? null : v;
+    }
+
+    /**
      * Close the receiver. Closes the underlying libsrt socket. Idempotent —
      * subsequent calls are no-ops.
      *
@@ -243,6 +265,7 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
     private static native long nCancelHandle(long handle);
     private static native SocketStats nSocketStats(long handle);
     private static native TransportStats nStats(long handle);
+    private static native long nLastSeenMicros(long handle, int pid);
     private static native void nClose(long handle);
     private static native boolean nIsAlive(long handle);
 }

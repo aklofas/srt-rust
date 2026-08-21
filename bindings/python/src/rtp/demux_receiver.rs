@@ -390,6 +390,40 @@ impl PyDemuxReceiver {
         Ok((sock_py, mux_py))
     }
 
+    /// Wall-clock time the stream identified by `pid` last carried an
+    /// item through this receiver (last emitted event), as a Unix-epoch
+    /// microsecond count. `None` if `pid` was never seen — including an
+    /// unrecognized PID (no range check beyond the native `u16`, mirror
+    /// of `Muxer.stream_codec_stats`'s pid handling: unknown → `None`,
+    /// no dedicated "bad pid" error).
+    ///
+    /// This deliberately differs from the C ABI's `0`-sentinel
+    /// convention (the C getters have no `Option`) — Python's `None` is
+    /// the honest "never" value.
+    ///
+    /// Raises `RtpError(TRANSPORT)` if the receiver has been closed —
+    /// same lock discipline as `stats()`.
+    fn last_seen_micros(&self, py: Python<'_>, pid: u16) -> PyResult<Option<u64>> {
+        // Same GIL-released lock-then-extract shape as `stats()` above:
+        // a registered byte sink fires `Python::with_gil` inside
+        // `recv_event` while holding this same lock, so holding the GIL
+        // here would deadlock (ABBA).
+        let inner = self.inner.clone();
+        let raw: Result<Option<Option<std::time::SystemTime>>, &'static str> =
+            py.allow_threads(|| {
+                let guard = inner.lock().map_err(|_| "poisoned")?;
+                Ok(guard
+                    .as_ref()
+                    .map(|rx| rx.stats().per_stream.get(&pid).and_then(|s| s.last_seen)))
+            });
+        let last_seen = raw
+            .map_err(|_| make_rtp_error(py, "TRANSPORT", "DemuxReceiver lock poisoned"))?
+            .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "DemuxReceiver is closed"))?;
+        Ok(last_seen
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_micros() as u64))
+    }
+
     /// Why the receive session ended, or `None` if it hasn't ended yet
     /// (or ended through a path this arc doesn't instrument). Still
     /// readable after `close()` — `end_reason` is a

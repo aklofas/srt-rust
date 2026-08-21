@@ -366,6 +366,25 @@ def test_managed_demux_receiver_iter_returns_self() -> None:
         receiver.close()
 
 
+def test_managed_demux_receiver_last_seen_micros_none_paths() -> None:
+    """Unit-level None-path coverage: a freshly-connected pair has
+    exchanged no video traffic yet, so both a plausible pid (0x101,
+    matching `_video_only_program()`) and a bogus one (0x1FFF) report
+    None. The int-after-traffic path + the epoch-microsecond conversion
+    are exercised once by the shared `StreamStats.last_seen` ->
+    `last_seen_micros` conversion covered on `tstrans.rtp.DemuxReceiver`
+    and `tstrans.srt.DemuxReceiver` — this class wires the identical
+    conversion, just against `ManagedDemuxReceiver::stats().per_stream`."""
+    port = _free_tcp_port()
+    sender, receiver = _make_managed_pair(port)
+    try:
+        assert receiver.last_seen_micros(0x101) is None
+        assert receiver.last_seen_micros(0x1FFF) is None
+    finally:
+        sender.close()
+        receiver.close()
+
+
 # --------------------------------------------------------------------------- #
 # push_data / push_data_to / data_handle                                      #
 # --------------------------------------------------------------------------- #

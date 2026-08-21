@@ -884,6 +884,41 @@ impl PyManagedDemuxReceiver {
         self.factory_attempts.load(Ordering::Acquire)
     }
 
+    /// Wall-clock time the stream identified by `pid` last carried an
+    /// item through this receiver (last emitted event), as a Unix-epoch
+    /// microsecond count. `None` if `pid` was never seen — including an
+    /// unrecognized PID (no range check beyond the native `u16`, mirror
+    /// of `Muxer.stream_codec_stats`'s pid handling: unknown → `None`,
+    /// no dedicated "bad pid" error).
+    ///
+    /// This deliberately differs from the C ABI's `0`-sentinel
+    /// convention (the C getters have no `Option`) — Python's `None` is
+    /// the honest "never" value.
+    ///
+    /// Same access pattern as `socket_stats`: releases the GIL before
+    /// acquiring the outer `Arc<Mutex<Option<...>>>` so a concurrent
+    /// `__next__` parked in `recv_event` (holding that same mutex inside
+    /// `allow_threads`) can't freeze the interpreter. Raises
+    /// `SrtError(CLOSED)` if the receiver has been closed.
+    fn last_seen_micros(&self, py: Python<'_>, pid: u16) -> PyResult<Option<u64>> {
+        enum StatsErr {
+            Poisoned,
+            Closed,
+        }
+        let result: Result<Option<std::time::SystemTime>, StatsErr> = py.allow_threads(|| {
+            let guard = self.inner.lock().map_err(|_| StatsErr::Poisoned)?;
+            let inner = guard.as_ref().ok_or(StatsErr::Closed)?;
+            Ok(inner.stats().per_stream.get(&pid).and_then(|s| s.last_seen))
+        });
+        let last_seen = result.map_err(|e| match e {
+            StatsErr::Poisoned => make_srt_error(py, "IO", "ManagedDemuxReceiver lock poisoned"),
+            StatsErr::Closed => make_srt_error(py, "CLOSED", "ManagedDemuxReceiver is closed"),
+        })?;
+        Ok(last_seen
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_micros() as u64))
+    }
+
     /// Close the receiver. Fires the cancel handle BEFORE acquiring the
     /// mutex so a concurrent `__next__` parked in `recv_event` unparks
     /// promptly. Idempotent.

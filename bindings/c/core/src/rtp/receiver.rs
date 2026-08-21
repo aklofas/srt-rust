@@ -572,4 +572,17 @@ mod tests {
             "tst_rtp_recv_open must reject ?pkt_size= on a receive URL"
         );
     }
+
+    /// `?pt=` is meaningless on a raw-TS receiver — same regression class
+    /// as `?pkt_size=` above (the field-by-field builder rebuild would
+    /// have silently dropped it too).
+    #[test]
+    fn url_pt_rejected_on_recv_open() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0?pt=96").unwrap();
+        let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+        assert!(
+            handle.is_null(),
+            "tst_rtp_recv_open must reject ?pt= on a receive URL"
+        );
+    }
 }

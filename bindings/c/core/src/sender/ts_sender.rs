@@ -390,6 +390,13 @@ pub unsafe extern "C" fn tst_managed_sender_get_socket_stats(
 /// returns `TST_E_NOT_AVAILABLE` — the counters live on the side-channel
 /// `ManagedStatsHandle`, which stays readable across reconnect gaps.
 ///
+/// **`Blocking` mode note:** this call still contends on the shell's own
+/// lock (for the closed-check), the same lock a send stuck in
+/// `Blocking` mode's inline reconnect loop holds for the whole outage —
+/// so it can block for the outage's duration in that mode. Polling this
+/// getter without ever blocking is a `Background`-mode property (the
+/// mode these stats primarily exist to observe).
+///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
 /// `TST_E_CLOSED` if the sender has been closed, or `TST_E_INTERNAL` if the
 /// gap-buffer lock is poisoned (see `ManagedTransport`'s lock poisoning

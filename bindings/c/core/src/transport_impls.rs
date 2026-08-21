@@ -371,6 +371,14 @@ pub(crate) fn mux_sender_reset_stats<T: Transport>(h: &Handle<MuxSender<T>>) -> 
 /// `TST_E_CLOSED` like every other managed getter) but reads the counters
 /// from `sh`, which stays live independently of the shell's `Handle` state.
 ///
+/// **Not fully non-blocking in `Blocking` mode:** the closed-check
+/// acquires `h`'s lock via `with_inner_ref`, the same lock a send stuck
+/// in `Blocking` mode's inline reconnect loop holds via `with_inner_mut`
+/// for the whole outage — so this getter can block for the outage's
+/// duration too in that mode. Polling this getter without ever blocking
+/// is a `Background`-mode property (the mode these stats primarily exist
+/// to observe).
+///
 /// # Safety
 /// `out` must be a valid writable `*mut TstManagedTransportStats` when non-null.
 pub(crate) unsafe fn managed_get_reconnect_stats<S>(

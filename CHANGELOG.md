@@ -207,9 +207,11 @@ site keeps working unchanged) close the same gap:
   `TRANSPORT` across `rtp.Receiver.recv()`, `rtp.DemuxReceiver`, and
   `rtp.H264Receiver.recvAu()`. Only raised when a deadline is actually
   configured; a receiver with none still blocks indefinitely. Adding
-  the constant meant updating `RtpException`'s bucket-count assertion
-  and every `@throws` doc that exhaustively enumerated `Kind` — both
-  fixed in lockstep with the addition, not after.
+  the constant meant adding the bucket-count assertion `RtpException`
+  was missing (`RtpErrorModelTest`, mirroring the sibling
+  `*ErrorModelTest` classes' `Kind.values().length` pin) and updating
+  every `@throws` doc that exhaustively enumerated `Kind` — both fixed
+  in lockstep with the addition, not after.
 - Per-call `recv(Integer timeoutMs)` / `recvAu(Integer timeoutMs)`
   overloads (the one-shot deadline; explicit argument wins over any
   configured persistent deadline for that call) plus the persistent

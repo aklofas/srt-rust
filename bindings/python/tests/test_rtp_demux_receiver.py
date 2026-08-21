@@ -287,6 +287,69 @@ def test_stats_tuple_shape() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# last_seen_micros(pid)                                                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_last_seen_micros_none_before_any_data() -> None:
+    """A freshly-bound receiver has seen nothing yet — any pid, including
+    a configured-looking one, reports None."""
+    port = _free_udp_port()
+    with tstrans.rtp.DemuxReceiver(f"rtp://127.0.0.1:{port}") as rx:
+        assert rx.last_seen_micros(0x101) is None
+
+
+def test_last_seen_micros_bogus_pid_returns_none() -> None:
+    port = _free_udp_port()
+    with tstrans.rtp.DemuxReceiver(f"rtp://127.0.0.1:{port}") as rx:
+        assert rx.last_seen_micros(0x1FFF) is None
+
+
+def test_last_seen_micros_reports_int_after_video_event() -> None:
+    """Once a Video event for pid 0x101 has been consumed,
+    `last_seen_micros(0x101)` returns an epoch-microsecond int; a PID
+    that never carried traffic (0x1FFF, outside the configured program)
+    stays None."""
+    port = _free_udp_port()
+    rx = tstrans.rtp.DemuxReceiver(f"rtp://127.0.0.1:{port}")
+    events: list[object] = []
+    err: list[BaseException] = []
+
+    def consumer() -> None:
+        try:
+            for ev in rx:
+                events.append(ev)
+                if isinstance(ev, DemuxEvent.Video):
+                    break
+        except BaseException as exc:  # noqa: BLE001
+            err.append(exc)
+
+    t = threading.Thread(target=consumer, daemon=True)
+    t.start()
+    # Give the consumer time to bind.
+    time.sleep(0.2)
+    program = _video_only_program()
+    with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as snd:
+        nal_idr = b"\x00\x00\x00\x01\x65\xBB"
+        for i in range(8):
+            snd.send_video(
+                nal_idr, pts=Pts90khz.from_raw(i * 3000), key_frame=(i == 0)
+            )
+    t.join(timeout=5.0)
+    saw_video = any(isinstance(e, DemuxEvent.Video) for e in events)
+    if not saw_video and err:
+        pytest.fail(f"consumer raised before a Video event: {err}")
+    assert saw_video, (
+        f"expected a Video event, got: {[type(e).__name__ for e in events]}"
+    )
+    seen = rx.last_seen_micros(0x101)
+    assert isinstance(seen, int) and seen > 0
+    # A PID never carried on this program stays None even after traffic.
+    assert rx.last_seen_micros(0x1FFF) is None
+    rx.close()
+
+
+# --------------------------------------------------------------------------- #
 # into_demux_receiver bridge — skipped (needs RTSP server fixture)           #
 # --------------------------------------------------------------------------- #
 

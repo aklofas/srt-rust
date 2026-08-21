@@ -427,6 +427,58 @@ def test_demux_receiver_stats_tuple_shape() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Test 4b: last_seen_micros(pid)                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_last_seen_micros_via_loopback() -> None:
+    """Before any traffic, `last_seen_micros(0x101)` is None. After a
+    Video event for pid 0x101 has been consumed, it reports an
+    epoch-microsecond int; a PID that never carried traffic (0x1FFF)
+    stays None even once the stream is flowing."""
+    port = _free_tcp_port()
+    sender, receiver = _make_mux_demux_pair(port)
+    try:
+        assert receiver.last_seen_micros(0x101) is None
+
+        events: list[object] = []
+        consumer_err: list[BaseException] = []
+
+        def consumer() -> None:
+            try:
+                for ev in receiver:
+                    events.append(ev)
+                    if isinstance(ev, DemuxEvent.Video):
+                        break
+            except BaseException as exc:  # noqa: BLE001
+                consumer_err.append(exc)
+
+        t = threading.Thread(target=consumer, daemon=True)
+        t.start()
+        time.sleep(0.2)
+        try:
+            for i in range(32):
+                sender.send_video(
+                    NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
+                )
+            time.sleep(0.3)
+        finally:
+            sender.close()
+        t.join(timeout=5.0)
+        saw_video = any(isinstance(e, DemuxEvent.Video) for e in events)
+        if not saw_video and consumer_err:
+            pytest.fail(f"consumer raised before a Video event: {consumer_err}")
+        assert saw_video, (
+            f"expected a Video event, got: {[type(e).__name__ for e in events]}"
+        )
+        seen = receiver.last_seen_micros(0x101)
+        assert isinstance(seen, int) and seen > 0
+        assert receiver.last_seen_micros(0x1FFF) is None
+    finally:
+        receiver.close()
+
+
+# --------------------------------------------------------------------------- #
 # Test 5: Socket.into_mux_sender + Socket.into_demux_receiver promotion       #
 # --------------------------------------------------------------------------- #
 

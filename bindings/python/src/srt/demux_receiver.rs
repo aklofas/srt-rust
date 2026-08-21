@@ -402,6 +402,37 @@ impl PyDemuxReceiver {
         Ok((sock_py, mux_py))
     }
 
+    /// Wall-clock time the stream identified by `pid` last carried an
+    /// item through this receiver (last emitted event), as a Unix-epoch
+    /// microsecond count. `None` if `pid` was never seen — including an
+    /// unrecognized PID (no range check beyond the native `u16`, mirror
+    /// of `Muxer.stream_codec_stats`'s pid handling: unknown → `None`,
+    /// no dedicated "bad pid" error).
+    ///
+    /// This deliberately differs from the C ABI's `0`-sentinel
+    /// convention (the C getters have no `Option`) — Python's `None` is
+    /// the honest "never" value.
+    ///
+    /// Raises `SrtError(CLOSED)` if the receiver has been closed — same
+    /// lock discipline as `stats()`.
+    fn last_seen_micros(&self, py: Python<'_>, pid: u16) -> PyResult<Option<u64>> {
+        // Same GIL-released lock-then-extract shape as `stats()` above.
+        let inner = self.inner.clone();
+        let raw: Result<Option<Option<std::time::SystemTime>>, &'static str> =
+            py.allow_threads(|| {
+                let guard = inner.lock().map_err(|_| "poisoned")?;
+                Ok(guard
+                    .as_ref()
+                    .map(|rx| rx.stats().per_stream.get(&pid).and_then(|s| s.last_seen)))
+            });
+        let last_seen = raw
+            .map_err(|_| make_srt_error(py, "IO", "DemuxReceiver lock poisoned"))?
+            .ok_or_else(|| make_srt_error(py, "CLOSED", "DemuxReceiver is closed"))?;
+        Ok(last_seen
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_micros() as u64))
+    }
+
     /// Close the receiver. Idempotent. Fires the cancel handle BEFORE
     /// acquiring the mutex so a concurrent `__next__` parked in
     /// `recv_event` unparks promptly.

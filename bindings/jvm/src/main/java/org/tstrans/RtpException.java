@@ -4,7 +4,7 @@ package org.tstrans;
  * Checked exception for the RTP transport surface ({@code org.tstrans.rtp}).
  * Mirrors tst-py's {@code tstrans.exceptions.RtpError} / {@code RtpErrorKind}.
  * {@link Kind} maps the Rust {@code tst_core::transport::TransportError} and
- * {@code tst_rtp::ConnectError} families onto three user-facing buckets — see
+ * {@code tst_rtp::ConnectError} families onto four user-facing buckets — see
  * {@code bindings/jvm/src/rtp/errors.rs}.
  */
 public final class RtpException extends BindingException {

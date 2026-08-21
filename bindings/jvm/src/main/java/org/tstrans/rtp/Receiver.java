@@ -38,7 +38,8 @@ public final class Receiver extends NativeHandle {
      * Receive one TS payload chunk. Blocks until a packet arrives or a cancel fires.
      *
      * @throws IllegalStateException if the receiver is closed
-     * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT} otherwise
+     * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT} otherwise;
+     *     {@code TIMEOUT} if a configured recv deadline expires
      */
     public byte[] recv() throws RtpException {
         ensureOpen("Receiver is closed");

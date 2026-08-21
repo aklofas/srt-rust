@@ -123,7 +123,8 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
      * @return the next {@link H264AccessUnit}, or {@code null} at EOS (clean close
      *     or RTSP teardown — caller should exit the recv loop)
      * @throws RtpException {@code CANCELLED} if the cancel handle was fired
-     *     explicitly; {@code TRANSPORT} on a hard I/O error
+     *     explicitly; {@code TRANSPORT} on a hard I/O error; {@code TIMEOUT} if
+     *     a configured recv deadline expires
      * @throws IllegalStateException if the receiver is already closed
      */
     public H264AccessUnit recvAu() throws RtpException {

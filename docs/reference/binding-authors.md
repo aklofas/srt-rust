@@ -375,16 +375,23 @@ baseline (by design)" for the full rationale.
       no existing symbol, signature, or struct layout changed:
       - **Item 7, background reconnect:** `TstReconnectMode` enum
         (`Blocking = 0`, `Background = 1`) + `tst_reconnect_policy_set_mode`
-        setter on `tst_reconnect_policy_t` (`TST_HAS_SRT`); the 48-byte
-        `tst_managed_transport_stats_t` (5×`uint64_t` + `bool` + 7-byte pad,
-        size-pinned in the header trailer) + three send-side getters
-        (`tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`,
-        `TST_HAS_SRT`).
+        setter on `tst_reconnect_policy_t` — both **unconditional**, like
+        the rest of the reconnect-policy family (the builder module
+        carries no feature gate; only the `Managed*` consumers are
+        SRT-only). Also unconditional: the 48-byte
+        `tst_managed_transport_stats_t` struct (5×`uint64_t` + `bool` +
+        7-byte pad, size-pinned in the header trailer). `TST_HAS_SRT`
+        gates only the three send-side getters that read it
+        (`tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`).
       - **Item 8, RTP stream-end reason:** `TstStreamEndReason` enum
         (`None = 0`, `CleanTeardown = 1`, `SessionExpired = 2`,
         `KeepaliveFailed = 3`, `TransportFailed = 4`, `ProtocolError = 5`,
-        `Cancelled = 6`) + `tst_rtp_{receiver,demux_receiver}_end_reason`
-        getters (`TST_HAS_RTP`). Last-error detail contract: an
+        `Cancelled = 6`) is defined outside the `rtp` module — also
+        **unconditional**, same reasoning as `TstReconnectMode` above (and
+        avoids cbindgen re-emitting a per-variant `#if` guard on the
+        enum). `TST_HAS_RTP` gates only the two getters that read it —
+        `tst_rtp_{receiver,demux_receiver}_end_reason`. Last-error detail
+        contract: an
         actually-recorded reason resets `tst_get_last_error[_str]` to
         `TST_E_SUCCESS` + the detail message (or `""` for msg-less
         reasons) on every call, overwriting any pending failure; `None`

@@ -18,6 +18,7 @@ pub mod mux_sender;
 pub mod demux_receiver;
 pub mod end_reason;
 
+pub use crate::stream_end_reason::TstStreamEndReason;
 pub use demux_receiver::{
     TstRtpDemuxReceiver, tst_rtp_demux_receiver_cancel, tst_rtp_demux_receiver_close,
     tst_rtp_demux_receiver_end_reason, tst_rtp_demux_receiver_get_socket_stats,
@@ -26,7 +27,6 @@ pub use demux_receiver::{
     tst_rtp_demux_receiver_next_event, tst_rtp_demux_receiver_open,
     tst_rtp_demux_receiver_reset_stats,
 };
-pub use end_reason::TstStreamEndReason;
 pub use mux_sender::{
     TstRtpMuxSender, tst_rtp_mux_sender_cancel, tst_rtp_mux_sender_close,
     tst_rtp_mux_sender_get_mux_sender_stats, tst_rtp_mux_sender_get_socket_stats,

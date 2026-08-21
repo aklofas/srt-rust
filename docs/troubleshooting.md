@@ -414,7 +414,33 @@ classification, since its `Drop` cancels the pump, which may record
 `Cancelled` before the server's EOF is read — that race reproduces the
 old `TransportBroken` shape.
 
-This is a Rust-only surface today — see the "Python/JVM `tracing`
-diagnostics bridge + structured stream-end reason" entry in
+**Python** (`tstrans.rtp`) mirrors this: `Receiver`, `DemuxReceiver`,
+and `H264Receiver` each expose `end_reason()` (a `StreamEndReason`
+member, or `None`) and `end_detail()` (the free-text message for
+`KEEPALIVE_FAILED` / `TRANSPORT_FAILED` / `PROTOCOL_ERROR`, `None`
+otherwise) — both stay readable after `close()`:
+
+```python
+from tstrans.rtp import RtspClient, RtspClientConfig, StreamEndReason
+
+with RtspClient.connect_h264(RtspClientConfig("rtsp://cam.local/h264")) as session:
+    with session.into_h264_receiver() as rx:
+        for au in rx:
+            ...
+        # loop exited (EOS or a caught error) — ask why
+        reason = rx.end_reason()
+        if reason == StreamEndReason.SESSION_EXPIRED:
+            pass  # re-DESCRIBE + SETUP
+        elif reason in (StreamEndReason.KEEPALIVE_FAILED, StreamEndReason.TRANSPORT_FAILED):
+            print(f"stream died: {rx.end_detail()}")
+```
+
+Set `TSTRANS_LOG=tst_rtp=debug` (`EnvFilter` syntax, same as
+`RUST_LOG`) before `import tstrans` to also see the underlying
+pump/keepalive `tracing` events on stderr — the same signal
+`end_reason()` distills into a single enum member.
+
+JVM has no mirror yet — see the "Python/JVM `tracing` diagnostics
+bridge + structured stream-end reason" entry in
 [deferred-features.md](/docs/project/deferred-features.md) for the
 bindings-parity status.

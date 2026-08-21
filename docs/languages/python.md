@@ -500,6 +500,12 @@ callback raises, the error re-raises from the next iteration step and
 iteration stops. Keep the sink cheap (it runs on the recv-loop thread) and
 never re-enter the receiver from it.
 
+`rx.last_seen_micros(pid)` returns the epoch-microsecond timestamp of
+the most recent item this receiver emitted for `pid`, or `None` if
+`pid` was never seen — a cheap staleness check with no snapshot-diffing
+required. See the watchdog recipe under [RTP convenience](#rtp-convenience-muxsender--demuxreceiver)
+below (the method is identical here).
+
 ### SRT managed reconnect
 
 The four `Managed*` shells add automatic reconnect: on a Broken/Closed
@@ -575,7 +581,38 @@ use `socket_stats()` (the 16-field `SocketStats`) instead.
 `SocketStats` (not `SrtStats`). `ManagedReceiver.reconnect_attempts()` is a
 success count (excludes the initial accept); `ManagedMuxSender` and
 `ManagedDemuxReceiver` `reconnect_attempts()` count every reconnect-factory
-invocation.
+invocation. `ManagedDemuxReceiver.last_seen_micros(pid)` works the same
+as the plain `DemuxReceiver` above.
+
+**Background reconnect** (`ReconnectMode`): pass `mode=ReconnectMode.BACKGROUND`
+on the `ReconnectPolicy` handed to `ManagedSender` / `ManagedMuxSender` to
+move the reconnect loop off the caller's thread — a dedicated per-outage
+worker owns backoff + the factory call, and `send`/`send_video`/… enqueue
+into the gap buffer under `overflow_policy` instead of blocking:
+
+```python
+from tstrans.srt import ManagedMuxSender, ReconnectPolicy, ReconnectMode
+
+policy = ReconnectPolicy(mode=ReconnectMode.BACKGROUND)  # default is BLOCKING
+
+with ManagedMuxSender.from_url(
+    "srt://host:9000?mode=caller&latency=120", program, policy=policy
+) as s:
+    ...
+    stats = s.reconnect_stats()   # ManagedTransportStats
+    if stats.reconnecting:
+        print(f"outage in progress, {stats.gap_len} bytes queued")
+```
+
+`reconnect_stats()` (also on `ManagedMuxSender`) returns a frozen
+`ManagedTransportStats` (`reconnect_attempts`, `reconnect_successes`,
+`gap_len`, `gap_messages_dropped`, `gap_bytes_dropped`, `reconnecting`)
+regardless of `mode` — `reconnecting` just stays `False` under the
+default `BLOCKING` mode, since that mode's reconnect runs synchronously
+inside the call that observed the break rather than on a separate
+worker. `BACKGROUND` is send-side only: handing it to `ManagedReceiver`
+/ `ManagedDemuxReceiver` logs a warning and those classes reconnect on
+the caller's thread anyway.
 
 ## RTP transport (`tstrans.rtp`)
 
@@ -654,6 +691,62 @@ To stop a `DemuxReceiver` iteration parked on the next datagram, call
 `close()` from another thread — it cancels the in-flight recv first, then
 frees the receiver (safe cross-thread).
 
+`rx.last_seen_micros(pid)` returns the Unix-epoch microsecond timestamp
+of the most recent item this receiver emitted for `pid`, or `None` if
+that PID has never been seen — a per-stream staleness check that needs
+no `stats()` snapshot-diffing. A watchdog thread can poll it directly:
+
+```python
+import time
+
+STALE_AFTER_US = 5_000_000  # 5 s
+
+def watchdog(rx, pid, stop_event):
+    while not stop_event.is_set():
+        seen = rx.last_seen_micros(pid)
+        if seen is not None and time.time() * 1_000_000 - seen > STALE_AFTER_US:
+            print(f"pid {pid:#x} has gone quiet")
+        time.sleep(1.0)
+```
+
+The same method exists on `tstrans.srt.DemuxReceiver` and
+`tstrans.srt.ManagedDemuxReceiver`.
+
+### Recv deadlines (`?recv_timeout=` / `timeout_ms`)
+
+Both `Receiver.recv()` and `DemuxReceiver` iteration block indefinitely
+by default — fine for a live camera, less fine for a quiet socket you
+want to notice going quiet. `?recv_timeout=<ms>` on a `rtp://` (or
+`rtsp(s)://`) URL arms a persistent receive deadline: a `recv()` /
+`next()` call that would otherwise block forever instead raises
+`RtpError(TIMEOUT)` after `<ms>` milliseconds of silence, and the
+receiver stays open — call again to keep waiting:
+
+```python
+from tstrans.exceptions import RtpError, RtpErrorKind
+from tstrans.rtp import DemuxReceiver
+
+with DemuxReceiver("rtp://0.0.0.0:5004?recv_timeout=5000") as rx:
+    it = iter(rx)
+    while True:
+        try:
+            event = next(it)
+        except RtpError as e:
+            if e.kind == RtpErrorKind.TIMEOUT:
+                print("quiet for 5s — still connected, just nothing to say")
+                continue
+            raise
+        ...  # process event
+```
+
+`Receiver.recv(timeout_ms=...)` and `H264Receiver.recv_au(timeout_ms=...)`
+take a per-call override instead (or in addition — the explicit argument
+always wins over a configured URL deadline for that one call). `RtspClientConfig`'s
+URL accepts the same `?recv_timeout=` key; it carries through
+`into_demux_receiver()` / `into_h264_receiver()` automatically. `TIMEOUT`
+is retryable — the transport and session are both still alive, unlike
+`CANCELLED` or `TRANSPORT`.
+
 ### RTSP client
 
 `RtspClient.connect(config)` runs OPTIONS / DESCRIBE / SETUP / PLAY and
@@ -693,6 +786,18 @@ with RtspClient.connect(cfg) as session:
 - **Cancellation.** Obtain a `RtspCancelHandle` from
   `session.cancel_handle()` *before* a blocking control call, then flip
   `cancel()` from another thread to break it out.
+- **Why did the stream end?** When `for event in rx` exits or a call
+  raises, `rx.end_reason()` (on `DemuxReceiver`, `Receiver`, and
+  `H264Receiver` alike) answers with a `StreamEndReason` member —
+  `CLEAN_TEARDOWN`, `SESSION_EXPIRED`, `KEEPALIVE_FAILED`,
+  `TRANSPORT_FAILED`, `PROTOCOL_ERROR`, or `CANCELLED` — or `None` if
+  the session hasn't ended yet (or ended through a path this arc
+  doesn't instrument, e.g. a plain `rtp://` receiver with no owning
+  `RtspClient`). `rx.end_detail()` carries the free-text message for
+  the three failure variants. Both stay readable after `close()`. Set
+  `TSTRANS_LOG=tst_rtp=debug` before `import tstrans` to also see the
+  underlying pump/keepalive `tracing` events on stderr. Full recipe +
+  the Rust-side rationale: [Why did my RTSP stream end?](/docs/troubleshooting.md#why-did-my-rtsp-stream-end).
 
 ### RTSP server
 
@@ -812,6 +917,12 @@ with RtspClient.connect_h264(cfg) as session:
 - **Stats accessors:** `rx.depay_stats()`, `rx.rtp_stats()`,
   `rx.socket_stats()` (returns a `SocketStats` — not Optional, unlike the
   SRT path).
+
+- **Deadlines and end-of-stream diagnosis.** `rx.recv_au(timeout_ms=...)`
+  bounds a single call — see [Recv deadlines](#recv-deadlines-recv_timeout--timeout_ms)
+  above. `rx.end_reason()` / `rx.end_detail()` work the same as on
+  `DemuxReceiver` / `Receiver` — see
+  [Why did the stream end?](#rtsp-client) under RTSP client above.
 
 **Rust twin:** [`examples/receiving/recv_rtsp_h264.rs`](/examples/receiving/recv_rtsp_h264.rs)
 and the cookbook recipe [Ingest H.264 from an RTSP camera and remux to MPEG-TS](/docs/cookbook/receiving/recv-rtsp-h264-to-ts.md).
@@ -1065,6 +1176,14 @@ counters without touching demuxer stats.
 - **`tstrans._native` is private.** Use `tstrans.X` (or `tstrans.mpegts.X`
   / `tstrans.klv.X` / ...) — never `tstrans._native.X`. The `_native`
   submodule may reorganize between versions.
+- **`TSTRANS_LOG` bridges the Rust core's `tracing` events to stderr.**
+  Set it before `import tstrans` (`EnvFilter` syntax, same as
+  `RUST_LOG` — e.g. `TSTRANS_LOG=tst_rtp=debug`) to see diagnostics
+  (keepalive failures, pump warnings, …) that otherwise vanish silently
+  — nothing installs a subscriber inside the extension by default.
+  Unset means zero overhead beyond the one env lookup at import time;
+  if the embedding process already installed its own `tracing`
+  subscriber, this bridge never displaces it.
 
 ### Pandas + NumPy adapters
 
@@ -1391,6 +1510,17 @@ output directly when absolute byte offsets matter.
   `Cea708StandaloneConfig`, `WebVttInTsConfig`).
 - **`add_subtitle()` and `push_subtitle*()` release the GIL.** Added in
   plan #96 Wave C.
+- **`end_detail()` reads the Rust enum field directly, not a
+  last-error channel.** The C ABI's `TstStreamEndReason` accessors read
+  a recorded `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
+  message through the shared thread-local last-error channel
+  (`tst_get_last_error_str`), resetting it on every call. Python has no
+  such channel — `end_detail()` reads the `msg` field straight off the
+  Rust `StreamEndReason` value. A recorded end reason is data, not a
+  failure, so it never touches `tstrans.exceptions`.
+- **`last_seen_micros(pid)` returns `None`, not `0`, for "never
+  seen".** The C ABI has no `Option` in its getter shape, so it uses a
+  `0` sentinel; Python's `None` is the honest absent value.
 - **No bindings for low-level `mpegts::demux::low_level::*`.** The Rust
   core exposes extension points there; the Python wrap omits them
   (would need PyO3 wrapping of trait objects).

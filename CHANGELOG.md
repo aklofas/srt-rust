@@ -153,10 +153,53 @@ with the Rust-core work above:
   rather than the parsed URL, so query keys outside that short list
   never reached the validation that was supposed to reject them).
 
-Python and JVM remain unchanged by either the reconnect work or the
-`tst-rtp` work above — see the "Background reconnect — bindings
-parity", "RTP receive-deadline bindings parity", and "Python/JVM
-`tracing` diagnostics bridge + structured stream-end reason" entries in
+**Python bindings** (`tstrans`, additive only — no existing method
+signature changed) close most of the same gap:
+
+- `RtpErrorKind.TIMEOUT` (new `IntEnum` member) — `TransportError::
+  Backpressure` now maps to `TIMEOUT` instead of `TRANSPORT` across
+  `rtp.Receiver.recv()`, `rtp.DemuxReceiver`, and
+  `rtp.H264Receiver.recv_au()`. Only raised when a deadline is actually
+  configured; a receiver with none still blocks indefinitely.
+- Per-call `timeout_ms=` on `Receiver.recv()` / `H264Receiver.recv_au()`
+  (the one-shot `recv_timeout`/`recv_au_timeout`, explicit argument
+  wins over any configured persistent deadline for that call) plus the
+  persistent `?recv_timeout=<ms>` URL query key on `rtp://` receiver
+  URLs, honored by both `Receiver` and `DemuxReceiver` — no separate
+  Python setter, the URL is the only knob. Either path's expiry raises
+  `RtpError(TIMEOUT)`; the receiver stays open, call again to retry.
+- `ReconnectMode` (`BLOCKING` / `BACKGROUND`) + a `mode=` keyword on
+  `ReconnectPolicy` + `reconnect_stats() -> ManagedTransportStats` on
+  `ManagedSender` / `ManagedMuxSender`; `ManagedTransportStats` is a
+  frozen, `get_all`-shaped mirror of the six Rust fields. Send-side
+  only, matching Rust: `ManagedReceiver` / `ManagedDemuxReceiver` log a
+  warning and behave as `BLOCKING` if handed a `BACKGROUND` policy.
+- `StreamEndReason` (pure-Python `IntEnum`, numeric values pinned
+  against the Rust/C enums) + `end_reason()` / `end_detail()` on
+  `Receiver`, `DemuxReceiver` (rtp), and `H264Receiver`. Unlike the C
+  ABI, which reads a `KeepaliveFailed` / `TransportFailed` /
+  `ProtocolError` message through the shared thread-local last-error
+  channel, `end_detail()` reads the Rust enum's `msg` field directly —
+  a recorded end reason is data, not a failure, so nothing routes
+  through `tstrans.exceptions`.
+- `last_seen_micros(pid)` on `DemuxReceiver` (rtp and srt) and
+  `ManagedDemuxReceiver` (srt) — an epoch-microsecond `int`, or `None`
+  if `pid` was never seen. Deliberately differs from the C ABI's
+  `0`-sentinel convention (the C getters have no `Option`) — Python's
+  `None` is the honest "never" value.
+- `TSTRANS_LOG` environment variable — an opt-in stderr `tracing`
+  bridge installed at `import tstrans` time (`EnvFilter` syntax, same
+  as `RUST_LOG`, e.g. `TSTRANS_LOG=tst_rtp=debug`). Unset means zero
+  subscriber overhead beyond the env lookup; `try_init` (not `init`)
+  so an embedding process that already installed its own subscriber
+  keeps it.
+
+See the [Python guide](docs/languages/python.md) for recipes. JVM
+remains unchanged by either the reconnect work or the `tst-rtp` work
+above — see the "Background reconnect — bindings parity", "RTP
+receive-deadline bindings parity", "Last-activity-wall-clock gauges per
+stream", and "Python/JVM `tracing` diagnostics bridge + structured
+stream-end reason" entries in
 [docs/project/deferred-features.md](docs/project/deferred-features.md).
 (The JVM null-argument fix under **Fixed** below is a separate,
 JVM-only behavior change.)

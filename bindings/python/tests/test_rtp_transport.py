@@ -270,6 +270,51 @@ def test_receiver_recv_timeout_raises_timeout_kind() -> None:
         assert exc_info2.value.kind == RtpErrorKind.TIMEOUT
 
 
+def test_receiver_recv_per_call_timeout_ms_raises_and_recovers() -> None:
+    """`recv(timeout_ms=N)` bounds a single call — no URL knob needed.
+    A quiet socket raises `RtpError(TIMEOUT)`; the receiver stays open
+    and a subsequently delivered packet is still received normally."""
+    port = _free_udp_port()
+    with tstrans.rtp.Receiver(f"rtp://127.0.0.1:{port}") as r:
+        with pytest.raises(RtpError) as exc_info:
+            r.recv(timeout_ms=200)
+        assert exc_info.value.kind == RtpErrorKind.TIMEOUT
+
+        # Session stayed alive across the TIMEOUT — a real packet sent
+        # now is still delivered on the same receiver.
+        payload = b"\x47" + b"\x00" * 187
+        with tstrans.rtp.Sender(f"rtp://127.0.0.1:{port}") as s:
+            s.send(payload)
+        got = r.recv(timeout_ms=2000)
+        assert got == payload
+
+
+def test_receiver_recv_timeout_ms_default_none_is_blocking() -> None:
+    """`recv()` with no args (`timeout_ms=None`) keeps the pre-existing
+    indefinite-block contract — the same code path exercised by
+    `test_receiver_recv_loopback_returns_payload`, called explicitly
+    with `timeout_ms=None` here to pin the default's identity."""
+    port = _free_udp_port()
+    with tstrans.rtp.Receiver(f"rtp://127.0.0.1:{port}") as r:
+        out: list[bytes | BaseException] = []
+
+        def worker() -> None:
+            try:
+                out.append(r.recv(timeout_ms=None))
+            except BaseException as exc:  # noqa: BLE001
+                out.append(exc)
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        time.sleep(0.1)
+        payload = b"\x47" + b"\x00" * 187
+        with tstrans.rtp.Sender(f"rtp://127.0.0.1:{port}") as s:
+            s.send(payload)
+        t.join(timeout=2.0)
+        assert not t.is_alive()
+        assert out == [payload]
+
+
 # --------------------------------------------------------------------------- #
 # SocketStats + CancelHandle shape                                            #
 # --------------------------------------------------------------------------- #

@@ -33,6 +33,7 @@
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use pyo3::Py;
 use pyo3::intern;
@@ -370,21 +371,34 @@ impl PyReceiver {
     /// Receive one MPEG-TS payload chunk. Blocks until a packet arrives
     /// (releases the GIL while parked) or the cancel handle fires.
     ///
+    /// `timeout_ms=None` (the default) blocks indefinitely — the same
+    /// code path as before this parameter existed. `timeout_ms=N` bounds
+    /// this single call to `N` milliseconds via the one-shot
+    /// `RtpRecvTransport::recv_timeout`; on expiry it raises
+    /// `RtpError(TIMEOUT)` and the receiver stays open — call again to
+    /// keep waiting. The one-shot's `Ok(None)` expiry never leaks to
+    /// Python: `.recv()` always either returns `bytes` or raises.
+    ///
     /// Returns a fresh `bytes` object containing the TS bundle (RTP
     /// header already stripped).
-    fn recv(&mut self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+    #[pyo3(signature = (timeout_ms = None))]
+    fn recv(&mut self, py: Python<'_>, timeout_ms: Option<u64>) -> PyResult<Py<PyBytes>> {
         let inner = self
             .inner
             .as_mut()
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "receiver is closed"))?;
         // SAFETY: scratch is owned by this PyClass instance and not
         // shared with Python objects; the &mut borrow is exclusive for
-        // the duration of recv_bytes. py.allow_threads is safe because
-        // we touch no Python objects inside.
+        // the duration of recv_bytes/recv_timeout. py.allow_threads is
+        // safe because we touch no Python objects inside.
         let scratch: &mut [u8] = self.scratch.as_mut_slice();
-        let res = py.allow_threads(|| inner.recv_bytes(scratch));
+        let res = match timeout_ms {
+            None => py.allow_threads(|| inner.recv_bytes(scratch)).map(Some),
+            Some(ms) => py.allow_threads(|| inner.recv_timeout(scratch, Duration::from_millis(ms))),
+        };
         match res {
-            Ok(n) => Ok(PyBytes::new_bound(py, &self.scratch[..n]).unbind()),
+            Ok(Some(n)) => Ok(PyBytes::new_bound(py, &self.scratch[..n]).unbind()),
+            Ok(None) => Err(make_rtp_error(py, "TIMEOUT", "recv deadline elapsed")),
             Err(e) => Err(transport_error_to_pyerr(py, e)),
         }
     }

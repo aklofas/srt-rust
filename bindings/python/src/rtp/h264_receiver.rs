@@ -27,6 +27,9 @@
 //! # Error mapping
 //!
 //! - `TransportError::ExplicitClose` → `RtpError(CANCELLED, ...)`
+//! - `TransportError::Backpressure`  → `RtpError(TIMEOUT, ...)` (a
+//!   `recv_au(timeout_ms=...)` deadline expired — retryable, the
+//!   receiver/session is still alive)
 //! - `TransportError::Broken`        → `RtpError(TRANSPORT, ...)`
 //! - closed-handle calls             → `RtpError(TRANSPORT, "receiver is closed")`
 //! - `ConnectError` (URL / bind)     → `RtpError(TRANSPORT, ...)`
@@ -34,6 +37,7 @@
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -61,6 +65,9 @@ fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
             let msg = format!("payload too large: {len} bytes exceeds {max}-byte cap");
             make_rtp_error(py, "MALFORMED_PACKET", &msg)
         }
+        // A `recv_au(timeout_ms=...)` deadline expired — retryable, the
+        // receiver/session is still alive.
+        TransportError::Backpressure { msg, .. } => make_rtp_error(py, "TIMEOUT", &msg),
         other => make_rtp_error(py, "TRANSPORT", &other.to_string()),
     }
 }
@@ -381,9 +388,13 @@ impl PyRtpStats {
 ///
 /// # Receiving
 ///
-/// `recv_au()` blocks until a complete Access Unit is reassembled or EOS.
-/// Returns `H264AccessUnit` on success, `None` at EOS (clean close or RTSP
-/// teardown), or raises `RtpError` on transport failure.
+/// `recv_au(timeout_ms=None)` blocks until a complete Access Unit is
+/// reassembled or EOS. Returns `H264AccessUnit` on success, `None` at EOS
+/// (clean close or RTSP teardown), or raises `RtpError` on transport
+/// failure. `timeout_ms=N` bounds a single call via the one-shot
+/// `recv_au_timeout`; expiry raises `RtpError(TIMEOUT)` — the receiver
+/// stays open, call again to keep waiting. `None` return stays EOS-only
+/// and is never used to signal a timeout.
 ///
 /// The GIL is released via `py.allow_threads()` during the blocking recv so
 /// other Python threads continue to run while this thread waits for packets.
@@ -457,15 +468,29 @@ impl PyH264Receiver {
     ///
     /// Blocks until a packet arrives (releasing the GIL) or EOS / error.
     ///
+    /// `timeout_ms=None` (the default) blocks indefinitely — the same
+    /// code path as before this parameter existed. `timeout_ms=N` bounds
+    /// this single call to `N` milliseconds via the one-shot
+    /// `recv_au_timeout`; on expiry it raises `RtpError(TIMEOUT)` and the
+    /// receiver stays open — call again to keep waiting.
+    ///
     /// Returns:
     /// - `H264AccessUnit` when a complete AU is available.
-    /// - `None` at EOS (clean close, cancel, or RTSP teardown).
+    /// - `None` at EOS (clean close, cancel, or RTSP teardown) — never
+    ///   returned to signal a timeout.
     ///
     /// Raises:
     /// - `RtpError(CANCELLED)` if the cancel handle was fired explicitly.
+    /// - `RtpError(TIMEOUT)` if `timeout_ms` was given and no AU
+    ///   completed within it — retryable, the receiver stays open.
     /// - `RtpError(TRANSPORT)` on a hard I/O error or if the receiver is
     ///   already closed.
-    fn recv_au(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyH264AccessUnit>>> {
+    #[pyo3(signature = (timeout_ms = None))]
+    fn recv_au(
+        &mut self,
+        py: Python<'_>,
+        timeout_ms: Option<u64>,
+    ) -> PyResult<Option<Py<PyH264AccessUnit>>> {
         let inner = self
             .inner
             .as_mut()
@@ -473,7 +498,10 @@ impl PyH264Receiver {
         // Release the GIL while parked on the blocking recv_au call.
         // The inner receiver is exclusively owned here (no Arc/Mutex) so
         // py.allow_threads is safe: no Python objects are accessed inside.
-        let result = py.allow_threads(|| inner.recv_au());
+        let result = match timeout_ms {
+            None => py.allow_threads(|| inner.recv_au()),
+            Some(ms) => py.allow_threads(|| inner.recv_au_timeout(Duration::from_millis(ms))),
+        };
         match result {
             Ok(None) => Ok(None),
             Ok(Some(au)) => {
@@ -492,7 +520,7 @@ impl PyH264Receiver {
     /// Advance the iterator. Returns the next `H264AccessUnit` or raises
     /// `StopIteration` at EOS.
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Py<PyH264AccessUnit>> {
-        match self.recv_au(py)? {
+        match self.recv_au(py, None)? {
             Some(au) => Ok(au),
             None => Err(pyo3::exceptions::PyStopIteration::new_err(())),
         }

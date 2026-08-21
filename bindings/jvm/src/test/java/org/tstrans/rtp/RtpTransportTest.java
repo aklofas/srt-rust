@@ -78,4 +78,20 @@ class RtpTransportTest {
         assertTrue(ex.getMessage().contains("send-side knob"),
                 "teaching text expected, got: " + ex.getMessage());
     }
+
+    @Test
+    void receiverRecvTimeoutRaisesTimeoutKind() throws Exception {
+        // `?recv_timeout=<ms>` arms a persistent recv deadline (wired by
+        // RtpRecvSocketBuilder::from_url). A quiet socket (no sender) must throw
+        // RtpException(TIMEOUT) once the deadline expires — distinct from
+        // TRANSPORT, since the receiver stays open and usable (retry recv() again).
+        try (Receiver r = Receiver.fromUrl("rtp://127.0.0.1:50004?recv_timeout=200")) {
+            RtpException ex = assertThrows(RtpException.class, r::recv);
+            assertEquals(RtpException.Kind.TIMEOUT, ex.kind());
+            // The receiver is still alive after a TIMEOUT — a second recv on the
+            // same (still-quiet) socket raises TIMEOUT again, not TRANSPORT.
+            RtpException ex2 = assertThrows(RtpException.class, r::recv);
+            assertEquals(RtpException.Kind.TIMEOUT, ex2.kind());
+        }
+    }
 }

@@ -17,10 +17,12 @@
 //!
 //! # Error mapping (mirrors tst-py)
 //!
-//! - `TransportError::ExplicitClose` → `RtpException(CANCELLED)`
-//! - `TransportError::TooLarge`      → `RtpException(MALFORMED_PACKET)`
-//! - other `TransportError`          → `RtpException(TRANSPORT)`
-//! - `ConnectError`                  → `RtpException(TRANSPORT)`
+//! - `TransportError::ExplicitClose`  → `RtpException(CANCELLED)`
+//! - `TransportError::TooLarge`       → `RtpException(MALFORMED_PACKET)`
+//! - `TransportError::Backpressure`   → `RtpException(TIMEOUT)` (recv deadline
+//!   expired; retryable — the transport/session is still alive)
+//! - other `TransportError`           → `RtpException(TRANSPORT)`
+//! - `ConnectError`                   → `RtpException(TRANSPORT)`
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};

@@ -291,6 +291,20 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
      * (or ended through a path this arc doesn't instrument). Still readable
      * after {@link #close()} — the close path snapshots the reason before
      * the underlying native resource is freed.
+     *
+     * <p><b>Blocking:</b> while open, this takes the same internal resource
+     * lock a parked {@link #recvAu()} holds — if a recv is currently in
+     * flight on this receiver, {@code endReason()} blocks until it returns
+     * (an AU, EOS, or an error). Call after the recv loop observes its
+     * terminal outcome, or from the same thread driving the recv loop, to
+     * avoid blocking. Once closed, this never blocks (returns the cached
+     * snapshot).
+     *
+     * <p><b>Cross-thread close race:</b> a concurrent call from another
+     * thread while {@link #close()} is in flight may briefly observe
+     * {@code null} before {@code close()} finishes — {@code peekHandle()}
+     * reports closed as soon as {@code close()} claims the handle, before
+     * the native teardown (which computes the snapshot) completes.
      */
     public StreamEndReason endReason() {
         long h = peekHandle();
@@ -302,7 +316,8 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
      * Free-text detail for {@link #endReason()} — the message carried by
      * {@code KEEPALIVE_FAILED} / {@code TRANSPORT_FAILED} /
      * {@code PROTOCOL_ERROR}; {@code null} for every other reason (including
-     * "hasn't ended yet"). Still readable after {@link #close()}.
+     * "hasn't ended yet"). Still readable after {@link #close()}. Same
+     * blocking / cross-thread-close-race caveats as {@link #endReason()}.
      */
     public String endDetail() {
         long h = peekHandle();
@@ -311,9 +326,13 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
     }
 
     @Override protected void nativeClose(long h) {
-        Object[] snapshot = nClose(h);
-        closedEndReason = StreamEndReason.fromWireOrdinal((Integer) snapshot[0]);
-        closedEndDetail = (String) snapshot[1];
+        EndReasonSnapshot snapshot = nClose(h);
+        if (snapshot == null) return;
+        // Detail FIRST, reason SECOND: a reader that observes the (volatile)
+        // reason write is then guaranteed (JMM happens-before) to also see
+        // this detail write, which happened-before it in program order.
+        closedEndDetail = snapshot.detail;
+        closedEndReason = snapshot.reason;
     }
 
     // --- Natives ---
@@ -331,5 +350,5 @@ public final class H264Receiver extends NativeHandle implements Iterable<H264Acc
     private static native long nCancelHandle(long handle);
     private static native int nEndReason(long handle);
     private static native String nEndDetail(long handle);
-    private static native Object[] nClose(long handle);
+    private static native EndReasonSnapshot nClose(long handle);
 }

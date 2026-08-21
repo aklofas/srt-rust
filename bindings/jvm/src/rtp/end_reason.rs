@@ -35,12 +35,17 @@
 //! The fix: `nClose` computes the post-close snapshot itself, from the
 //! resource it already exclusively owns (taken out of the registry, no
 //! longer shared — see each `nClose` body), and returns it in the SAME JNI
-//! call via [`build_close_snapshot`]. `Receiver`/`DemuxReceiver`/
-//! `H264Receiver.nativeClose` cache the two pieces in Java fields;
-//! `endReason()`/`endDetail()` read those when the handle is 0 (closed).
+//! call via [`build_close_snapshot`], as a Java `org.tstrans.rtp.
+//! EndReasonSnapshot` (package-private carrier, never part of the public
+//! surface). `Receiver`/`DemuxReceiver`/`H264Receiver.nativeClose` unpack it
+//! into two cached Java fields; `endReason()`/`endDetail()` read those when
+//! the handle is 0 (closed). `nativeClose` null-checks the snapshot (a JNI
+//! allocation failure building it — extremely unlikely, but `build_close_
+//! snapshot` can fail) before touching it, matching `nClose`'s own
+//! `unwrap_or(null_mut())` fallback on the Rust side.
 
 use jni::JNIEnv;
-use jni::objects::{JObject, JObjectArray, JValue};
+use jni::objects::{JObject, JValue};
 use jni::sys::jint;
 
 use tst_rtp::StreamEndReason;
@@ -73,25 +78,51 @@ pub(crate) fn end_reason_detail(r: &StreamEndReason) -> Option<&str> {
     }
 }
 
-/// Build the 2-element `Object[]` `nClose` returns: `[0]` a boxed
-/// `Integer` (the same -1/1..6 wire ordinal `nEndReason` uses), `[1]` the
-/// nullable detail `String`. See the module doc for why `nClose` — not the
-/// getters — is where this is computed.
+/// Resolve the `org.tstrans.rtp.StreamEndReason` enum constant matching the
+/// wire ordinal — `null` for `-1` or any value this binding doesn't
+/// recognize. Same by-name `GetStaticField` lookup idiom
+/// `mpegts::mod::enum_const` uses for `NonConformantKind` et al. (not reused
+/// directly — that helper is hardcoded to the `org.tstrans.mpegts` package).
+fn end_reason_java_enum<'local>(
+    env: &mut JNIEnv<'local>,
+    ord: jint,
+) -> jni::errors::Result<JObject<'local>> {
+    let name = match ord {
+        1 => "CLEAN_TEARDOWN",
+        2 => "SESSION_EXPIRED",
+        3 => "KEEPALIVE_FAILED",
+        4 => "TRANSPORT_FAILED",
+        5 => "PROTOCOL_ERROR",
+        6 => "CANCELLED",
+        _ => return Ok(JObject::null()),
+    };
+    env.get_static_field(
+        "org/tstrans/rtp/StreamEndReason",
+        name,
+        "Lorg/tstrans/rtp/StreamEndReason;",
+    )?
+    .l()
+}
+
+/// Build the `org.tstrans.rtp.EndReasonSnapshot` `nClose` returns: the
+/// resolved `StreamEndReason` enum constant (nullable) plus the nullable
+/// detail `String`. See the module doc for why `nClose` — not the getters —
+/// is where this is computed.
 pub(crate) fn build_close_snapshot<'local>(
     env: &mut JNIEnv<'local>,
     reason: Option<StreamEndReason>,
-) -> jni::errors::Result<JObjectArray<'local>> {
+) -> jni::errors::Result<JObject<'local>> {
     let ord = end_reason_ordinal(reason.as_ref());
     let detail = reason.as_ref().and_then(|r| end_reason_detail(r));
 
-    let arr = env.new_object_array(2, "java/lang/Object", JObject::null())?;
-    let boxed_ord = env.new_object("java/lang/Integer", "(I)V", &[JValue::Int(ord)])?;
-    env.set_object_array_element(&arr, 0, &boxed_ord)?;
-    if let Some(d) = detail {
-        let s = env.new_string(d)?;
-        env.set_object_array_element(&arr, 1, &s)?;
-    }
-    // Element 1 is left `null` (the array's initial_element) when there is
-    // no detail — matching `nEndDetail`'s nullable-String convention.
-    Ok(arr)
+    let reason_obj = end_reason_java_enum(env, ord)?;
+    let detail_obj: JObject = match detail {
+        Some(d) => env.new_string(d)?.into(),
+        None => JObject::null(),
+    };
+    env.new_object(
+        "org/tstrans/rtp/EndReasonSnapshot",
+        "(Lorg/tstrans/rtp/StreamEndReason;Ljava/lang/String;)V",
+        &[JValue::Object(&reason_obj), JValue::Object(&detail_obj)],
+    )
 }

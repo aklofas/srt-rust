@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex};
 
 use jni::JNIEnv;
 use jni::objects::{GlobalRef, JClass, JObject, JString, JThrowable, JValue};
-use jni::sys::{jboolean, jint, jlong, jobject, jobjectArray};
+use jni::sys::{jboolean, jint, jlong, jobject};
 
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_pipeline::{
@@ -421,17 +421,18 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nEndDetail<'local>(
 /// the box. Cancelling before locking wakes a parked `nNext` so this never
 /// deadlocks against it. No-op on a zero handle.
 ///
-/// Returns the 2-element close-time end-reason snapshot (see `end_reason`'s
-/// module doc) — computed here, from the resource this call already
-/// exclusively owns, since the registry entry (and any further
-/// `nEndReason`/`nEndDetail` call on this handle) is gone once this
-/// function returns.
+/// Returns the close-time `EndReasonSnapshot` (see `end_reason`'s module
+/// doc) — computed here, from the resource this call already exclusively
+/// owns, since the registry entry (and any further `nEndReason`/
+/// `nEndDetail` call on this handle) is gone once this function returns.
+/// `null` only on a JNI allocation failure building the snapshot
+/// (`nativeClose` null-checks before touching it).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nClose(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) -> jobjectArray {
+) -> jobject {
     // `REGISTRY.close` fires the cancel hook FIRST (waking any parked recv WITHOUT
     // taking the resource lock), THEN takes + tears down the receiver under the
     // lock — blocking briefly until the woken recv releases it. Atomic +
@@ -444,7 +445,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nClose(
             None
         };
         super::end_reason::build_close_snapshot(env, reason)
-            .map(|arr| arr.into_raw())
+            .map(|obj| obj.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
 }

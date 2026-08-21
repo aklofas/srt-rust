@@ -30,7 +30,7 @@ use std::time::Duration;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JObjectArray, JString, JValue};
-use jni::sys::{jboolean, jint, jlong, jobject, jobjectArray};
+use jni::sys::{jboolean, jint, jlong, jobject};
 
 use tst_rtp::rtsp::client::RtspClient as RustRtspClient;
 use tst_rtp::{H264Au, H264DepayConfig, H264Receiver, ParameterSetInjection};
@@ -552,17 +552,18 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nEndDetail<'local>(
 /// stops streaming), then the data plane closes — mirroring
 /// `RtspSession.nClose`'s teardown contract.
 ///
-/// Returns the 2-element close-time end-reason snapshot (see `end_reason`'s
-/// module doc) — read here, right after `slot.inner.close()` records
-/// `Cancelled` (first-writer-wins) and before `slot` drops, because the
-/// registry entry (and any further `nEndReason`/`nEndDetail` call on this
-/// handle) is gone once this function returns.
+/// Returns the close-time `EndReasonSnapshot` (see `end_reason`'s module
+/// doc) — read here, right after `slot.inner.close()` records `Cancelled`
+/// (first-writer-wins) and before `slot` drops, because the registry entry
+/// (and any further `nEndReason`/`nEndDetail` call on this handle) is gone
+/// once this function returns. `null` only on a JNI allocation failure
+/// building the snapshot (`nativeClose` null-checks before touching it).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nClose(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) -> jobjectArray {
+) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
         // `REGISTRY.close` fires the cancel hook FIRST (waking any parked recv_au
         // WITHOUT taking the resource lock), THEN takes + drops the slot under the
@@ -585,7 +586,7 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nClose(
             None
         };
         super::end_reason::build_close_snapshot(env, reason)
-            .map(|arr| arr.into_raw())
+            .map(|obj| obj.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
 }

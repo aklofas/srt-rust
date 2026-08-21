@@ -19,12 +19,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tst_core::RecvTransport;
 use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_pipeline::{Receiver, ReceiverConfig, ShellErrorKind, TransportCancel};
-use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport, StreamEndReasonHandle};
+use tst_rtp::{RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::error::{TstError, record_eos, record_shell_error, set_last_error};
 use crate::handle::Handle;
-use crate::rtp::end_reason::{TstStreamEndReason, convert_end_reason};
+use crate::rtp::end_reason::convert_end_reason;
 use crate::stats::TstReceiverStats;
+use crate::stream_end_reason::TstStreamEndReason;
 
 // ---------------------------------------------------------------------------
 // Handle type
@@ -80,24 +81,19 @@ pub unsafe extern "C" fn tst_rtp_recv_open(url: *const c_char) -> *mut TstRtpRec
             Some(u) => u,
             None => return std::ptr::null_mut(),
         };
-        let mut builder = RtpRecvSocketBuilder::new(rtp_url.host.clone(), rtp_url.port);
-        if let Some(ref iface) = rtp_url.iface {
-            builder.iface(iface.clone());
-        }
-        let mut transport = match builder.listen() {
+        // `listen_with` takes the parsed `RtpUrl` directly (not a
+        // field-by-field rebuild), so every present-and-future `RtpUrl`
+        // field applies automatically: `recv_timeout` arms the transport,
+        // and the `pkt_size`/`pt` receive-URL rejections
+        // (`listen_with_rtcp`'s own checks) actually fire — see the
+        // regression test below.
+        let transport = match RtpRecvTransport::listen_with(&rtp_url) {
             Ok(t) => t,
             Err(e) => {
                 set_last_error(TstError::RtpTransport, &format!("rtp listen: {e}"));
                 return std::ptr::null_mut();
             }
         };
-        // `RtpRecvSocketBuilder::new` (above) starts from a fresh `RtpUrl`
-        // that only carries host/port/iface — it does not retain the
-        // originally-parsed `rtp_url`'s `recv_timeout`. Apply it explicitly
-        // so `?recv_timeout=` on the open URL has the same effect here as
-        // it already has on the RTSP-converted path (which goes through
-        // `RtspSession::into_recv_transport`, applying the knob internally).
-        transport.set_recv_timeout(rtp_url.recv_timeout);
         let cancel = transport.cancel_handle();
         let end_reason = transport.end_reason_handle();
         let receiver = Receiver::new(transport, ReceiverConfig::default());
@@ -542,9 +538,10 @@ mod tests {
     fn url_recv_timeout_arms_transport_via_open() {
         let url = std::ffi::CString::new("rtp://127.0.0.1:0?recv_timeout=200").unwrap();
         let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
-        if handle.is_null() {
-            return; // skip if bind fails in CI
-        }
+        assert!(
+            !handle.is_null(),
+            "tst_rtp_recv_open should succeed for a valid ?recv_timeout= URL"
+        );
         let mut buf = [0u8; 188];
         let mut n: usize = 0;
         let start = std::time::Instant::now();
@@ -556,5 +553,23 @@ mod tests {
             "recv_ts blocked past the configured 200ms deadline: {elapsed:?}"
         );
         unsafe { tst_rtp_receiver_close(handle) };
+    }
+
+    /// `?pkt_size=` is documented as "send-side only and is rejected on
+    /// receive URLs" (see `tst_rtp_recv_open`'s doc) — but that rejection
+    /// lives inside `RtpRecvTransport::listen_with_rtcp`, which only
+    /// fires if the open path hands it the ORIGINAL parsed `RtpUrl`.
+    /// Regression test for the same class of bug `recv_timeout` hit: the
+    /// prior field-by-field builder rebuild silently dropped `pkt_size`
+    /// too, so this URL would have wrongly succeeded before the
+    /// `listen_with` fix.
+    #[test]
+    fn url_pkt_size_rejected_on_recv_open() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0?pkt_size=1316").unwrap();
+        let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+        assert!(
+            handle.is_null(),
+            "tst_rtp_recv_open must reject ?pkt_size= on a receive URL"
+        );
     }
 }

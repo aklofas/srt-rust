@@ -18,11 +18,13 @@
 //! since `PyBuffer` is gated behind `not(Py_LIMITED_API)`.
 //!
 //! Error mapping: `tst_core::transport::TransportError` →
-//! `tstrans.exceptions.RtpError` with `.kind` set to one of the three
+//! `tstrans.exceptions.RtpError` with `.kind` set to one of the four
 //! `RtpErrorKind` variants. Mapping table:
-//! - `ExplicitClose` → `CANCELLED`
-//! - `TooLarge`      → `MALFORMED_PACKET`
-//! - all others (`Broken`, `Backpressure`, `Closed`) → `TRANSPORT`
+//! - `ExplicitClose`  → `CANCELLED`
+//! - `TooLarge`       → `MALFORMED_PACKET`
+//! - `Backpressure`   → `TIMEOUT` (recv deadline expired; retryable —
+//!   the transport/session is still alive)
+//! - all others (`Broken`, `Closed`) → `TRANSPORT`
 //!
 //! The 25th bash ratchet `scripts/check-py-rtp-error-mapping-coverage.sh`
 //! enforces that every `RtpErrorKind` variant has at least one literal
@@ -51,7 +53,7 @@ use crate::errors::make_rtp_error;
 /// `RtpRecvTransport::recv_bytes` into a `tstrans.exceptions.RtpError`
 /// instance carrying the right `RtpErrorKind`.
 ///
-/// Each of the three `RtpErrorKind` variants gets a literal call site
+/// Each of the four `RtpErrorKind` variants gets a literal call site
 /// below so the `check-py-rtp-error-mapping-coverage.sh` ratchet stays
 /// green.
 fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
@@ -63,8 +65,11 @@ fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
             let msg = format!("payload too large: {len} bytes exceeds {max}-byte cap");
             make_rtp_error(py, "MALFORMED_PACKET", &msg)
         }
-        // Backpressure + Broken + Closed all surface as TRANSPORT — the
-        // free-text message carries the specific Rust variant.
+        // A configured recv deadline (`?recv_timeout=` / `set_recv_timeout`)
+        // expired — retryable, the transport/session is still alive.
+        TransportError::Backpressure { msg, .. } => make_rtp_error(py, "TIMEOUT", &msg),
+        // Broken + Closed both surface as TRANSPORT — the free-text
+        // message carries the specific Rust variant.
         other => make_rtp_error(py, "TRANSPORT", &other.to_string()),
     }
 }

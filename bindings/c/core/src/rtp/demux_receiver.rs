@@ -18,13 +18,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::RecvTransport;
 use tst_pipeline::{DemuxReceiver, ShellErrorKind, TransportCancel};
-use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport, StreamEndReasonHandle};
+use tst_rtp::{RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::demux_config::TstDemuxConfig;
 use crate::error::{TstError, record_eos, record_shell_error, set_last_error};
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
-use crate::rtp::end_reason::{TstStreamEndReason, convert_end_reason};
+use crate::rtp::end_reason::convert_end_reason;
+use crate::stream_end_reason::TstStreamEndReason;
 
 // ---------------------------------------------------------------------------
 // Handle type
@@ -89,21 +90,16 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
             Some(u) => u,
             None => return std::ptr::null_mut(),
         };
-        let mut builder = RtpRecvSocketBuilder::new(rtp_url.host.clone(), rtp_url.port);
-        if let Some(ref iface) = rtp_url.iface {
-            builder.iface(iface.clone());
-        }
-        let mut transport = match builder.listen() {
+        // See the matching comment in `tst_rtp_recv_open`: `listen_with`
+        // takes the parsed `RtpUrl` directly, so `recv_timeout` and the
+        // receive-URL `pkt_size`/`pt` rejections apply automatically.
+        let transport = match RtpRecvTransport::listen_with(&rtp_url) {
             Ok(t) => t,
             Err(e) => {
                 set_last_error(TstError::RtpTransport, &format!("rtp listen: {e}"));
                 return std::ptr::null_mut();
             }
         };
-        // See the matching comment in `tst_rtp_recv_open`: the builder above
-        // starts from a fresh `RtpUrl` that drops the originally-parsed
-        // `rtp_url`'s `recv_timeout`, so it's applied explicitly here.
-        transport.set_recv_timeout(rtp_url.recv_timeout);
         let cancel = transport.cancel_handle();
         let end_reason = transport.end_reason_handle();
         let receiver = if let Some(cfg) = unsafe { demux_cfg.as_ref() } {
@@ -698,9 +694,10 @@ mod tests {
     fn url_recv_timeout_arms_transport_via_open() {
         let url = std::ffi::CString::new("rtp://127.0.0.1:0?recv_timeout=200").unwrap();
         let handle = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
-        if handle.is_null() {
-            return; // skip if bind fails in CI
-        }
+        assert!(
+            !handle.is_null(),
+            "tst_rtp_demux_receiver_open should succeed for a valid ?recv_timeout= URL"
+        );
         let mut ev = TstEvent::default();
         let start = std::time::Instant::now();
         let rc = unsafe { tst_rtp_demux_receiver_next_event(handle, &mut ev) };
@@ -711,5 +708,20 @@ mod tests {
             "next_event blocked past the configured 200ms deadline: {elapsed:?}"
         );
         unsafe { tst_rtp_demux_receiver_close(handle) };
+    }
+
+    /// `?pkt_size=` is documented as "send-side only and is rejected on
+    /// receive URLs" (see `tst_rtp_demux_receiver_open`'s doc) — same
+    /// regression coverage as the receiver-family test: the prior
+    /// field-by-field builder rebuild silently dropped `pkt_size`, so
+    /// this URL would have wrongly succeeded before the `listen_with` fix.
+    #[test]
+    fn url_pkt_size_rejected_on_demux_receiver_open() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0?pkt_size=1316").unwrap();
+        let handle = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+        assert!(
+            handle.is_null(),
+            "tst_rtp_demux_receiver_open must reject ?pkt_size= on a receive URL"
+        );
     }
 }

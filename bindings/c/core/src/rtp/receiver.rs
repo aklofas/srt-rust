@@ -248,14 +248,22 @@ pub unsafe extern "C" fn tst_rtp_receiver_cancel(p: *mut TstRtpReceiver) -> libc
 /// Writes `TstStreamEndReason::None` (returns `0`) when the session
 /// hasn't ended yet, or ended through a path this arc doesn't
 /// instrument (e.g. a plain `rtp://` receiver that was never `_cancel`'d
-/// or `_close`'d). A recorded reason is data, not a getter failure —
-/// this only returns a nonzero code for a null-pointer argument.
+/// or `_close`'d) — and in that case the thread-local last-error channel
+/// is left untouched (any pending failure from an earlier call is still
+/// readable). A recorded reason is data, not a getter failure — this
+/// only returns a nonzero code for a null-pointer argument.
 ///
-/// For the `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
-/// reasons, the underlying detail message is also pushed onto the
-/// thread-local last-error message channel (code stays `TST_E_SUCCESS`,
-/// since a recorded end reason is not itself a getter failure) — call
-/// `tst_last_error_str()` immediately after this getter to read it.
+/// **Last-error side effect on every ACTUALLY-recorded reason:** unlike
+/// the "hasn't ended" case above, once the session has ended this getter
+/// unconditionally resets the thread-local last-error channel to
+/// `TST_E_SUCCESS` with a detail message — the `KeepaliveFailed` /
+/// `TransportFailed` / `ProtocolError` reasons write their underlying
+/// detail; `CleanTeardown` / `SessionExpired` / `Cancelled` write an
+/// EMPTY message (so `tst_last_error_str()` never carries a stale
+/// message left over from some earlier, unrelated failure once a reason
+/// has been recorded). Read any pending failure from an earlier call
+/// BEFORE calling this getter, or it is overwritten — see the exception
+/// noted on [`crate::error::tst_get_last_error`].
 ///
 /// Side-channel: reads directly off the end-reason handle captured at
 /// `_open` time WITHOUT acquiring this handle's data-path Mutex — same
@@ -277,21 +285,23 @@ pub unsafe extern "C" fn tst_rtp_receiver_end_reason(
     p: *mut TstRtpReceiver,
     out: *mut TstStreamEndReason,
 ) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null rtp receiver pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    let reason = match handle.end_reason.get() {
-        Some(r) => convert_end_reason(&r),
-        None => TstStreamEndReason::None,
-    };
-    // SAFETY: out non-null per guard above.
-    unsafe { *out = reason };
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null rtp receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if out.is_null() {
+            set_last_error(TstError::InvalidConfig, "null out pointer");
+            return TstError::InvalidConfig as i32;
+        }
+        let reason = match handle.end_reason.get() {
+            Some(r) => convert_end_reason(&r),
+            None => TstStreamEndReason::None,
+        };
+        // SAFETY: out non-null per guard above.
+        unsafe { *out = reason };
+        0
+    })
 }
 
 /// Snapshot stats for a `tst_rtp_receiver_t` into `*out`.
@@ -445,10 +455,24 @@ mod tests {
         if handle.is_null() {
             return; // skip if bind fails in CI
         }
+        // Seed a pending failure that a "hasn't ended" result must NOT
+        // clobber (see the getter's doc: only an ACTUALLY-recorded reason
+        // touches last-error).
+        set_last_error(TstError::Internal, "sentinel-untouched");
+
         let mut out = TstStreamEndReason::Cancelled; // seed with a non-None value
         let rc = unsafe { tst_rtp_receiver_end_reason(handle, &mut out) };
         assert_eq!(rc, 0);
         assert!(matches!(out, TstStreamEndReason::None));
+
+        assert_eq!(
+            unsafe { crate::error::tst_get_last_error() },
+            TstError::Internal as i32
+        );
+        let s_ptr = unsafe { crate::error::tst_get_last_error_str() };
+        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        assert_eq!(s.to_str().unwrap(), "sentinel-untouched");
+
         unsafe { tst_rtp_receiver_close(handle) };
     }
 
@@ -474,10 +498,23 @@ mod tests {
             unsafe { tst_rtp_receiver_recv_ts(handle, buf.as_mut_ptr(), buf.len(), &mut n) };
         assert_eq!(recv_rc, TstError::Closed as i32);
 
+        // recv_rc above already set last-error to (Closed, "...cancelled or
+        // closed by caller..."). Do NOT clear it here — the getter below
+        // must overwrite THAT pending state on its own, per the documented
+        // last-error contract (see tst_rtp_receiver_end_reason's doc).
         let mut out = TstStreamEndReason::None;
         let rc = unsafe { tst_rtp_receiver_end_reason(handle, &mut out) };
         assert_eq!(rc, 0);
         assert!(matches!(out, TstStreamEndReason::Cancelled));
+
+        // Pin the last-error contract through the real C entry points:
+        // Cancelled has no msg, so the getter must reset last-error to
+        // (Success, "") — overwriting the recv_ts Closed error above.
+        assert_eq!(unsafe { crate::error::tst_get_last_error() }, 0);
+        let s_ptr = unsafe { crate::error::tst_get_last_error_str() };
+        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        assert_eq!(s.to_str().unwrap(), "");
+
         unsafe { tst_rtp_receiver_close(handle) };
     }
 }

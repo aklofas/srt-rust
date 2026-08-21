@@ -682,6 +682,31 @@ pub(crate) unsafe fn demux_receiver_get_stream_codec_stats<R: RecvTransport>(
     })
 }
 
+/// Generic body for `tst_*_demux_receiver_get_stream_last_seen_micros`.
+///
+/// # Safety
+/// `out_epoch_micros` must be a valid writable `*mut u64` when non-null.
+pub(crate) unsafe fn demux_receiver_get_stream_last_seen_micros<R: RecvTransport>(
+    h: &Handle<DemuxReceiver<R>>,
+    pid: u16,
+    out_epoch_micros: *mut u64,
+) -> i32 {
+    if out_epoch_micros.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_epoch_micros pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let micros = stats
+            .per_stream
+            .get(&pid)
+            .map(|ss| crate::stats::last_seen_epoch_micros(ss.last_seen))
+            .unwrap_or(0);
+        unsafe { *out_epoch_micros = micros };
+        0
+    })
+}
+
 /// Generic body for `tst_*_demux_receiver_reset_stats`.
 ///
 /// Clears the borrowed `stream_stats_buf` snapshot before resetting to ensure

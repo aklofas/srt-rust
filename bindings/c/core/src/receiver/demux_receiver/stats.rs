@@ -116,6 +116,45 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stream_codec_stats(
         })
 }
 
+/// Read the Unix-epoch microsecond timestamp of the last item observed
+/// on `pid` (video/KLV/audio/PSI — any elementary stream tracked in
+/// per-stream stats) into `*out_epoch_micros`.
+///
+/// `*out_epoch_micros` is `0` when `pid` has never been observed on this
+/// handle — unknown pid and "never seen" are indistinguishable (both mean
+/// "nothing to report yet") and this getter never errors on either case.
+/// This lets a caller poll per-PID staleness (e.g. a watchdog checking
+/// "has this stream gone quiet") with a single lock/lookup instead of
+/// holding a `_get_stream_stats` snapshot open.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+/// null, `TST_E_CLOSED` if the receiver has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_get_stream_last_seen_micros(
+    p: *mut TstDemuxReceiver,
+    pid: u16,
+    out_epoch_micros: *mut u64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out_epoch_micros.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_epoch_micros pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let micros = stats
+            .per_stream
+            .get(&pid)
+            .map(|ss| crate::stats::last_seen_epoch_micros(ss.last_seen))
+            .unwrap_or(0);
+        unsafe { *out_epoch_micros = micros };
+        0
+    })
+}
+
 /// Reset stats counters for a `tst_demux_receiver_t` to zero.
 /// Also invalidates the borrowed `_get_stream_stats` snapshot
 /// (design §4.5).

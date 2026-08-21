@@ -490,6 +490,24 @@ pub(crate) fn mux_sender_stats_to_c(stats: &tst_pipeline::MuxSenderStats) -> Tst
     }
 }
 
+/// Convert a [`tst_core::mpegts::StreamStats::last_seen`] timestamp to
+/// Unix-epoch microseconds for the `_get_stream_last_seen_micros` family
+/// of C ABI getters.
+///
+/// `None` (pid never observed) and a pre-epoch system clock (`duration_since`
+/// failure — not reachable on any real deployment target) both collapse to
+/// `0`, the documented "unknown" sentinel for this epoch gauge: callers
+/// cannot distinguish "never seen" from "clock before 1970" and don't need
+/// to — both mean "nothing to report yet".
+#[cfg(feature = "std")]
+#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
+pub(crate) fn last_seen_epoch_micros(last_seen: Option<std::time::SystemTime>) -> u64 {
+    last_seen
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_micros().min(u64::MAX as u128) as u64)
+        .unwrap_or(0)
+}
+
 /// Fill a fixed-size C per-stream array from a `BTreeMap<u16, StreamStats>`.
 /// Returns `(count, truncated)`. Sorted by PID (BTreeMap iteration order).
 pub fn fill_per_stream(

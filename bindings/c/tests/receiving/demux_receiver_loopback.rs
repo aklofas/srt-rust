@@ -26,7 +26,8 @@ use tstrans::config::{
 use tstrans::error::{TstError, tst_get_last_error_str};
 use tstrans::event::{TstEvent, TstEventKind};
 use tstrans::receiver::demux_receiver::{
-    tst_demux_receiver_close, tst_demux_receiver_open_listener, tst_demux_receiver_recv_event,
+    tst_demux_receiver_close, tst_demux_receiver_get_stream_last_seen_micros,
+    tst_demux_receiver_open_listener, tst_demux_receiver_recv_event,
 };
 use tstrans::sender::mux_sender::{
     tst_mux_sender_close, tst_mux_sender_open, tst_mux_sender_send_video,
@@ -187,6 +188,148 @@ fn loopback_mux_sender_to_demux_receiver_delivers_pmt_and_sample_and_eos() {
         // pushes PMT emission past the previous window. Linux loopback
         // tolerates 200 ms but the extra headroom is cheap and keeps
         // the test cross-platform-stable.
+        thread::sleep(Duration::from_secs(1));
+
+        unsafe { tst_mux_sender_close(tx) };
+        unsafe { tst_mux_config_free(cfg) };
+    });
+
+    receiver_thread.join().expect("receiver thread panicked");
+    sender_thread.join().expect("sender thread panicked");
+}
+
+/// Live SRT session: once a Sample event for the video pid has been
+/// observed, `tst_demux_receiver_get_stream_last_seen_micros` must report
+/// a nonzero epoch timestamp for that pid, and `0` for a pid that was
+/// never observed on this handle.
+///
+/// Structurally the same rendezvous as
+/// `loopback_mux_sender_to_demux_receiver_delivers_pmt_and_sample_and_eos`
+/// above — see that test's comments for the threading rationale. Uses a
+/// disjoint port band (40_000+) so the two tests never collide on the
+/// same PID within this consolidated test binary.
+#[test]
+fn loopback_last_seen_micros_reports_after_sample_and_zero_for_unknown_pid() {
+    let port: u16 = 40_000 + (std::process::id() as u16 % 500);
+
+    let (ready_tx, ready_rx) = mpsc::channel::<()>();
+
+    let receiver_thread = thread::spawn(move || {
+        let url = CString::new(format!("srt://:{port}")).unwrap();
+        let rx = unsafe { tst_demux_receiver_open_listener(url.as_ptr()) };
+        if rx.is_null() {
+            let msg = last_error_msg();
+            panic!("tst_demux_receiver_open_listener failed: {msg}");
+        }
+
+        ready_tx.send(()).expect("ready channel dropped");
+
+        let mut got_sample = false;
+        let mut ev = TstEvent::default();
+
+        loop {
+            let rc = unsafe { tst_demux_receiver_recv_event(rx, &mut ev) };
+            if rc == 0 {
+                if ev.kind == TstEventKind::Sample as i32 {
+                    got_sample = true;
+                }
+                continue;
+            }
+            if rc == TstError::EndOfStream as i32 {
+                break;
+            }
+            panic!("recv_event failed (rc={rc}): {}", last_error_msg());
+        }
+
+        assert!(got_sample, "no SAMPLE event received");
+
+        // Known pid (0x1011, the video stream configured below) must show
+        // a nonzero epoch timestamp now that a sample carried it.
+        let mut micros: u64 = 0;
+        let rc = unsafe { tst_demux_receiver_get_stream_last_seen_micros(rx, 0x1011, &mut micros) };
+        assert_eq!(
+            rc,
+            0,
+            "get_stream_last_seen_micros(0x1011) failed: {}",
+            last_error_msg()
+        );
+        assert!(
+            micros > 0,
+            "expected nonzero last_seen after a delivered sample"
+        );
+
+        // Bogus/never-observed pid must report 0, not error and not a
+        // stale value from the out-param's initial contents.
+        let mut bogus_micros: u64 = 0xDEAD_BEEF;
+        let rc = unsafe {
+            tst_demux_receiver_get_stream_last_seen_micros(rx, 0x1FFF, &mut bogus_micros)
+        };
+        assert_eq!(
+            rc,
+            0,
+            "get_stream_last_seen_micros(0x1FFF) failed: {}",
+            last_error_msg()
+        );
+        assert_eq!(
+            bogus_micros, 0,
+            "unknown pid must report 0, not a stale value"
+        );
+
+        unsafe { tst_demux_receiver_close(rx) };
+    });
+
+    let sender_thread = thread::spawn(move || {
+        let url = CString::new(format!("srt://127.0.0.1:{port}")).unwrap();
+
+        let cfg = unsafe { tst_mux_config_new() };
+        let prog = unsafe { tst_mux_config_add_program(cfg, 1, 0x0100) };
+        let _video =
+            unsafe { tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264) };
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let tx = loop {
+            let h = unsafe { tst_mux_sender_open(url.as_ptr(), cfg) };
+            if !h.is_null() {
+                break h;
+            }
+            if std::time::Instant::now() > deadline {
+                unsafe { tst_mux_config_free(cfg) };
+                panic!(
+                    "tst_mux_sender_open timed out after 5s: {}",
+                    last_error_msg()
+                );
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+
+        ready_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("receiver did not signal ready within 5s");
+
+        let nal: Vec<u8> = vec![
+            0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1f, 0x96, 0x54, 0x05, 0x01, 0x00, 0x00,
+            0x00, 0x01, 0x65, 0x88, 0x80, 0x40,
+        ];
+
+        for i in 0..5 {
+            let pts = (i as i64) * 3_600;
+            let rc = unsafe {
+                tst_mux_sender_send_video(
+                    tx,
+                    nal.as_ptr(),
+                    nal.len(),
+                    pts,
+                    /*key_frame=*/ true,
+                )
+            };
+            assert_eq!(
+                rc,
+                0,
+                "send_video[{i}] expected 0, got {rc}: {}",
+                last_error_msg()
+            );
+        }
+
         thread::sleep(Duration::from_secs(1));
 
         unsafe { tst_mux_sender_close(tx) };

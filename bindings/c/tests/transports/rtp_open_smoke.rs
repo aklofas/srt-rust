@@ -20,11 +20,12 @@ use tstrans::config::{
     tst_mux_config_free, tst_mux_config_new,
 };
 use tstrans::error::{TstError, tst_get_last_error};
-use tstrans::event::TstEvent;
+use tstrans::event::{TstEvent, TstEventKind};
 use tstrans::rtp::{
     tst_rtp_demux_receiver_cancel, tst_rtp_demux_receiver_close,
     tst_rtp_demux_receiver_get_socket_stats, tst_rtp_demux_receiver_get_stats,
-    tst_rtp_demux_receiver_get_stream_codec_stats, tst_rtp_demux_receiver_get_stream_stats,
+    tst_rtp_demux_receiver_get_stream_codec_stats,
+    tst_rtp_demux_receiver_get_stream_last_seen_micros, tst_rtp_demux_receiver_get_stream_stats,
     tst_rtp_demux_receiver_next_event, tst_rtp_demux_receiver_open,
     tst_rtp_demux_receiver_reset_stats, tst_rtp_mux_sender_cancel, tst_rtp_mux_sender_close,
     tst_rtp_mux_sender_get_mux_sender_stats, tst_rtp_mux_sender_get_socket_stats,
@@ -408,6 +409,127 @@ fn rtp_demux_receiver_stats_and_reset() {
     assert_eq!(count, 0);
 
     unsafe { tst_rtp_demux_receiver_close(h) };
+}
+
+/// Live RTP session: a `TstRtpMuxSender` pushes video into a bound
+/// `TstRtpDemuxReceiver`; once a Sample event for the video pid has been
+/// observed, `tst_rtp_demux_receiver_get_stream_last_seen_micros` must
+/// report a nonzero epoch timestamp for that pid, and `0` for a pid that
+/// was never observed.
+///
+/// RTP is connectionless UDP so (unlike the SRT loopback fixture) opening
+/// the receiver never blocks on a peer — no rendezvous channel is needed,
+/// everything runs on one thread. The one real risk is `next_event`
+/// blocking forever if the pushed frames never cross the 1316-byte
+/// (7-TS-packet) `pkt_size` flush threshold in `drain_muxer` (see
+/// `crates/tst-pipeline/src/mux_sender.rs`) — pushing 20 small NAL frames
+/// (comfortably more than the ~5 needed to cross that threshold once PAT+PMT
+/// are counted) makes that a near-certainty, and a bounded watchdog thread
+/// cancels the receiver as a last resort so a regression here fails fast
+/// instead of hanging the suite.
+#[test]
+fn rtp_demux_receiver_get_stream_last_seen_micros_reports_after_sample() {
+    let port = pick_port();
+    let recv_url = CString::new(format!("rtp://127.0.0.1:{port}")).unwrap();
+    let rx = unsafe { tst_rtp_demux_receiver_open(recv_url.as_ptr(), std::ptr::null()) };
+    if rx.is_null() {
+        // Port may have been grabbed between pick_port and bind — skip
+        // (mirrors rtp_sender_send_ts_roundtrip's tolerance for this race).
+        return;
+    }
+
+    // Watchdog: cancels `rx` if the drain loop below is still running after
+    // 5s. Polls a shared `done` flag in short increments so the common
+    // (fast) path pays only that increment, not the full timeout; the main
+    // thread joins the watchdog before closing `rx` so there is no
+    // use-after-free race on the cancel call.
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watchdog_done = std::sync::Arc::clone(&done);
+    let rx_addr = rx as usize;
+    let watchdog = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if watchdog_done.load(std::sync::atomic::Ordering::Acquire) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        if !watchdog_done.load(std::sync::atomic::Ordering::Acquire) {
+            unsafe { tst_rtp_demux_receiver_cancel(rx_addr as *mut _) };
+        }
+    });
+
+    let cfg = unsafe { tst_mux_config_new() };
+    let prog = unsafe { tst_mux_config_add_program(cfg, 1, 0x1000) };
+    unsafe { tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264) };
+    let send_url = CString::new(format!("rtp://127.0.0.1:{port}")).unwrap();
+    let tx = unsafe { tst_rtp_mux_sender_open(send_url.as_ptr(), cfg as *const _) };
+    unsafe { tst_mux_config_free(cfg) };
+    assert!(!tx.is_null(), "rtp mux sender open failed");
+
+    let nal: Vec<u8> = vec![
+        0x00, 0x00, 0x00, 0x01, // Annex-B start code
+        0x67, 0x42, 0x00, 0x1f, 0x96, 0x54, 0x05, 0x01, // SPS-shaped (nal_type=7)
+        0x00, 0x00, 0x00, 0x01, // Annex-B start code
+        0x65, 0x88, 0x80, 0x40, // IDR-shaped (nal_type=5)
+    ];
+    for i in 0..20 {
+        let pts = (i as i64) * 3_600;
+        let rc = unsafe { tst_rtp_mux_sender_push_video(tx, nal.as_ptr(), nal.len(), pts, true) };
+        assert_eq!(rc, 0, "push_video[{i}] failed: rc={rc}");
+    }
+
+    // Let the OS deliver the flushed datagram(s) into the receiver's socket
+    // buffer before we start draining events.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    unsafe { tst_rtp_mux_sender_close(tx) };
+
+    let mut got_pmt = false;
+    let mut got_sample = false;
+    let mut ev = TstEvent::default();
+    loop {
+        let rc = unsafe { tst_rtp_demux_receiver_next_event(rx, &mut ev) };
+        if rc == 0 {
+            if ev.kind == TstEventKind::ProgramMap as i32 {
+                got_pmt = true;
+            }
+            if ev.kind == TstEventKind::Sample as i32 {
+                got_sample = true;
+            }
+            if got_pmt && got_sample {
+                break;
+            }
+            continue;
+        }
+        // Any error (watchdog cancel, or a genuine end-of-stream) ends the drain.
+        break;
+    }
+
+    done.store(true, std::sync::atomic::Ordering::Release);
+    watchdog.join().expect("watchdog thread panicked");
+
+    assert!(got_pmt, "no PROGRAM_MAP event received over rtp loopback");
+    assert!(got_sample, "no SAMPLE event received over rtp loopback");
+
+    let mut micros: u64 = 0;
+    let rc = unsafe { tst_rtp_demux_receiver_get_stream_last_seen_micros(rx, 0x1011, &mut micros) };
+    assert_eq!(rc, 0, "get_stream_last_seen_micros(0x1011) failed: rc={rc}");
+    assert!(
+        micros > 0,
+        "expected nonzero last_seen after a delivered sample"
+    );
+
+    let mut bogus_micros: u64 = 0xDEAD_BEEF;
+    let rc = unsafe {
+        tst_rtp_demux_receiver_get_stream_last_seen_micros(rx, 0x1FFF, &mut bogus_micros)
+    };
+    assert_eq!(rc, 0, "get_stream_last_seen_micros(0x1FFF) failed: rc={rc}");
+    assert_eq!(
+        bogus_micros, 0,
+        "unknown pid must report 0, not a stale value"
+    );
+
+    unsafe { tst_rtp_demux_receiver_close(rx) };
 }
 
 // ---------------------------------------------------------------------------

@@ -236,6 +236,11 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
      * values mean the inner SRT transport has been rebuilt (or a rebuild attempt
      * failed and was retried).
      *
+     * <p>The recv side has no {@link ManagedTransportStats} record yet (that
+     * accessor exists only on the send-side {@link ManagedSender} /
+     * {@link ManagedMuxSender}) — this counter remains the only reconnect
+     * telemetry available here.
+     *
      * @return the reconnect-attempt counter
      * @throws IllegalStateException if the receiver is closed
      */

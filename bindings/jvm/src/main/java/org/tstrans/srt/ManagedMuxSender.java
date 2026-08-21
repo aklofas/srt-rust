@@ -368,12 +368,35 @@ public final class ManagedMuxSender extends NativeHandle {
      * values mean the inner SRT socket has been rebuilt (or a rebuild attempt
      * failed and was retried).
      *
+     * <p>For the accurate attempts/successes split (plus gap-buffer telemetry),
+     * see {@link #reconnectStats()} — this counter is preserved unchanged for
+     * backward compatibility.
+     *
      * @return the reconnect-attempt counter
      * @throws IllegalStateException if the sender is closed
      */
     public long reconnectAttempts() {
         ensureOpen("ManagedMuxSender is closed");
         return nReconnectAttempts(peekHandle());
+    }
+
+    /**
+     * Reconnect/gap telemetry: attempts, successes, current gap-buffer depth, and
+     * drop counters. Always readable — unlike {@link #stats()}, it does not
+     * require a live inner transport (the counters live in a side channel that
+     * survives reconnect cycles), but it DOES require the sender itself not be
+     * closed.
+     *
+     * <p>{@link ManagedTransportStats#reconnecting()} is only ever {@code true}
+     * under {@link ReconnectMode#BACKGROUND}.
+     *
+     * @return the reconnect/gap telemetry snapshot
+     * @throws IllegalStateException if the sender is closed
+     * @throws SrtException {@code IO} if the internal gap-buffer lock is poisoned
+     */
+    public ManagedTransportStats reconnectStats() throws SrtException {
+        ensureOpen("ManagedMuxSender is closed");
+        return nReconnectStats(peekHandle());
     }
 
     /**
@@ -435,6 +458,7 @@ public final class ManagedMuxSender extends NativeHandle {
 
     private static native TransportStats nStats(long handle);
     private static native long nReconnectAttempts(long handle);
+    private static native ManagedTransportStats nReconnectStats(long handle) throws SrtException;
     private static native void nClose(long handle);
     private static native boolean nIsAlive(long handle);
 }

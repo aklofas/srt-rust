@@ -8,7 +8,7 @@
 //! factory under the configured `ReconnectPolicy`.
 //!
 //! Handle lifecycle mirrors `transport.rs`:
-//! - `nFromUrl` registers via `REGISTRY.insert` (a `ManagedSenderInner` on the
+//! - `nFromUrl` registers via `REGISTRY.insert` (a `JniManagedSender` on the
 //!   send side; a `JniManagedReceiver` on the recv side).
 //! - Per-call methods lease via `REGISTRY.with` (non-consuming).
 //! - `nClose` takes + tears down via `REGISTRY.close`.
@@ -36,7 +36,7 @@ use tst_pipeline::{
 use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use super::JniCancel;
-use super::stats::build_socket_stats;
+use super::stats::{build_managed_transport_stats, build_socket_stats};
 use crate::handle::HandleRegistry;
 
 // -----------------------------------------------------------------------
@@ -123,11 +123,18 @@ fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
 // handle = Box<PlSender<ManagedTransport<SrtTransport>>>
 // -----------------------------------------------------------------------
 
-type ManagedSenderInner = PlSender<ManagedTransport<SrtTransport>>;
+/// Backing state for `ManagedSender`. Holds the pipeline shell plus a
+/// reconnect/gap telemetry observer snapshotted at construction (mirrors
+/// `JniManagedMuxSender` in managed_convenience.rs and tst-py's
+/// `PyManagedSender`).
+struct JniManagedSender {
+    inner: PlSender<ManagedTransport<SrtTransport>>,
+    stats_handle: tst_pipeline::ManagedStatsHandle,
+}
 
 /// Per-type leased-handle registry for `org.tstrans.srt.ManagedSender`. No cancel
 /// hook (single-threaded; the public cancel handle drives reconnect-loop exit).
-static REGISTRY_SENDER: LazyLock<HandleRegistry<ManagedSenderInner>> =
+static REGISTRY_SENDER: LazyLock<HandleRegistry<JniManagedSender>> =
     LazyLock::new(HandleRegistry::new);
 
 /// Allocate a `ManagedSender` from an SRT caller-mode URL + the 8 flattened
@@ -210,8 +217,14 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
         };
 
         let managed = ManagedTransport::new(initial, factory, policy);
+        // Snapshot the stats handle BEFORE moving `managed` into the shell
+        // (same pattern as `cancel_handle` / the convenience wrappers).
+        let stats_handle = managed.stats_handle();
         let inner = PlSender::new(managed, SenderConfig::default());
-        REGISTRY_SENDER.insert(inner) as jlong
+        REGISTRY_SENDER.insert(JniManagedSender {
+            inner,
+            stats_handle,
+        }) as jlong
     })
 }
 
@@ -233,7 +246,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSendBytes(
             }
         };
 
-        match REGISTRY_SENDER.with_poisoning(handle as u64, |inner| inner.send_ts(&bytes)) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |jstruct| jstruct.inner.send_ts(&bytes))
+        {
             Some(Ok(())) => {}
             Some(Err(e)) => match e.source {
                 SenderErrorSource::Transport(t) => super::errors::transport_error(env, &t),
@@ -257,7 +271,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFlush(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        match REGISTRY_SENDER.with_poisoning(handle as u64, |inner| inner.flush()) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |jstruct| jstruct.inner.flush()) {
             Some(Ok(())) => {}
             Some(Err(e)) => match e.source {
                 SenderErrorSource::Transport(t) => super::errors::transport_error(env, &t),
@@ -283,7 +297,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nCancelHandle(
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         // Closed handle → 0 (no throw, matching the original contract).
-        let Some(maybe_arc) = REGISTRY_SENDER.with(handle as u64, |inner| inner.cancel_handle())
+        let Some(maybe_arc) =
+            REGISTRY_SENDER.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
         else {
             return 0;
         };
@@ -315,8 +330,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSocketStats<'local>(
     handle: jlong,
 ) -> JObject<'local> {
     crate::panic::jni_catch(&mut env, JObject::null(), |env| {
-        let Some(stats) = REGISTRY_SENDER.with(handle as u64, |inner| {
-            inner.socket_stats().unwrap_or_default()
+        let Some(stats) = REGISTRY_SENDER.with(handle as u64, |jstruct| {
+            jstruct.inner.socket_stats().unwrap_or_default()
         }) else {
             return JObject::null();
         };
@@ -346,6 +361,34 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSrtStats<'local>(
     })
 }
 
+/// Reconnect/gap telemetry: attempts, successes, current gap-buffer depth, and
+/// drop counters. Throws `SrtException(IO)` if the internal gap-buffer lock is
+/// poisoned — a read-only telemetry path must not panic. Throws
+/// `IllegalStateException` (via `throw_closed`) on a closed handle.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nReconnectStats<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(maybe_stats) =
+            REGISTRY_SENDER.with(handle as u64, |jstruct| jstruct.stats_handle.stats())
+        else {
+            crate::error::throw_closed(env, "ManagedSender");
+            return JObject::null();
+        };
+        let Some(stats) = maybe_stats else {
+            super::errors::throw_srt(env, "IO", "reconnect stats unavailable: gap lock poisoned");
+            return JObject::null();
+        };
+        match build_managed_transport_stats(env, &stats) {
+            Ok(obj) => obj,
+            Err(_) => JObject::null(),
+        }
+    })
+}
+
 /// Close the managed sender, deallocating the native box. `close()` latches the
 /// cancel flag (so any in-flight reconnect loop exits) and tears down the inner.
 #[unsafe(no_mangle)]
@@ -356,8 +399,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nClose(
 ) {
     crate::panic::jni_catch(&mut env, (), |_env| {
         // Atomic + idempotent: the winning close gets the shell back for teardown.
-        if let Some(mut inner) = REGISTRY_SENDER.close(handle as u64) {
-            inner.close();
+        if let Some(mut jstruct) = REGISTRY_SENDER.close(handle as u64) {
+            jstruct.inner.close();
         }
     })
 }
@@ -371,7 +414,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nIsAlive(
 ) -> jboolean {
     crate::panic::jni_catch(&mut env, 0, |_env| {
         REGISTRY_SENDER
-            .with(handle as u64, |inner| u8::from(inner.is_alive()))
+            .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
             .unwrap_or(0)
     })
 }

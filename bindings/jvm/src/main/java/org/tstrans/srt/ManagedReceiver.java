@@ -121,6 +121,11 @@ public final class ManagedReceiver extends NativeHandle {
      * Total number of successful reconnect rebuilds since construction. Does NOT
      * include the initial bind+accept (which happened in {@link #fromUrl}).
      *
+     * <p>The recv side has no {@link ManagedTransportStats} record yet (that
+     * accessor exists only on the send-side {@link ManagedSender} /
+     * {@link ManagedMuxSender}) — this counter remains the only reconnect
+     * telemetry available here.
+     *
      * @return the successful-reconnect counter
      * @throws IllegalStateException if the receiver is closed
      */

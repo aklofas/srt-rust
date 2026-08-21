@@ -66,7 +66,7 @@ use crate::mpegts::{build_demux_config_from_args, convert_event};
 use super::JniCancel;
 use super::errors::{throw_srt, transport_error};
 use super::mux_sender::{build_muxer_stats, build_transport_stats};
-use super::stats::build_socket_stats;
+use super::stats::{build_managed_transport_stats, build_socket_stats};
 
 // ---------------------------------------------------------------------------
 // Port helpers — rebuild a fresh SrtTransport. Copied verbatim from tst-py's
@@ -128,6 +128,10 @@ fn listen_srt(host: &str, port: u16, cfg: &ListenerConfig) -> Result<SrtTranspor
 struct JniManagedMuxSender {
     inner: RustMuxSender<ManagedTransport<SrtTransport>>,
     factory_attempts: Arc<AtomicU64>,
+    /// Reconnect/gap telemetry observer, snapshotted from the
+    /// `ManagedTransport` BEFORE it moves into `RustMuxSender::new` (same
+    /// pattern as `ManagedSender`'s `cancel_handle` capture in managed_basic.rs).
+    stats_handle: tst_pipeline::ManagedStatsHandle,
 }
 
 /// Per-type leased-handle registry for `org.tstrans.srt.ManagedMuxSender`.
@@ -315,10 +319,14 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
         };
 
         let managed = ManagedTransport::new(initial, factory, policy);
+        // Snapshot the stats handle BEFORE moving `managed` into `RustMuxSender::new`
+        // (same pattern as `ManagedSender`'s stats_handle capture).
+        let stats_handle = managed.stats_handle();
         match RustMuxSender::new(managed, muxer_cfg) {
             Ok(sender) => REGISTRY_MUX.insert(JniManagedMuxSender {
                 inner: sender,
                 factory_attempts: attempts,
+                stats_handle,
             }) as jlong,
             Err(e) => {
                 throw_mux_error(env, &e);
@@ -707,6 +715,34 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nReconnectAttempts(
                 crate::error::throw_closed(env, "ManagedMuxSender");
                 0
             })
+    })
+}
+
+/// `nReconnectStats(handle)` — reconnect/gap telemetry: attempts, successes,
+/// current gap-buffer depth, and drop counters. Throws `SrtException(IO)` if the
+/// internal gap-buffer lock is poisoned — a read-only telemetry path must not
+/// panic.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nReconnectStats<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(maybe_stats) =
+            REGISTRY_MUX.with(handle as u64, |jstruct| jstruct.stats_handle.stats())
+        else {
+            crate::error::throw_closed(env, "ManagedMuxSender");
+            return JObject::null();
+        };
+        let Some(stats) = maybe_stats else {
+            throw_srt(env, "IO", "reconnect stats unavailable: gap lock poisoned");
+            return JObject::null();
+        };
+        match build_managed_transport_stats(env, &stats) {
+            Ok(obj) => obj,
+            Err(_) => JObject::null(),
+        }
     })
 }
 

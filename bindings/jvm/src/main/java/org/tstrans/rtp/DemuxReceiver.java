@@ -92,6 +92,38 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
     }
 
     /**
+     * Receive the next demuxed event. Blocks until an event is produced, the
+     * transport drains cleanly (rare for connectionless RTP/UDP — see
+     * {@link #iterator()}), or an error occurs.
+     *
+     * <p>Unlike {@link #iterator()}, which wraps checked
+     * {@link RtpException}/{@link DemuxException} in an unchecked
+     * {@link RuntimeException} (the {@code Iterator} contract forbids checked
+     * exceptions), this method surfaces them directly as catchable checked
+     * exceptions — in particular, a configured persistent recv deadline (the
+     * {@code ?recv_timeout=<ms>} URL knob) expiring throws
+     * {@code RtpException(TIMEOUT)} here rather than a wrapped
+     * {@code RuntimeException}. The receiver stays usable after a
+     * {@code TIMEOUT} (retryable) — a subsequent {@code recvEvent()} call
+     * resumes normally.
+     *
+     * <p>{@code recvEvent()} and {@link #iterator()} share the single-iterator
+     * contract documented on the class: do not call this method concurrently
+     * with an in-flight iteration on the same receiver.
+     *
+     * @return the next {@link DemuxEvent}, or {@code null} at end of stream
+     * @throws IllegalStateException if the receiver is closed
+     * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT}
+     *     otherwise; {@code TIMEOUT} if the persistent {@code ?recv_timeout=}
+     *     deadline expires
+     * @throws DemuxException on a demux-side error
+     */
+    public DemuxEvent recvEvent() throws RtpException, DemuxException {
+        ensureOpen("DemuxReceiver is closed");
+        return nNext(peekHandle());
+    }
+
+    /**
      * Iterate the demuxed events. Each {@code hasNext()} blocks on the next
      * {@code recv_event} until an event arrives, the transport drains cleanly
      * (→ end of iteration; rare for connectionless RTP/UDP), or an error occurs.

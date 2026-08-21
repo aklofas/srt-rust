@@ -95,6 +95,19 @@ public final class Receiver extends NativeHandle {
      * (or ended through a path this arc doesn't instrument). Still readable
      * after {@link #close()} — the close path snapshots the reason before
      * the underlying native resource is freed.
+     *
+     * <p><b>Blocking:</b> while open, this takes the same internal resource
+     * lock a parked {@link #recv} holds — if a recv is currently in flight on
+     * this receiver, {@code endReason()} blocks until it returns (data,
+     * timeout, or cancel). Call after a recv loop observes its terminal
+     * outcome, or from the same thread driving the recv loop, to avoid
+     * blocking. Once closed, this never blocks (returns the cached snapshot).
+     *
+     * <p><b>Cross-thread close race:</b> a concurrent call from another
+     * thread while {@link #close()} is in flight may briefly observe
+     * {@code null} before {@code close()} finishes — {@code peekHandle()}
+     * reports closed as soon as {@code close()} claims the handle, before
+     * the native teardown (which computes the snapshot) completes.
      */
     public StreamEndReason endReason() {
         long h = peekHandle();
@@ -106,7 +119,8 @@ public final class Receiver extends NativeHandle {
      * Free-text detail for {@link #endReason()} — the message carried by
      * {@code KEEPALIVE_FAILED} / {@code TRANSPORT_FAILED} /
      * {@code PROTOCOL_ERROR}; {@code null} for every other reason (including
-     * "hasn't ended yet"). Still readable after {@link #close()}.
+     * "hasn't ended yet"). Still readable after {@link #close()}. Same
+     * blocking / cross-thread-close-race caveats as {@link #endReason()}.
      */
     public String endDetail() {
         long h = peekHandle();
@@ -118,9 +132,13 @@ public final class Receiver extends NativeHandle {
     @Override public void close() { super.close(); }
 
     @Override protected void nativeClose(long h) {
-        Object[] snapshot = nClose(h);
-        closedEndReason = StreamEndReason.fromWireOrdinal((Integer) snapshot[0]);
-        closedEndDetail = (String) snapshot[1];
+        EndReasonSnapshot snapshot = nClose(h);
+        if (snapshot == null) return;
+        // Detail FIRST, reason SECOND: a reader that observes the (volatile)
+        // reason write is then guaranteed (JMM happens-before) to also see
+        // this detail write, which happened-before it in program order.
+        closedEndDetail = snapshot.detail;
+        closedEndReason = snapshot.reason;
     }
 
     private static native long   nFromUrl(String url) throws RtpException;
@@ -130,5 +148,5 @@ public final class Receiver extends NativeHandle {
     private static native long   nCancelHandle(long handle);
     private static native int    nEndReason(long handle);
     private static native String nEndDetail(long handle);
-    private static native Object[] nClose(long handle);
+    private static native EndReasonSnapshot nClose(long handle);
 }

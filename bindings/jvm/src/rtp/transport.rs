@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
-use jni::sys::{jbyteArray, jint, jlong, jobjectArray};
+use jni::sys::{jbyteArray, jint, jlong, jobject};
 use tst_core::transport::{RecvTransport, Transport, TransportCancel};
 use tst_rtp::builder::RtpRecvSocketBuilder;
 use tst_rtp::{RtpRecvTransport, RtpSocketBuilder, RtpTransport, StreamEndReasonHandle};
@@ -446,17 +446,18 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nEndDetail<'local>(
 /// (waking a parked `recv`) before the resource is taken — mirrors tst-py
 /// `PyReceiver.close`.
 ///
-/// Returns the 2-element close-time end-reason snapshot (see `end_reason`'s
-/// module doc) — computed here, from the resource this call already
-/// exclusively owns, because the registry entry (and with it any further
+/// Returns the close-time `EndReasonSnapshot` (see `end_reason`'s module
+/// doc) — computed here, from the resource this call already exclusively
+/// owns, because the registry entry (and with it any further
 /// `nEndReason`/`nEndDetail` calls on this handle) is gone once this
-/// function returns.
+/// function returns. `null` only on a JNI allocation failure building the
+/// snapshot (`nativeClose` null-checks before touching it).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Receiver_nClose(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) -> jobjectArray {
+) -> jobject {
     // Atomic + idempotent: cancel hook wakes a parked recv, then take + teardown.
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
         let reason = if let Some(mut w) = REGISTRY_RECEIVER.close(handle as u64) {
@@ -466,7 +467,7 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nClose(
             None
         };
         super::end_reason::build_close_snapshot(env, reason)
-            .map(|arr| arr.into_raw())
+            .map(|obj| obj.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
 }

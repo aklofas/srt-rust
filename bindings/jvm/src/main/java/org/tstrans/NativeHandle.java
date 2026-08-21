@@ -35,7 +35,13 @@ import java.util.concurrent.atomic.AtomicLong;
  *       handle lifecycle.
  *   <li>Implement {@link #nativeClose(long)} by delegating to the subclass's own
  *       {@code private static native void nClose(long)} — JNI export names remain
- *       per-subclass, preserving the Maven ABI.
+ *       per-subclass, preserving the Maven ABI. A subclass whose native teardown
+ *       must also hand back a close-time value it can no longer query afterward
+ *       (the handle is 0 by the time {@link #nativeClose} runs — e.g.
+ *       {@code org.tstrans.rtp}'s receivers snapshotting their end-of-stream
+ *       reason) declares {@code nClose} to return that value instead of
+ *       {@code void} and caches it in the override; this stays within the
+ *       "exactly one native call, {@code null}-checked" spirit of this hook.
  * </ol>
  */
 public abstract class NativeHandle implements AutoCloseable {

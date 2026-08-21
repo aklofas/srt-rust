@@ -7,6 +7,7 @@
 //! - `H264DepayStats`        — frozen pyclass, get_all 9 counters
 //! - `RtpStats`              — frozen pyclass, get_all (malformed_packets)
 //! - `H264Receiver`          — blocking receiver; GIL released in recv_au
+//!   (`end_reason()` / `end_detail()` — see `crate::rtp::end_reason`)
 //!
 //! # GIL release discipline
 //!
@@ -47,6 +48,7 @@ use tst_rtp::cancel::RtpCancelHandle;
 use tst_rtp::transport::RtpStats;
 use tst_rtp::{
     ConnectError, H264Au, H264DepayConfig, H264DepayStats, H264Receiver, ParameterSetInjection,
+    StreamEndReason,
 };
 
 use crate::errors::make_rtp_error;
@@ -416,15 +418,30 @@ pub struct PyH264Receiver {
     /// separately so `close()` can fire it BEFORE taking `inner`, waking
     /// any thread parked in `recv_au` within ~100ms.
     cancel: Arc<RtpCancelHandle>,
+    /// Snapshot of `H264Receiver::end_reason()` taken by `close()`.
+    ///
+    /// Unlike `RtpRecvTransport`, `H264Receiver` has no
+    /// `end_reason_handle()` — only a `&self` `end_reason()` getter — so
+    /// there is no cross-drop handle to hold onto. `close()` calls the
+    /// inner receiver's own idempotent `close()` (which records
+    /// `StreamEndReason::Cancelled` if nothing else already claimed the
+    /// slot, mirroring `RtpRecvTransport::close`) and reads `end_reason()`
+    /// back into this field BEFORE the receiver drops. `None` until
+    /// `close()` has run.
+    closed_end_reason: Option<StreamEndReason>,
 }
 
 impl PyH264Receiver {
     /// Crate-private constructor used by `PyRtspSession::into_h264_receiver`.
+    /// `receiver` already carries the owning RtspClient's shared
+    /// end-reason slot (swapped in by `RtspSession::into_h264_receiver`
+    /// before this constructor is ever called).
     pub(crate) fn from_h264_receiver(receiver: H264Receiver) -> Self {
         let cancel = receiver.cancel_handle();
         Self {
             inner: Some(receiver),
             cancel,
+            closed_end_reason: None,
         }
     }
 }
@@ -461,6 +478,7 @@ impl PyH264Receiver {
         Ok(Self {
             inner: Some(receiver),
             cancel,
+            closed_end_reason: None,
         })
     }
 
@@ -580,12 +598,54 @@ impl PyH264Receiver {
         )
     }
 
+    /// Why the receive session ended, or `None` if it hasn't ended yet
+    /// (or ended through a path this arc doesn't instrument). Still
+    /// readable after `close()` — see `closed_end_reason`'s field doc.
+    ///
+    /// Reads either the live receiver's `end_reason()` (a lock-free
+    /// `Arc<OnceLock<_>>` read — no blocking, no `py.allow_threads`
+    /// needed) or, once closed, the snapshot `close()` took.
+    fn end_reason(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        let reason = match &self.inner {
+            Some(inner) => inner.end_reason(),
+            None => self.closed_end_reason.clone(),
+        };
+        match reason {
+            Some(r) => crate::rtp::end_reason::end_reason_to_py(py, &r),
+            None => Ok(None),
+        }
+    }
+
+    /// Free-text detail for `end_reason()` — the `msg` carried by
+    /// `KEEPALIVE_FAILED` / `TRANSPORT_FAILED` / `PROTOCOL_ERROR`; `None`
+    /// for every other reason (including "hasn't ended yet").
+    fn end_detail(&self) -> Option<String> {
+        let reason = match &self.inner {
+            Some(inner) => inner.end_reason(),
+            None => self.closed_end_reason.clone(),
+        };
+        reason.and_then(|r| crate::rtp::end_reason::end_reason_detail(&r).map(str::to_owned))
+    }
+
     /// Close the receiver. Idempotent. Fires the cancel handle so any
     /// thread parked in `recv_au` unparks at the next cancel-poll tick
     /// (~100ms), then drops the underlying source.
+    ///
+    /// Before dropping, calls the inner `H264Receiver`'s own idempotent
+    /// `close()` (records `StreamEndReason::Cancelled` unless some
+    /// earlier signal already claimed the slot) and snapshots its
+    /// `end_reason()` into `closed_end_reason` — `H264Receiver` has no
+    /// `end_reason_handle()` to keep a live cross-drop view (unlike
+    /// `RtpRecvTransport`), so this snapshot is the only way
+    /// `end_reason()` / `end_detail()` keep answering after close.
     fn close(&mut self) {
         self.cancel.cancel();
-        self.inner.take(); // drops the H264Receiver + its socket
+        if let Some(mut receiver) = self.inner.take() {
+            receiver.close();
+            self.closed_end_reason = receiver.end_reason();
+            // `receiver` drops here; its `Drop` impl's own `close()` call
+            // is a no-op (idempotent, first-writer-wins already set).
+        }
     }
 
     fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {

@@ -18,7 +18,7 @@ use jni::JNIEnv;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jlong};
 use tst_core::transport::TransportCancel;
-use tst_pipeline::{BackoffStrategy, OverflowPolicy, ReconnectPolicy};
+use tst_pipeline::{BackoffStrategy, OverflowPolicy, ReconnectMode, ReconnectPolicy};
 
 use crate::handle::{HandleRegistry, TryWith};
 
@@ -32,7 +32,11 @@ static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniCancel>> = LazyLock::new(Hand
 /// JVM `Managed*.nFromUrl` natives marshal (see `org.tstrans.srt.PolicyArgs`).
 /// `backoff_kind`: 0 = Constant, 1 = Exponential — throws `CONFIG_INVALID` on
 /// any other value. `overflow_policy`: 0 = DropOldest, 1 = Reject — throws
-/// `CONFIG_INVALID` on any other value. `max_attempts_present == false` →
+/// `CONFIG_INVALID` on any other value. `mode`: 0 = Blocking, 1 = Background —
+/// an out-of-range ordinal defensively degrades to Blocking rather than
+/// throwing (mirrors `ReconnectMode`'s `#[non_exhaustive]` + `#[default]`
+/// Blocking arm on the Rust side, so a JAR built against a future variant
+/// still loads against an older native). `max_attempts_present == false` →
 /// retry forever.
 ///
 /// Returns `None` (with a pending `SrtException`) on an invalid ordinal;
@@ -47,6 +51,7 @@ pub(crate) fn build_reconnect_policy(
     backoff_max_ms: i64,
     gap_buffer_capacity: i32,
     overflow_policy: i32,
+    mode: i32,
 ) -> Option<ReconnectPolicy> {
     let backoff = match backoff_kind {
         0 => BackoffStrategy::Constant(Duration::from_millis(backoff_base_ms.max(0) as u64)),
@@ -75,6 +80,13 @@ pub(crate) fn build_reconnect_policy(
             return None;
         }
     };
+    // Defensive default (not a throw, unlike backoff_kind/overflow_policy above):
+    // an unrecognized ordinal falls back to Blocking rather than rejecting the
+    // call, matching ReconnectMode's own #[default] Blocking arm.
+    let recon_mode = match mode {
+        1 => ReconnectMode::Background,
+        _ => ReconnectMode::Blocking,
+    };
     Some(ReconnectPolicy {
         max_attempts: if max_attempts_present {
             Some(max_attempts.max(0) as u32)
@@ -84,7 +96,7 @@ pub(crate) fn build_reconnect_policy(
         backoff,
         gap_buffer_capacity: gap_buffer_capacity.max(1) as usize,
         overflow_policy: overflow,
-        ..Default::default()
+        mode: recon_mode,
     })
 }
 

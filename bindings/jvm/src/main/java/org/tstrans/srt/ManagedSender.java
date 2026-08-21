@@ -66,7 +66,7 @@ public final class ManagedSender extends NativeHandle {
             url,
             p.maxAttemptsPresent(), p.maxAttempts(),
             p.backoffKind(), p.backoffBaseMs(), p.backoffMaxMs(),
-            p.gapBufferCapacity(), p.overflowPolicy());
+            p.gapBufferCapacity(), p.overflowPolicy(), p.mode());
         if (h == 0) {
             // nFromUrl throws a pending SrtException; JNI framework re-raises it.
             // This line is unreachable in practice, but satisfies the compiler.
@@ -163,7 +163,7 @@ public final class ManagedSender extends NativeHandle {
         String url,
         boolean maxAttemptsPresent, int maxAttempts,
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
-        int gapBufferCapacity, int overflowPolicy) throws SrtException;
+        int gapBufferCapacity, int overflowPolicy, int mode) throws SrtException;
     private static native void    nSendBytes(long handle, byte[] data) throws SrtException;
     private static native void    nFlush(long handle) throws SrtException;
     private static native long    nCancelHandle(long handle);

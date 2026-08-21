@@ -3,6 +3,7 @@ package org.tstrans.srt;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 import org.tstrans.SrtException;
+import org.tstrans.mpegts.DemuxerConfig;
 import org.tstrans.mpegts.MuxerConfig;
 import org.tstrans.mpegts.VideoCodec;
 
@@ -77,6 +78,37 @@ class SrtManagedTest {
         assertEquals(10000, p.backoffMaxMs());
         assertEquals(256, p.gapBufferCapacity());
         assertEquals(0, p.overflowPolicy()); // DROP_OLDEST
+        assertEquals(0, p.mode()); // BLOCKING
+    }
+
+    /**
+     * {@link ReconnectPolicy#defaults()} carries {@link ReconnectMode#BLOCKING}
+     * (the pre-0.6 behavior) unless the builder overrides it.
+     */
+    @Test
+    void reconnectPolicyModeDefaultsToBlocking() {
+        assertEquals(ReconnectMode.BLOCKING, ReconnectPolicy.defaults().mode());
+    }
+
+    /**
+     * {@code Builder.mode(ReconnectMode)} round-trips through {@link ReconnectPolicy#mode()}.
+     */
+    @Test
+    void reconnectPolicyBuilderModeRoundTrip() {
+        ReconnectPolicy p = ReconnectPolicy.builder().mode(ReconnectMode.BACKGROUND).build();
+        assertEquals(ReconnectMode.BACKGROUND, p.mode());
+    }
+
+    /**
+     * {@link PolicyArgs#from} flattens {@link ReconnectPolicy#mode()} to its
+     * ordinal (0 = BLOCKING, 1 = BACKGROUND) for the JNI boundary.
+     */
+    @Test
+    void policyArgsModeOrdinalRoundTrip() {
+        assertEquals(1, PolicyArgs.from(
+            ReconnectPolicy.builder().mode(ReconnectMode.BACKGROUND).build()).mode());
+        assertEquals(0, PolicyArgs.from(
+            ReconnectPolicy.builder().mode(ReconnectMode.BLOCKING).build()).mode());
     }
 
     // ── Convenience wrappers (sub-wave C, Task 2) ─────────────────────────
@@ -126,6 +158,26 @@ class SrtManagedTest {
         var e = assertThrows(
             SrtException.class,
             () -> ManagedDemuxReceiver.fromUrl("not-a-url")
+        );
+        assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
+    }
+
+    /**
+     * {@code ManagedDemuxReceiver.fromUrl(url, DemuxerConfig, ReconnectPolicy)}
+     * routes through {@code nFromUrlWithConfig} — the one flattened-args native
+     * NOT otherwise exercised by this file's malformed-URL checks. A malformed
+     * URL fails at parse time before any connect, so this stays socket-free
+     * while still driving every arg (including a BACKGROUND-mode policy)
+     * across the JNI boundary — the native crashes/misbehaves rather than
+     * cleanly throwing if the Java declaration and Rust fn arg lists drift.
+     */
+    @Test
+    void managedDemuxReceiverWithConfigRejectsMalformedUrl() {
+        DemuxerConfig cfg = DemuxerConfig.builder().build();
+        ReconnectPolicy policy = ReconnectPolicy.builder().mode(ReconnectMode.BACKGROUND).build();
+        var e = assertThrows(
+            SrtException.class,
+            () -> ManagedDemuxReceiver.fromUrl("not-a-url", cfg, policy)
         );
         assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
     }

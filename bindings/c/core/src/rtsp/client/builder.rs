@@ -63,6 +63,12 @@ use crate::panic::ffi_catch;
 /// `_auth_*`, `_keepalive`, and `_tls_root_cert_pem` setters before calling
 /// `tst_rtsp_client_builder_connect` (Task 6) to open a live session.
 ///
+/// `?recv_timeout=<ms>` on `url` configures a persistent receive deadline
+/// on the transport `tst_rtsp_session_into_demux_receiver` returns —
+/// expiry surfaces through `tst_rtp_demux_receiver_next_event` as
+/// `TST_E_BUFFER_FULL` (-4), retryable. Client-local — never rendered
+/// onto the RTSP request line.
+///
 /// Returns a non-NULL builder pointer on success, or NULL with the
 /// thread-local last-error populated on failure (bad URL, allocation
 /// failure, etc.).  The caller must eventually pass the pointer to

@@ -61,7 +61,7 @@ pub enum TstStreamEndReason {
 /// that as a "did the last call succeed" check). `KeepaliveFailed` /
 /// `TransportFailed` / `ProtocolError` write their `msg` detail; every
 /// other arm (including the `#[non_exhaustive]` fallback) writes an
-/// EMPTY message — so `tst_last_error_str()` always reflects THIS call
+/// EMPTY message — so `tst_get_last_error_str()` always reflects THIS call
 /// once a reason has been recorded, never a stale message left over
 /// from some earlier, unrelated failure.
 pub(crate) fn convert_end_reason(r: &StreamEndReason) -> TstStreamEndReason {

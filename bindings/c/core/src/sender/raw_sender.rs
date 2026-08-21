@@ -155,6 +155,10 @@ pub struct TstManagedRawSender {
     /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
     /// the same shape across all 8 handle families.
     was_cancelled: Arc<AtomicBool>,
+    /// Reconnect/gap telemetry observer, captured from the `ManagedTransport`
+    /// before it moved into the shell (same capture-before-move timing as
+    /// `cancel_handle()`). Read by `tst_managed_raw_sender_get_reconnect_stats`.
+    stats_handle: tst_pipeline::ManagedStatsHandle,
 }
 
 /// Open a `tst_managed_raw_sender_t` connected via SRT.
@@ -203,6 +207,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_open(
         let cfg_for_reconnect = socket_cfg.clone();
         let factory = move || crate::sender::connect::connect_srt(&host, port, &cfg_for_reconnect);
         let managed = ManagedTransport::new(initial, factory, policy);
+        let stats_handle = managed.stats_handle();
         let sender = RawSender::new(managed, cfg);
         let cancel = sender.cancel_handle();
         let was_cancelled = Arc::new(AtomicBool::new(false));
@@ -210,6 +215,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_open(
             inner: Handle::new(sender),
             cancel,
             was_cancelled,
+            stats_handle,
         }))
     })
 }
@@ -419,6 +425,39 @@ pub unsafe extern "C" fn tst_managed_raw_sender_get_socket_stats(
         })
 }
 
+/// Snapshot reconnect/gap telemetry for a `tst_managed_raw_sender_t` into
+/// `*out`. Unlike [`tst_managed_raw_sender_get_socket_stats`], this never
+/// returns `TST_E_NOT_AVAILABLE` — the counters live on the side-channel
+/// `ManagedStatsHandle`, which stays readable across reconnect gaps.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+/// `TST_E_CLOSED` if the sender has been closed, or `TST_E_INTERNAL` if the
+/// gap-buffer lock is poisoned (see `ManagedTransport`'s lock poisoning
+/// policy — a prior panic mid-drain).
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstManagedRawSender` opened via
+/// `tst_managed_raw_sender_open` and `out` points to a writable
+/// `tst_managed_transport_stats_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_raw_sender_get_reconnect_stats(
+    p: *mut TstManagedRawSender,
+    out: *mut crate::stats::TstManagedTransportStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    unsafe {
+        crate::transport_impls::managed_get_reconnect_stats(
+            &handle.inner,
+            &handle.stats_handle,
+            out,
+        )
+    }
+}
+
 /// Reset stats counters for a `tst_managed_raw_sender_t` to zero.
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
@@ -458,6 +497,14 @@ mod tests {
     #[test]
     fn managed_null_cancel_returns_invalid_config() {
         let rc = unsafe { tst_managed_raw_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn managed_null_handle_get_reconnect_stats_returns_invalid_config() {
+        let mut out = crate::stats::TstManagedTransportStats::default();
+        let rc =
+            unsafe { tst_managed_raw_sender_get_reconnect_stats(std::ptr::null_mut(), &mut out) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

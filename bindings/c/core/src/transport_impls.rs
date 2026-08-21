@@ -30,8 +30,8 @@ use tst_core::transport::{RecvTransport, Transport};
 use tst_pipeline::{DemuxReceiver, MuxSender, Receiver, Sender, ShellErrorKind};
 
 use crate::error::{
-    TstError, record_eos, record_mux_error, record_not_available, record_not_found,
-    record_shell_error, set_last_error, tst_get_last_error,
+    TstError, record_eos, record_internal, record_mux_error, record_not_available,
+    record_not_found, record_shell_error, set_last_error, tst_get_last_error,
 };
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
@@ -351,6 +351,46 @@ pub(crate) fn mux_sender_reset_stats<T: Transport>(h: &Handle<MuxSender<T>>) -> 
     h.with_inner_ref(|s| {
         s.reset_stats();
         0
+    })
+}
+
+// ============================================================================
+// Managed-reconnect stats (shared across all three send shells)
+// ============================================================================
+//
+// `ManagedStatsHandle` is not parameterized on the transport or the shell
+// type, so this one body serves `tst_managed_{sender,mux_sender,raw_sender}
+// _get_reconnect_stats` — the `S` parameter is just whatever shell type the
+// caller's `Handle<S>` wraps (used only for the closed-check; the stats
+// themselves come from the side-channel `ManagedStatsHandle`, same pattern
+// as `cancel`'s side-channel `Arc<dyn TransportCancel>`).
+
+/// Generic body for `tst_managed_*_get_reconnect_stats`.
+///
+/// Runs the closed-check through `h` (so a closed handle reports
+/// `TST_E_CLOSED` like every other managed getter) but reads the counters
+/// from `sh`, which stays live independently of the shell's `Handle` state.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstManagedTransportStats` when non-null.
+pub(crate) unsafe fn managed_get_reconnect_stats<S>(
+    h: &Handle<S>,
+    sh: &tst_pipeline::ManagedStatsHandle,
+    out: *mut crate::stats::TstManagedTransportStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|_| match sh.stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => {
+            record_internal("managed transport stats gap-buffer lock poisoned");
+            TstError::Internal as i32
+        }
     })
 }
 

@@ -329,6 +329,69 @@ impl From<&tst_core::transport::SocketStats> for TstSocketStats {
     }
 }
 
+/// `repr(C)` mirror of `tst_pipeline::ManagedTransportStats` — reconnect
+/// telemetry for a managed (auto-reconnecting) sender. Returned by
+/// `tst_managed_{sender,mux_sender,raw_sender}_get_reconnect_stats`. Size 48 B.
+///
+/// Layout (offsets in bytes — verified by the
+/// `_TST_MANAGED_TRANSPORT_STATS_SIZE` const assertion below):
+///   0: reconnect_attempts   (u64, 8 B)
+///   8: reconnect_successes  (u64, 8 B)
+///  16: gap_len              (u64, 8 B)
+///  24: gap_messages_dropped (u64, 8 B)
+///  32: gap_bytes_dropped    (u64, 8 B)
+///  40: reconnecting         (bool, 1 B)
+///  41: _pad                 ([u8; 7], 7 B, alignment tail)
+/// Total: 48 B.
+///
+/// Fields:
+/// - `reconnect_attempts` — total `factory()` invocations across all
+///   reconnect cycles (successful + failed).
+/// - `reconnect_successes` — factory calls that returned a transport
+///   successfully installed as the new inner connection.
+/// - `gap_len` — messages currently queued in the gap buffer, awaiting
+///   drain once the inner transport reconnects.
+/// - `gap_messages_dropped` / `gap_bytes_dropped` — messages/bytes evicted
+///   by `DropOldest` (plus oversized-after-reconnect drops discovered
+///   during drain).
+/// - `reconnecting` — true while a background reconnect worker is active
+///   (`ReconnectMode::Background` only; always `false` in `Blocking` mode).
+///
+/// All counters are mode-agnostic: `Blocking` mode's inline reconnect loop
+/// bumps `reconnect_attempts`/`reconnect_successes` exactly like
+/// `Background` mode's worker does.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstManagedTransportStats {
+    pub reconnect_attempts: u64,
+    pub reconnect_successes: u64,
+    pub gap_len: u64,
+    pub gap_messages_dropped: u64,
+    pub gap_bytes_dropped: u64,
+    pub reconnecting: bool,
+    /// Alignment padding after the `bool` tail field.
+    pub _pad: [u8; 7],
+}
+
+const _TST_MANAGED_TRANSPORT_STATS_SIZE: () = assert!(
+    core::mem::size_of::<TstManagedTransportStats>() == 48,
+    "TstManagedTransportStats must be 48 bytes (5×u64 + bool + 7 pad)"
+);
+
+impl From<&tst_pipeline::ManagedTransportStats> for TstManagedTransportStats {
+    fn from(s: &tst_pipeline::ManagedTransportStats) -> Self {
+        Self {
+            reconnect_attempts: s.reconnect_attempts,
+            reconnect_successes: s.reconnect_successes,
+            gap_len: s.gap_len,
+            gap_messages_dropped: s.gap_messages_dropped,
+            gap_bytes_dropped: s.gap_bytes_dropped,
+            reconnecting: s.reconnecting,
+            _pad: [0; 7],
+        }
+    }
+}
+
 /// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6176 B
 /// (2×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see the
 /// `_TST_MUXER_STATS_SIZE` const assertion below.

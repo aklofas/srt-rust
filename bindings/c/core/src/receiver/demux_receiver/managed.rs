@@ -404,6 +404,35 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_socket_stats(
     })
 }
 
+/// Managed sibling of [`tst_demux_receiver_get_stream_last_seen_micros`](super::stats::tst_demux_receiver_get_stream_last_seen_micros).
+/// Same semantics — `*out_epoch_micros` is `0` for a pid never observed on
+/// this handle, 0 on success otherwise.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_last_seen_micros(
+    p: *mut TstManagedDemuxReceiver,
+    pid: u16,
+    out_epoch_micros: *mut u64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out_epoch_micros.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_epoch_micros pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let micros = stats
+            .per_stream
+            .get(&pid)
+            .map(|ss| crate::stats::last_seen_epoch_micros(ss.last_seen))
+            .unwrap_or(0);
+        unsafe { *out_epoch_micros = micros };
+        0
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_demux_receiver_reset_stats(
     p: *mut TstManagedDemuxReceiver,

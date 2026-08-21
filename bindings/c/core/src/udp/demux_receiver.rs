@@ -268,6 +268,39 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_get_stream_codec_stats(
     }
 }
 
+/// Read the Unix-epoch microsecond timestamp of the last item observed
+/// on `pid` into `*out_epoch_micros`. `0` when `pid` has never been
+/// observed on this handle (see
+/// [`tst_demux_receiver_get_stream_last_seen_micros`](crate::receiver::demux_receiver::tst_demux_receiver_get_stream_last_seen_micros)
+/// for full semantics — same shape, different handle type).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+/// null, or `TST_E_CLOSED` if the receiver has been closed.
+///
+/// # Safety
+///
+/// `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
+/// `tst_udp_demux_receiver_open`. `out_epoch_micros` must point to a
+/// writable `u64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_udp_demux_receiver_get_stream_last_seen_micros(
+    p: *mut TstUdpDemuxReceiver,
+    pid: u16,
+    out_epoch_micros: *mut u64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null udp demux receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    unsafe {
+        crate::transport_impls::demux_receiver_get_stream_last_seen_micros(
+            &handle.inner,
+            pid,
+            out_epoch_micros,
+        )
+    }
+}
+
 /// Reset stats counters for a `tst_udp_demux_receiver_t` to zero.
 /// Also invalidates the borrowed `_get_stream_stats` snapshot
 /// (design §4.5).
@@ -367,6 +400,19 @@ mod tests {
     #[test]
     fn null_reset_stats_returns_invalid_config() {
         let rc = unsafe { tst_udp_demux_receiver_reset_stats(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_get_stream_last_seen_micros_returns_invalid_config() {
+        let mut micros: u64 = 0;
+        let rc = unsafe {
+            tst_udp_demux_receiver_get_stream_last_seen_micros(
+                std::ptr::null_mut(),
+                0x1011,
+                &mut micros,
+            )
+        };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 

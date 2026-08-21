@@ -22,8 +22,9 @@ pub use demux_receiver::{
     TstRtpDemuxReceiver, tst_rtp_demux_receiver_cancel, tst_rtp_demux_receiver_close,
     tst_rtp_demux_receiver_end_reason, tst_rtp_demux_receiver_get_socket_stats,
     tst_rtp_demux_receiver_get_stats, tst_rtp_demux_receiver_get_stream_codec_stats,
-    tst_rtp_demux_receiver_get_stream_stats, tst_rtp_demux_receiver_next_event,
-    tst_rtp_demux_receiver_open, tst_rtp_demux_receiver_reset_stats,
+    tst_rtp_demux_receiver_get_stream_last_seen_micros, tst_rtp_demux_receiver_get_stream_stats,
+    tst_rtp_demux_receiver_next_event, tst_rtp_demux_receiver_open,
+    tst_rtp_demux_receiver_reset_stats,
 };
 pub use end_reason::TstStreamEndReason;
 pub use mux_sender::{

@@ -42,16 +42,17 @@ pub use events::{tst_demux_receiver_cancel, tst_demux_receiver_recv_event};
 pub use managed::{
     TstManagedDemuxReceiver, tst_managed_demux_receiver_cancel, tst_managed_demux_receiver_close,
     tst_managed_demux_receiver_get_socket_stats, tst_managed_demux_receiver_get_stats,
-    tst_managed_demux_receiver_get_stream_codec_stats, tst_managed_demux_receiver_get_stream_stats,
-    tst_managed_demux_receiver_open, tst_managed_demux_receiver_open_listener,
-    tst_managed_demux_receiver_open_listener_with_config,
+    tst_managed_demux_receiver_get_stream_codec_stats,
+    tst_managed_demux_receiver_get_stream_last_seen_micros,
+    tst_managed_demux_receiver_get_stream_stats, tst_managed_demux_receiver_open,
+    tst_managed_demux_receiver_open_listener, tst_managed_demux_receiver_open_listener_with_config,
     tst_managed_demux_receiver_open_with_config, tst_managed_demux_receiver_recv_event,
     tst_managed_demux_receiver_reset_stats,
 };
 pub use stats::{
     tst_demux_receiver_get_socket_stats, tst_demux_receiver_get_stats,
-    tst_demux_receiver_get_stream_codec_stats, tst_demux_receiver_get_stream_stats,
-    tst_demux_receiver_reset_stats,
+    tst_demux_receiver_get_stream_codec_stats, tst_demux_receiver_get_stream_last_seen_micros,
+    tst_demux_receiver_get_stream_stats, tst_demux_receiver_reset_stats,
 };
 
 use crate::demux_config::TstDemuxConfig;
@@ -295,6 +296,19 @@ mod tests {
     }
 
     #[test]
+    fn null_get_stream_last_seen_micros_returns_invalid_config() {
+        let mut micros: u64 = 0;
+        let rc = unsafe {
+            tst_demux_receiver_get_stream_last_seen_micros(
+                std::ptr::null_mut(),
+                0x1011,
+                &mut micros,
+            )
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
     fn managed_null_close_is_safe() {
         unsafe {
             tst_managed_demux_receiver_close(std::ptr::null_mut());
@@ -333,6 +347,19 @@ mod tests {
         let mut count: libc::size_t = 0;
         let rc = unsafe {
             tst_managed_demux_receiver_get_stream_stats(std::ptr::null_mut(), &mut arr, &mut count)
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn managed_null_get_stream_last_seen_micros_returns_invalid_config() {
+        let mut micros: u64 = 0;
+        let rc = unsafe {
+            tst_managed_demux_receiver_get_stream_last_seen_micros(
+                std::ptr::null_mut(),
+                0x1011,
+                &mut micros,
+            )
         };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }

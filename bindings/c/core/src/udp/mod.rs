@@ -30,8 +30,9 @@ pub mod demux_receiver;
 pub use demux_receiver::{
     TstUdpDemuxReceiver, tst_udp_demux_receiver_close, tst_udp_demux_receiver_get_socket_stats,
     tst_udp_demux_receiver_get_stats, tst_udp_demux_receiver_get_stream_codec_stats,
-    tst_udp_demux_receiver_get_stream_stats, tst_udp_demux_receiver_next_event,
-    tst_udp_demux_receiver_open, tst_udp_demux_receiver_reset_stats,
+    tst_udp_demux_receiver_get_stream_last_seen_micros, tst_udp_demux_receiver_get_stream_stats,
+    tst_udp_demux_receiver_next_event, tst_udp_demux_receiver_open,
+    tst_udp_demux_receiver_reset_stats,
 };
 pub use mux_sender::{
     TstUdpMuxSender, tst_udp_mux_sender_close, tst_udp_mux_sender_get_mux_sender_stats,

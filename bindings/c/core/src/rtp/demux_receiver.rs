@@ -18,12 +18,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::RecvTransport;
 use tst_pipeline::{DemuxReceiver, ShellErrorKind, TransportCancel};
-use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport};
+use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::demux_config::TstDemuxConfig;
 use crate::error::{TstError, record_eos, record_shell_error, set_last_error};
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
+use crate::rtp::end_reason::{TstStreamEndReason, convert_end_reason};
 
 // ---------------------------------------------------------------------------
 // Handle type
@@ -46,6 +47,15 @@ pub struct TstRtpDemuxReceiver {
     /// caller-initiated shutdown (`TST_E_CLOSED`) from peer EOF
     /// (`TST_E_END_OF_STREAM`).
     pub(crate) was_cancelled: Arc<AtomicBool>,
+    /// End-reason handle snapshotted at open/conversion time, same
+    /// capture-before-move timing as `cancel`. Captured from the
+    /// underlying `RtpRecvTransport` both by `tst_rtp_demux_receiver_open`
+    /// and by `tst_rtsp_session_into_demux_receiver` (the latter captures
+    /// it AFTER `RtspSession::into_recv_transport()` has already swapped
+    /// in the owning `RtspClient`'s shared slot, so it reflects reasons
+    /// recorded by the RTSP keepalive/pump threads too). Read by
+    /// `tst_rtp_demux_receiver_end_reason`.
+    pub(crate) end_reason: StreamEndReasonHandle,
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +98,7 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
             }
         };
         let cancel = transport.cancel_handle();
+        let end_reason = transport.end_reason_handle();
         let receiver = if let Some(cfg) = unsafe { demux_cfg.as_ref() } {
             DemuxReceiver::with_demux_options(transport, cfg.build_options())
         } else {
@@ -99,6 +110,7 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
             stream_stats_buf: Mutex::new(Vec::new()),
             cancel,
             was_cancelled: Arc::new(AtomicBool::new(false)),
+            end_reason,
         }))
     })
 }
@@ -245,6 +257,57 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_cancel(p: *mut TstRtpDemuxReceiv
         }
         0
     })
+}
+
+/// Read the recorded reason this `tst_rtp_demux_receiver_t` receive
+/// session ended, if any.
+///
+/// Writes `TstStreamEndReason::None` (returns `0`) when the session
+/// hasn't ended yet, or ended through a path this arc doesn't
+/// instrument. A recorded reason is data, not a getter failure — this
+/// only returns a nonzero code for a null-pointer argument.
+///
+/// For the `KeepaliveFailed` / `TransportFailed` / `ProtocolError`
+/// reasons, the underlying detail message is also pushed onto the
+/// thread-local last-error message channel (code stays `TST_E_SUCCESS`,
+/// since a recorded end reason is not itself a getter failure) — call
+/// `tst_last_error_str()` immediately after this getter to read it.
+///
+/// Side-channel: reads directly off the end-reason handle captured at
+/// open/conversion time WITHOUT acquiring this handle's data-path Mutex —
+/// same rationale as `tst_rtp_demux_receiver_cancel` (a concurrent
+/// `_next_event` may be blocked holding it). This is what makes the
+/// getter safe to poll from a watchdog thread while another thread
+/// drives `_next_event`. One consequence: this call never itself
+/// returns `TST_E_CLOSED` — after `_close` the whole handle is freed,
+/// and calling anything on it, including this getter, is a
+/// use-after-free the caller must avoid.
+///
+/// # Safety
+///
+/// `p` must be a valid non-freed `*mut TstRtpDemuxReceiver` opened via
+/// `tst_rtp_demux_receiver_open` or `tst_rtsp_session_into_demux_receiver`.
+/// `out` must point to a writable `TstStreamEndReason`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtp_demux_receiver_end_reason(
+    p: *mut TstRtpDemuxReceiver,
+    out: *mut TstStreamEndReason,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null rtp demux receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    let reason = match handle.end_reason.get() {
+        Some(r) => convert_end_reason(&r),
+        None => TstStreamEndReason::None,
+    };
+    // SAFETY: out non-null per guard above.
+    unsafe { *out = reason };
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -469,5 +532,64 @@ mod tests {
     fn open_with_null_url_returns_null() {
         let p = unsafe { tst_rtp_demux_receiver_open(std::ptr::null(), std::ptr::null()) };
         assert!(p.is_null());
+    }
+
+    #[test]
+    fn null_end_reason_returns_invalid_config() {
+        let mut out = TstStreamEndReason::None;
+        let rc = unsafe { tst_rtp_demux_receiver_end_reason(std::ptr::null_mut(), &mut out) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_out_end_reason_returns_invalid_config() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0").unwrap();
+        let handle = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let rc = unsafe { tst_rtp_demux_receiver_end_reason(handle, std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+        unsafe { tst_rtp_demux_receiver_close(handle) };
+    }
+
+    #[test]
+    fn fresh_demux_receiver_end_reason_is_none() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0").unwrap();
+        let handle = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let mut out = TstStreamEndReason::Cancelled; // seed with a non-None value
+        let rc = unsafe { tst_rtp_demux_receiver_end_reason(handle, &mut out) };
+        assert_eq!(rc, 0);
+        assert!(matches!(out, TstStreamEndReason::None));
+        unsafe { tst_rtp_demux_receiver_close(handle) };
+    }
+
+    /// `_cancel` alone only flags the transport; the reason is recorded
+    /// by the underlying `RtpRecvTransport` the moment a recv attempt
+    /// actually observes the cancel signal — so this drives one
+    /// `_next_event` call after cancelling to make the reason
+    /// observable, matching what a real caller's event loop would do.
+    #[test]
+    fn cancel_then_next_event_records_cancelled_end_reason() {
+        let url = std::ffi::CString::new("rtp://127.0.0.1:0").unwrap();
+        let handle = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+        if handle.is_null() {
+            return; // skip if bind fails in CI
+        }
+        let cancel_rc = unsafe { tst_rtp_demux_receiver_cancel(handle) };
+        assert_eq!(cancel_rc, 0);
+
+        let mut ev = TstEvent::default();
+        let next_rc = unsafe { tst_rtp_demux_receiver_next_event(handle, &mut ev) };
+        assert_eq!(next_rc, TstError::Closed as i32);
+
+        let mut out = TstStreamEndReason::None;
+        let rc = unsafe { tst_rtp_demux_receiver_end_reason(handle, &mut out) };
+        assert_eq!(rc, 0);
+        assert!(matches!(out, TstStreamEndReason::Cancelled));
+        unsafe { tst_rtp_demux_receiver_close(handle) };
     }
 }

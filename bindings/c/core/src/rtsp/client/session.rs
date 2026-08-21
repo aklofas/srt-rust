@@ -489,10 +489,15 @@ pub unsafe extern "C" fn tst_rtsp_session_into_demux_receiver(
         // Step 2: convert RtspSession into RtpRecvTransport.
         // For UDP: wraps the SETUP-allocated UDP socket pair.
         // For TCP-interleaved: wraps the mpsc::Receiver<Bytes> fed by the pump.
+        // into_recv_transport() also swaps in the owning RtspClient's shared
+        // end-reason slot (see its doc), so end_reason_handle() below
+        // captures a handle onto reasons recorded by the RTSP
+        // keepalive/pump threads too, not just this transport's own close.
         let transport = rtsp_session.into_recv_transport();
 
         // Step 3: wrap in DemuxReceiver with caller-supplied config.
         let cancel = transport.cancel_handle();
+        let end_reason = transport.end_reason_handle();
         let receiver = if let Some(cfg) = unsafe { demux_cfg.as_ref() } {
             DemuxReceiver::with_demux_options(transport, cfg.build_options())
         } else {
@@ -511,6 +516,7 @@ pub unsafe extern "C" fn tst_rtsp_session_into_demux_receiver(
             stream_stats_buf: Mutex::new(Vec::new()),
             cancel,
             was_cancelled: Arc::new(AtomicBool::new(false)),
+            end_reason,
         }))
     })
 }

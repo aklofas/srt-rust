@@ -147,6 +147,11 @@ with the Rust-core work above:
   path applied it) — no new symbols; expiry surfaces as the existing
   `TST_E_BUFFER_FULL` (-4), retryable, documented on
   `tst_rtp_receiver_recv_ts` / `tst_rtp_demux_receiver_next_event`.
+  Fixed alongside: `?pkt_size=`/`?pt=` on `rtp://` receive URLs are
+  now rejected at open as documented (previously silently ignored —
+  both open functions rebuilt the socket from individual URL fields
+  rather than the parsed URL, so query keys outside that short list
+  never reached the validation that was supposed to reject them).
 
 Python and JVM remain unchanged by either the reconnect work or the
 `tst-rtp` work above — see the "Background reconnect — bindings

@@ -308,10 +308,11 @@ class RtpErrorKind(enum.IntEnum):
     MALFORMED_PACKET = 2
     CANCELLED = 3
     # Recv deadline expired — retryable; the transport/session is still
-    # alive. Only raised when a persistent deadline is configured (the
-    # `?recv_timeout=<ms>` URL query key on a Receiver / DemuxReceiver
-    # URL); a receiver with no configured deadline blocks indefinitely
-    # instead of raising this.
+    # alive. Raised from two triggers: a persistent deadline configured
+    # via the `?recv_timeout=<ms>` URL query key on a Receiver /
+    # DemuxReceiver URL, or a per-call `timeout_ms=` argument to
+    # `recv()` / `recv_au()`. A receiver with neither configured blocks
+    # indefinitely instead of raising this.
     TIMEOUT = 4
 
 

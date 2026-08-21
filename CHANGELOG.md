@@ -153,8 +153,10 @@ with the Rust-core work above:
   rather than the parsed URL, so query keys outside that short list
   never reached the validation that was supposed to reject them).
 
-**Python bindings** (`tstrans`, additive only — no existing method
-signature changed) close most of the same gap:
+**Python bindings** (`tstrans`, additive — no existing call breaks;
+`recv()` / `recv_au()` gain a new optional `timeout_ms=` keyword, but
+every pre-existing call site keeps working unchanged) close most of the
+same gap:
 
 - `RtpErrorKind.TIMEOUT` (new `IntEnum` member) — `TransportError::
   Backpressure` now maps to `TIMEOUT` instead of `TRANSPORT` across

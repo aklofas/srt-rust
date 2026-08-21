@@ -81,6 +81,12 @@ pyo3         = { version = "0.22", features = ["extension-module", "abi3-py310"]
 # before handing them to the Rust builder. Optional + gated on
 # `feature = "rtp"` so non-rtp builds don't pull it.
 secrecy      = { workspace = true, optional = true }
+# `TSTRANS_LOG` bridge (Task C7) — the Rust core emits `tracing` events
+# that are otherwise silently discarded because nothing installs a
+# subscriber inside the Python extension. Not optional/feature-gated:
+# the bridge itself is always compiled in, but only installs a
+# subscriber at runtime when `TSTRANS_LOG` is set (see `lib.rs`).
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # `tls` feature path — parse `RtspClientConfig.tls_root_certs_pem` into the
 # `rustls::RootCertStore` that `RtspClientBuilder::tls_root_certs` takes.

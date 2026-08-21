@@ -42,7 +42,9 @@ use pyo3::types::PyBytes;
 
 use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
 use tst_rtp::builder::RtpRecvSocketBuilder;
-use tst_rtp::{ConnectError, RtpRecvTransport, RtpSocketBuilder, RtpTransport};
+use tst_rtp::{
+    ConnectError, RtpRecvTransport, RtpSocketBuilder, RtpTransport, StreamEndReasonHandle,
+};
 
 use crate::errors::make_rtp_error;
 
@@ -340,6 +342,12 @@ pub(crate) struct PyReceiver {
     /// Python-side `CancelHandle` clones — flipping it wakes a parked
     /// recv on the next 100 ms cancel-poll tick.
     cancel: Arc<dyn TransportCancel + Send + Sync>,
+    /// Handle onto the transport's [`StreamEndReasonHandle`], pulled at
+    /// construction — before `inner` is ever `take()`n by `close()`, so
+    /// `end_reason()` / `end_detail()` keep working after close (`close()`
+    /// records `Cancelled` on the transport before dropping it, and this
+    /// handle shares the same underlying cell).
+    end_reason: StreamEndReasonHandle,
     /// Per-recv scratch buffer sized to the underlying transport's
     /// `max_payload()`. Reused across calls to avoid a per-recv malloc.
     scratch: Vec<u8>,
@@ -361,9 +369,11 @@ impl PyReceiver {
         let cancel = inner
             .cancel_handle()
             .expect("RtpRecvTransport always returns Some(cancel_handle)");
+        let end_reason = inner.end_reason_handle();
         Ok(Self {
             inner: Some(inner),
             cancel,
+            end_reason,
             scratch: vec![0u8; scratch_len],
         })
     }
@@ -425,6 +435,30 @@ impl PyReceiver {
                 inner: self.cancel.clone(),
             },
         )
+    }
+
+    /// Why the receive session ended, or `None` if it hasn't ended yet
+    /// (or ended through a path this arc doesn't instrument). Still
+    /// readable after `close()` — `end_reason` is a
+    /// [`StreamEndReasonHandle`] captured at construction, independent of
+    /// `inner`'s lifetime.
+    ///
+    /// `StreamEndReasonHandle::get` is a lock-free `Arc<OnceLock<_>>`
+    /// read — no blocking, so no `py.allow_threads` is needed here even
+    /// though this touches Rust-owned shared state.
+    fn end_reason(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        match self.end_reason.get() {
+            Some(r) => crate::rtp::end_reason::end_reason_to_py(py, &r),
+            None => Ok(None),
+        }
+    }
+
+    /// Free-text detail for `end_reason()` — the `msg` carried by
+    /// `KEEPALIVE_FAILED` / `TRANSPORT_FAILED` / `PROTOCOL_ERROR`; `None`
+    /// for every other reason (including "hasn't ended yet").
+    fn end_detail(&self) -> Option<String> {
+        let reason = self.end_reason.get()?;
+        crate::rtp::end_reason::end_reason_detail(&reason).map(str::to_owned)
     }
 
     /// Close the receiver. After close, further `.recv()` calls raise

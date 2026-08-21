@@ -16,6 +16,7 @@ Submodule contents are populated by `tstrans._native.rtp`:
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -28,6 +29,38 @@ except (ImportError, AttributeError) as exc:  # pragma: no cover
         "RTP by default; if you built tstrans from source, ensure the "
         "`rtp` cargo feature is enabled (it is on by default)."
     ) from exc
+
+
+class StreamEndReason(enum.IntEnum):
+    """Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`.
+
+    Returned by `.end_reason()` on `Receiver` / `DemuxReceiver` /
+    `H264Receiver`; `None` means the session either hasn't ended yet or
+    ended through a path this arc doesn't instrument (e.g. a plain
+    `rtp://` receiver that was never closed or cancelled).
+
+    Numeric values are pinned across the C, Python, and JVM bindings
+    (the C `TstStreamEndReason` enum additionally has `NONE = 0`; Python
+    uses `None` for that case instead of a member). Pure Python — unlike
+    the RTSP/transport config enums in this module (`RtspVersion`,
+    `TransportPref`, ...), which are Rust-backed `#[pyclass(eq, eq_int)]`
+    types because they cross the Python→Rust boundary as constructor
+    arguments, `StreamEndReason` only ever flows Rust→Python as a return
+    value, so it follows the same pure-Python-enum convention as
+    `tstrans.mpegts.NonConformantKind` / `StreamKindTag`.
+
+    `.end_detail()` carries the free-text `msg` for `KEEPALIVE_FAILED` /
+    `TRANSPORT_FAILED` / `PROTOCOL_ERROR`; `None` for the other three
+    variants.
+    """
+
+    CLEAN_TEARDOWN = 1
+    SESSION_EXPIRED = 2
+    KEEPALIVE_FAILED = 3
+    TRANSPORT_FAILED = 4
+    PROTOCOL_ERROR = 5
+    CANCELLED = 6
+
 
 # Wave A T20 — RTP transport types.
 Sender = _rtp.Sender
@@ -149,6 +182,7 @@ class RtspServerConfig:
 
 __all__: list[str] = [
     # T20 transport
+    "StreamEndReason",
     "Sender",
     "Receiver",
     "SocketStats",

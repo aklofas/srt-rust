@@ -53,7 +53,7 @@ use tst_core::transport::TransportError;
 use tst_pipeline::{
     DemuxReceiver as RustDemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource,
 };
-use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport};
+use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::errors::{make_demux_error, make_rtp_error};
 use crate::mux::PyMuxerStats;
@@ -150,6 +150,15 @@ pub struct PyDemuxReceiver {
     /// ownership of `inner` cleanly. Cloning is cheap (`Arc`); multiple
     /// `close()` calls are idempotent.
     cancel: Arc<dyn tst_core::transport::TransportCancel + Send + Sync>,
+    /// Handle onto the underlying `RtpRecvTransport`'s
+    /// [`StreamEndReasonHandle`], captured from the transport BEFORE it
+    /// moves into `DemuxReceiver::new`/`with_demux_options` — the
+    /// pipeline shell (generic over `RecvTransport`) has no
+    /// `end_reason_handle()` delegate of its own, so this must be pulled
+    /// pre-move, same as `cancel` above. Independent of `inner`'s
+    /// lifetime, so `end_reason()` / `end_detail()` keep working after
+    /// `close()`.
+    end_reason: StreamEndReasonHandle,
     /// First exception raised by a registered byte sink (see
     /// `add_byte_sink`). The sink closure runs inside `recv_event`
     /// (under `allow_threads`) where it can't return a `PyResult` to
@@ -178,6 +187,9 @@ impl PyDemuxReceiver {
         let transport = builder
             .build()
             .map_err(|e| make_rtp_error(py, "TRANSPORT", &e.to_string()))?;
+        // Pulled BEFORE `transport` moves into the pipeline shell below —
+        // see the `end_reason` field doc for why.
+        let end_reason = transport.end_reason_handle();
 
         // Build the receiver (with or without demux options).
         let receiver = match demux_config {
@@ -197,6 +209,7 @@ impl PyDemuxReceiver {
         Ok(Self {
             inner: Arc::new(Mutex::new(Some(receiver))),
             cancel,
+            end_reason,
             sink_error: Arc::new(Mutex::new(None)),
         })
     }
@@ -377,6 +390,30 @@ impl PyDemuxReceiver {
         Ok((sock_py, mux_py))
     }
 
+    /// Why the receive session ended, or `None` if it hasn't ended yet
+    /// (or ended through a path this arc doesn't instrument). Still
+    /// readable after `close()` — `end_reason` is a
+    /// [`tst_rtp::StreamEndReasonHandle`] captured from the underlying
+    /// transport at construction, independent of `inner`'s lifetime.
+    ///
+    /// `StreamEndReasonHandle::get` is a lock-free `Arc<OnceLock<_>>`
+    /// read — no blocking, so no `py.allow_threads` is needed and no
+    /// `inner` mutex is touched.
+    fn end_reason(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        match self.end_reason.get() {
+            Some(r) => crate::rtp::end_reason::end_reason_to_py(py, &r),
+            None => Ok(None),
+        }
+    }
+
+    /// Free-text detail for `end_reason()` — the `msg` carried by
+    /// `KEEPALIVE_FAILED` / `TRANSPORT_FAILED` / `PROTOCOL_ERROR`; `None`
+    /// for every other reason (including "hasn't ended yet").
+    fn end_detail(&self) -> Option<String> {
+        let reason = self.end_reason.get()?;
+        crate::rtp::end_reason::end_reason_detail(&reason).map(str::to_owned)
+    }
+
     /// Close the receiver. Idempotent. Fires the cancel handle BEFORE
     /// acquiring the mutex so a concurrent `__next__` parked in
     /// `recv_event` unparks promptly — without this cancel-first step
@@ -438,6 +475,14 @@ impl PyDemuxReceiver {
     /// session via `RtspSession::into_recv_transport`) and wraps it
     /// with default demux options.
     pub(crate) fn from_recv_transport(transport: RtpRecvTransport) -> Self {
+        // Pulled BEFORE `transport` moves into `DemuxReceiver::new` below.
+        // `transport` here already carries the owning RtspClient's
+        // shared end-reason slot (swapped in by
+        // `RtspSession::into_recv_transport` before this constructor is
+        // ever called), so this handle observes reasons recorded by the
+        // RTSP keepalive/pump threads too, not just this receiver's own
+        // close.
+        let end_reason = transport.end_reason_handle();
         let receiver = RustDemuxReceiver::new(transport);
         let cancel = receiver
             .cancel_handle()
@@ -445,6 +490,7 @@ impl PyDemuxReceiver {
         Self {
             inner: Arc::new(Mutex::new(Some(receiver))),
             cancel,
+            end_reason,
             sink_error: Arc::new(Mutex::new(None)),
         }
     }
@@ -456,6 +502,9 @@ impl PyDemuxReceiver {
         transport: RtpRecvTransport,
         opts: tst_core::mpegts::demux::DemuxerConfig,
     ) -> Self {
+        // See `from_recv_transport`'s comment — same pre-move capture,
+        // same RTSP-shared-slot carry-through.
+        let end_reason = transport.end_reason_handle();
         let receiver = RustDemuxReceiver::with_demux_options(transport, opts);
         let cancel = receiver
             .cancel_handle()
@@ -463,6 +512,7 @@ impl PyDemuxReceiver {
         Self {
             inner: Arc::new(Mutex::new(Some(receiver))),
             cancel,
+            end_reason,
             sink_error: Arc::new(Mutex::new(None)),
         }
     }

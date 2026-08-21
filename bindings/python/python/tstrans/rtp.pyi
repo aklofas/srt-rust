@@ -12,6 +12,7 @@ lives in `rtp.py`.
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -50,6 +51,22 @@ __all__: list[str]
 # ---------------------------------------------------------------------------
 # T20 — RTP transport (Sender / Receiver / SocketStats / CancelHandle)
 # ---------------------------------------------------------------------------
+
+
+class StreamEndReason(enum.IntEnum):
+    """Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`.
+
+    Returned by `.end_reason()` on `Receiver` / `DemuxReceiver` /
+    `H264Receiver`; `None` means the session hasn't ended yet (or ended
+    through a path this arc doesn't instrument).
+    """
+
+    CLEAN_TEARDOWN = 1
+    SESSION_EXPIRED = 2
+    KEEPALIVE_FAILED = 3
+    TRANSPORT_FAILED = 4
+    PROTOCOL_ERROR = 5
+    CANCELLED = 6
 
 
 class SocketStats:
@@ -128,12 +145,18 @@ class Receiver:
     group automatically. The receive buffer sizes itself to the
     transport's deliverable ceiling; ``?pkt_size=`` on a receiver URL
     is rejected.
+
+    `end_reason()` / `end_detail()` report why the receive session
+    ended (`StreamEndReason` / free-text detail), or `None` for both
+    while the session is still live. Readable after `close()`.
     """
 
     def __init__(self, url: str) -> None: ...
     def recv(self, timeout_ms: Optional[int] = ...) -> bytes: ...
     def stats(self) -> SocketStats: ...
     def cancel_handle(self) -> CancelHandle: ...
+    def end_reason(self) -> Optional[StreamEndReason]: ...
+    def end_detail(self) -> Optional[str]: ...
     def close(self) -> None: ...
     def __enter__(self) -> Receiver: ...
     def __exit__(
@@ -669,6 +692,10 @@ class DemuxReceiver:
     element is the demuxer-side stats snapshot whose concrete type is
     pending T23's final pick (no `DemuxerStats` PyClass exists in
     `tstrans.mpegts` yet).
+
+    `end_reason()` / `end_detail()` report why the receive session
+    ended (`StreamEndReason` / free-text detail), or `None` for both
+    while the session is still live. Readable after `close()`.
     """
 
     def __init__(
@@ -685,6 +712,8 @@ class DemuxReceiver:
     # `__next__` and iteration stops. Append-only for the receiver's life.
     def add_byte_sink(self, callback: Callable[[bytes], None]) -> None: ...
     def stats(self) -> Tuple[SocketStats, Any]: ...
+    def end_reason(self) -> Optional[StreamEndReason]: ...
+    def end_detail(self) -> Optional[str]: ...
     def close(self) -> None: ...
     def __enter__(self) -> DemuxReceiver: ...
     def __exit__(
@@ -808,6 +837,9 @@ class H264Receiver:
     live TCP-interleaved (RTSP) receiver where no UDP socket exists;
     raises `RtpError(TRANSPORT)` if the receiver is closed.
     `cancel_handle()` — returns a `CancelHandle` for cross-thread cancellation.
+    `end_reason()` / `end_detail()` — why the session ended
+    (`StreamEndReason` / free-text detail), or `None` for both while the
+    session is still live. Readable after `close()`.
     `close()` — idempotent; fires cancel + drops the socket.
     """
 
@@ -824,6 +856,8 @@ class H264Receiver:
     def socket_stats(self) -> SocketStats: ...
     def local_addr(self) -> Optional[str]: ...
     def cancel_handle(self) -> CancelHandle: ...
+    def end_reason(self) -> Optional[StreamEndReason]: ...
+    def end_detail(self) -> Optional[str]: ...
     def close(self) -> None: ...
     def __enter__(self) -> H264Receiver: ...
     def __exit__(

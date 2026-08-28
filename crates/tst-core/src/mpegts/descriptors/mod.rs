@@ -487,11 +487,11 @@ pub fn format_identifier_ac3() -> Vec<u8> {
 ///
 /// Field encoding per Table A4.1 (3 bytes after tag+length):
 ///
-/// | Byte | Bits 7..5 | Bits 4..0 |
-/// |---|---|---|
-/// | 0 | sample_rate_code (3) | bsid (5) |
-/// | 1 | bit_rate_code (6) | surround_mode (2) |
-/// | 2 | bsmod (3) | num_channels (4) | full_svc (1) |
+/// | Byte | Field layout, MSB → LSB (bit widths) |
+/// |---|---|
+/// | 0 | sample_rate_code (3), bsid (5) |
+/// | 1 | bit_rate_code (6), surround_mode (2) |
+/// | 2 | bsmod (3), num_channels (4), full_svc (1) |
 ///
 /// Field values (from a parsed `Ac3SyncInfo` — see
 /// [`crate::codec::ac3::parse_syncframe`]):

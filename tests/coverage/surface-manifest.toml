@@ -7836,7 +7836,7 @@ scenario_ids = []
 tier = "A"
 
 # tcp_keepalive: OS-level SO_KEEPALIVE knob for the RTSP client control
-# socket (FireLink defense-in-depth rider); builder unit test in
+# socket (integrator defense-in-depth rider); builder unit test in
 # builder.rs plus an OS-observed apply test (SockRef::keepalive read-back)
 # in rtsp/client/mod.rs. URL twin `?tcp_keepalive=` tested in url.rs.
 [[surface]]

@@ -73,12 +73,11 @@ bare-metal compile is also exercised at runtime under QEMU
 (`qemu-system-arm -machine mps2-an386`, thumbv7em) in CI as an end-to-end
 mux round-trip. The libsrt-on-FreeRTOS port remains a future milestone.
 
-`tst-pipeline`'s **sender** path (`MuxSender`/`Sender`/`RawSender`) also
-builds `#![no_std]` + `alloc` under `--no-default-features` and is verified
-against the same bare-metal targets. The receiver shells
-(`Receiver`/`DemuxReceiver`/`RawReceiver`), the `Managed*` reconnect
-wrappers, `MuxPublisher`, and `ext::pairing` require the default-on `std`
-feature.
+`tst-pipeline`'s sender shells (`MuxSender`/`Sender`/`RawSender`) and
+receiver shells (`Receiver`/`DemuxReceiver`/`RawReceiver`) also build
+`#![no_std]` + `alloc` under `--no-default-features` and are verified
+against the same bare-metal targets. The `Managed*` reconnect wrappers,
+`MuxPublisher`, and `ext::pairing` require the default-on `std` feature.
 
 ---
 

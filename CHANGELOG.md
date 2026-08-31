@@ -86,6 +86,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stamped every time a stream carries an item through a `Muxer` push or
   a `Demuxer` emit. `std`-only (the field doesn't exist under `no_std`
   — no wall clock there).
+- **`tst-pipeline`'s receiver shells now build `#![no_std]` + `alloc`.**
+  `Receiver` / `DemuxReceiver` / `RawReceiver` join the sender shells
+  (`MuxSender` / `Sender` / `RawSender`, no_std since 2026-05-31) under
+  `--no-default-features`, so the crate's no_std surface now covers
+  both directions of the pipeline. None of the three hold an internal
+  lock (their hot-path methods take `&mut self`), so unlike
+  `MuxSender` there's no spin-lock swap and the existing
+  one-sender-per-task concurrency caveat doesn't apply to them; they
+  do eagerly allocate a `transport.max_payload()`-sized scratch buffer
+  at construction, so on a fixed-heap device `max_payload()` is a
+  heap-sizing decision as well as a wire-protocol ceiling. Verified
+  against the same bare-metal targets (`thumbv7em-none-eabihf` /
+  `riscv32imac-unknown-none-elf`) as the sender path.
 
 ### Changed
 

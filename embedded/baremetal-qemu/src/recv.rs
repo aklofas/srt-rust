@@ -141,19 +141,30 @@ impl RecvTransport for LoopbackRecvTransport {
         }
 
         // Step 1: inject the next not-yet-sent datagram if there's TX room.
-        // Only pop from the queue once we know the send can be issued this
-        // pass, so a `Backpressure` return never silently drops a datagram.
+        // Peek (don't pop) the front of the queue: only remove it once
+        // `send_slice` actually succeeds, so a send failure leaves the
+        // datagram in `to_send` for a future retry instead of losing it
+        // (a lost datagram here would mean `remaining` never reaches 0 and
+        // the caller loops forever).
         if !self.to_send.is_empty() {
             let can_send = self.sockets.get_mut::<udp::Socket>(self.handle).can_send();
             if can_send {
-                let next = self.to_send.pop_front().expect("checked non-empty above");
-                self.sockets
+                let next = self.to_send.front().expect("checked non-empty above");
+                let send_result = self
+                    .sockets
                     .get_mut::<udp::Socket>(self.handle)
-                    .send_slice(&next, self.endpoint)
-                    .map_err(|_| TransportError::Broken {
-                        msg: String::from("udp loopback recv: send_slice failed"),
-                        errno_code: None,
-                    })?;
+                    .send_slice(next, self.endpoint);
+                match send_result {
+                    Ok(()) => {
+                        self.to_send.pop_front();
+                    }
+                    Err(_) => {
+                        return Err(TransportError::Broken {
+                            msg: String::from("udp loopback recv: send_slice failed"),
+                            errno_code: None,
+                        });
+                    }
+                }
             }
         }
 
@@ -178,15 +189,23 @@ impl RecvTransport for LoopbackRecvTransport {
                 self.remaining -= 1;
                 Ok(n)
             }
-            Err(_) => Err(TransportError::Backpressure {
-                msg: String::from("udp loopback recv: recv_slice not ready"),
+            // `can_recv()` just returned true, so a datagram IS queued — a
+            // failure here (e.g. `buf` too small, truncation) is a genuine
+            // wire-level error, not "nothing ready yet". Map to `Broken`
+            // (terminal) rather than `Backpressure` (retryable): treating
+            // it as retryable risks a stuck loop if the failed call already
+            // dequeued the datagram (`remaining` would never reach 0).
+            Err(_) => Err(TransportError::Broken {
+                msg: String::from("udp loopback recv: recv_slice failed after can_recv() was true"),
                 errno_code: None,
             }),
         }
     }
 
     fn max_payload(&self) -> usize {
-        1500 // loopback MTU ceiling — matches the send side's chunking.
+        // loopback MTU ceiling: a safe upper bound on any datagram the send
+        // side can produce (`SmoltcpUdpTransport::max_payload()` is 1316).
+        1500
     }
 
     fn is_alive(&self) -> bool {

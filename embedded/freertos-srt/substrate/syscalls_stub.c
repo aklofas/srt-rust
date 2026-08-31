@@ -17,7 +17,7 @@
  * firmware build gets undefined-reference link errors on _getentropy /
  * mbedtls_hardware_poll instead of silently predictable key material —
  * wire a hardware RNG or your board's approved entropy source. */
-#ifdef TST_QEMU_TEST_ENTROPY
+#if TST_QEMU_TEST_ENTROPY
 int _getentropy(void* buf, size_t n)
 {
     static uint32_t seed = 0x01234567u;
@@ -63,7 +63,7 @@ int __wrap_gettimeofday(struct timeval* tv, void* tz)
  * SEK/salt just need to be self-consistent within the run. Gated behind the
  * same TST_QEMU_TEST_ENTROPY define as _getentropy above (it travels with
  * it — a real embedded build must wire a hardware RNG here instead). */
-#ifdef TST_QEMU_TEST_ENTROPY
+#if TST_QEMU_TEST_ENTROPY
 int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t* olen)
 {
     (void)data;

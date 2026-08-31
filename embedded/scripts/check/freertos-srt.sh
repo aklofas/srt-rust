@@ -23,6 +23,18 @@ need() { # $1=binary  $2=human label
 need arm-none-eabi-g++ arm-none-eabi-g++
 need qemu-system-arm   qemu-system-arm
 
+# Entropy-stub contract: without TST_QEMU_TEST_ENTROPY the substrate must NOT
+# emit the deterministic hooks (production builds must link real ones).
+STUB=embedded/freertos-srt/substrate/syscalls_stub.c
+TMPO=$(mktemp /tmp/syscalls_stub_XXXX.o)
+arm-none-eabi-gcc -c "$STUB" -o "$TMPO" -I embedded/freertos-srt/substrate
+if arm-none-eabi-nm "$TMPO" | grep -qE ' T (_getentropy|mbedtls_hardware_poll)$'; then
+  echo "FAIL[entropy-stub]: deterministic hooks emitted without TST_QEMU_TEST_ENTROPY"; rm -f "$TMPO"; exit 1
+fi
+arm-none-eabi-gcc -c "$STUB" -o "$TMPO" -I embedded/freertos-srt/substrate -DTST_QEMU_TEST_ENTROPY=1
+arm-none-eabi-nm "$TMPO" | grep -qE ' T _getentropy$' || { echo "FAIL[entropy-stub]: hooks missing WITH the define"; rm -f "$TMPO"; exit 1; }
+rm -f "$TMPO"
+
 # ---------------------------------------------------------------------------
 # QEMU retry driver.
 #

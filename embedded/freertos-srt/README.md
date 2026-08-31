@@ -78,6 +78,12 @@ builds are seconds. Prerequisites: `arm-none-eabi-gcc`/`g++`, `qemu-system-arm`,
 > not cryptographically secure.** Before enabling SRT encryption in production
 > firmware, replace both hooks with a hardware RNG or your board's approved
 > entropy source — otherwise the key material is predictable.
+>
+> The hooks are compiled in only under `-DTST_QEMU_TEST_ENTROPY=1` (`build.sh`
+> sets it for every target here). A production build that doesn't define it
+> gets undefined-reference link errors on `_getentropy` /
+> `mbedtls_hardware_poll` instead of silently linking predictable key
+> material — that link failure is the reminder to wire a real source.
 
 ## The gate
 

@@ -103,7 +103,7 @@ Gate targets:
 
 ### Production crypto warning
 
-> **The AES-128 path in this reference port uses _deterministic_ entropy.** The `ENCRYPT=1` builds wire mbedTLS, but the entropy hooks are a fixed-seed LCG chosen for QEMU/CI reproducibility. **This is not cryptographically secure.** Before enabling SRT encryption in production firmware, replace both hooks with a hardware RNG or your board's approved entropy source. See the warning in [`/embedded/freertos-srt/README.md`](/embedded/freertos-srt/README.md) for exactly which hooks to replace.
+> **The AES-128 path in this reference port uses _deterministic_ entropy.** The `ENCRYPT=1` builds wire mbedTLS, but the entropy hooks are a fixed-seed LCG chosen for QEMU/CI reproducibility, compiled in only under `-DTST_QEMU_TEST_ENTROPY=1`. **This is not cryptographically secure.** Before enabling SRT encryption in production firmware, replace both hooks with a hardware RNG or your board's approved entropy source — a build that omits the define fails at link on the missing hooks rather than silently linking predictable key material. See the warning in [`/embedded/freertos-srt/README.md`](/embedded/freertos-srt/README.md) for exactly which hooks to replace.
 
 ## Prerequisites
 

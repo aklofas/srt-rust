@@ -14,11 +14,37 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
+#[cfg(target_arch = "arm")]
 use cortex_m_rt::entry;
+#[cfg(target_arch = "arm")]
 use cortex_m_semihosting::{debug, hprintln};
-use embedded_alloc::Heap;
+#[cfg(target_arch = "arm")]
 use panic_semihosting as _;
+
+#[cfg(target_arch = "riscv32")]
+use riscv_rt::entry;
+#[cfg(target_arch = "riscv32")]
+use riscv_semihosting::{debug, hprintln};
+
+use embedded_alloc::Heap;
 use spin::Mutex;
+
+/// riscv32's mirror of `panic-semihosting`'s ARM-only panic handler (that
+/// crate's whole content is `#![cfg(target_arch = "arm")]` — built for any
+/// other arch it compiles to an empty crate with no `#[panic_handler]`, so
+/// it cannot cover this target). Same shape: print the panic message to the
+/// host's semihosting stderr, then exit QEMU with a failure status so a
+/// panic surfaces as a non-zero process exit rather than a silent hang.
+#[cfg(target_arch = "riscv32")]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write;
+    if let Ok(mut out) = riscv_semihosting::hio::hstdout() {
+        let _ = writeln!(out, "{info}");
+    }
+    debug::exit(debug::EXIT_FAILURE);
+    loop {}
+}
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};

@@ -8,3 +8,14 @@ target = "thumbv7em-none-eabihf"
 # the `debug::exit` pass/fail code to the host process exit status.
 runner = "qemu-system-arm -machine mps2-an386 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = ["-C", "link-arg=-Tlink.x"]
+
+[target.riscv32imac-unknown-none-elf]
+# QEMU appends the built ELF path after `-kernel`, same contract as the ARM
+# leg above. `-M virt` is QEMU's generic RISC-V VirtIO board. `-bios none`
+# skips the default OpenSBI firmware, which otherwise expects to chainload
+# an S-mode kernel — riscv-rt's runtime starts directly in M-mode, so
+# `-kernel` must jump straight to our ELF's entry point instead. Semihosting
+# carries hprintln! output and the `debug::exit` pass/fail code to the host
+# process exit status, mirroring the ARM leg.
+runner = "qemu-system-riscv32 -M virt -nographic -semihosting-config enable=on,target=native -bios none -kernel"
+rustflags = ["-C", "link-arg=-Tlink.x"]

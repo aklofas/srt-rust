@@ -13,7 +13,7 @@ of it runs under QEMU — no hardware required.
 
 | Directory | What it proves | Stack |
 |---|---|---|
-| `baremetal-qemu/` | the `tst-core` muxer + `tst-pipeline` `MuxSender` run `no_std` on a Cortex-M4 and byte-match the committed golden, including smoltcp UDP loopback egress | Rust `no_std`, QEMU `mps2-an386` |
+| `baremetal-qemu/` | the `tst-core` muxer + `tst-pipeline` `MuxSender`/`DemuxReceiver` run `no_std` on a Cortex-M4 and byte-match the committed golden, including smoltcp UDP loopback egress and ingress | Rust `no_std`, QEMU `mps2-an386` |
 | `baremetal-qemu-c/` | the offline C ABI (`tst-c-core`) works from C firmware via a `no_std` staticlib (`libtstrans_firmware.a`) | Rust staticlib + arm-none-eabi C firmware, QEMU |
 | `freertos-srt/` | **reference product**: libsrt + the muxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress from a microcontroller, plain and AES-128 | C/C++ substrate, arm-none-eabi GCC, QEMU |
 

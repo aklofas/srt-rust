@@ -71,8 +71,8 @@ cat "$SENDOUT"
 # timeout above), so QEMU should be finishing up (on-device demux is fast).
 # Its own `timeout 60` wrapper is the hard backstop against an unresponsive
 # guest wedging the gate; wait for it to actually exit.
-wait "$QPID" 2>/dev/null || true
-qemu_rc=$?
+qemu_rc=0
+wait "$QPID" 2>/dev/null || qemu_rc=$?
 echo "----- QEMU output -----"; cat "$QOUT"
 
 fail=0

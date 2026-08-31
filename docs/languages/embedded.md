@@ -1,6 +1,6 @@
 # Embedded (no_std / bare-metal)
 
-> **Who this is for:** You are building firmware that runs without an OS, or on a real-time OS like FreeRTOS, and need the MPEG-TS/KLV core — or full SRT video egress — inside the microcontroller, not in a host process.
+> **Who this is for:** You are building firmware that runs without an OS, or on a real-time OS like FreeRTOS, and need the MPEG-TS/KLV core — or full SRT video egress and ingress — inside the microcontroller, not in a host process.
 
 > **You will learn:**
 > - The three consumption paths (no_std Rust, C staticlib, FreeRTOS reference port)
@@ -16,7 +16,7 @@ ts-transformer has three embedded consumption paths:
 |---|---|---|
 | **no_std Rust** | `tst-core` + `tst-pipeline` sender and receiver shells, `#![no_std]` + `alloc`, compile-gated for two bare-metal targets | [`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) |
 | **C firmware staticlib** | Offline mux/demux C ABI (the `tst-c-core` crate) bundled as `libtstrans_firmware.a` | [`embedded/baremetal-qemu-c/`](/embedded/baremetal-qemu-c/) |
-| **FreeRTOS reference port** | Full libsrt + the MPEG-TS muxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress from a microcontroller, plain and AES-128 | [`embedded/freertos-srt/`](/embedded/freertos-srt/) |
+| **FreeRTOS reference port** | Full libsrt + the MPEG-TS muxer/demuxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress AND ingress from/to a microcontroller, plain and AES-128 on egress | [`embedded/freertos-srt/`](/embedded/freertos-srt/) |
 
 All three run under QEMU (`mps2-an386`, Cortex-M4) — no vendor hardware or BSPs are required or provided. See [`/docs/reference/compatibility.md`](/docs/reference/compatibility.md) for the platform-support tiers.
 
@@ -77,7 +77,7 @@ bash embedded/scripts/check/firmware-qemu.sh
 
 ## Path 3 — FreeRTOS reference port
 
-[`embedded/freertos-srt/`](/embedded/freertos-srt/) is the flagship: a complete reference port of **libsrt** + the MPEG-TS muxer onto FreeRTOS + FreeRTOS-Plus-POSIX + lwIP. It demonstrates SRT video egress from a microcontroller, including byte-exact ARQ recovery under ~20% packet loss and AES-128 encryption.
+[`embedded/freertos-srt/`](/embedded/freertos-srt/) is the flagship: a complete reference port of **libsrt** + the MPEG-TS muxer/demuxer onto FreeRTOS + FreeRTOS-Plus-POSIX + lwIP. It demonstrates SRT video egress AND ingress from/to a microcontroller (`example` streams out; `srt-recv` receives in and demuxes on-device), including byte-exact ARQ recovery under ~20% packet loss and AES-128 encryption on egress.
 
 It is **not built by default** — it is not a Cargo workspace member, and its gates skip locally when the cross-toolchain or QEMU is absent. In CI, every `freertos-srt` target runs as a fail-closed hard gate under QEMU.
 

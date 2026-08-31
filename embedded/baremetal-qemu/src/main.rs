@@ -33,8 +33,9 @@ use spin::Mutex;
 /// crate's whole content is `#![cfg(target_arch = "arm")]` — built for any
 /// other arch it compiles to an empty crate with no `#[panic_handler]`, so
 /// it cannot cover this target). Same shape: print the panic message to the
-/// host's semihosting stderr, then exit QEMU with a failure status so a
-/// panic surfaces as a non-zero process exit rather than a silent hang.
+/// host's semihosting stdout (`hstdout`), then exit QEMU with a failure
+/// status so a panic surfaces as a non-zero process exit rather than a
+/// silent hang.
 #[cfg(target_arch = "riscv32")]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {

@@ -12,6 +12,12 @@
 #include <time.h>
 #include <sys/time.h>
 
+/* Deterministic test-only entropy. Emitted ONLY under
+ * -DTST_QEMU_TEST_ENTROPY=1 (the QEMU gate builds). A production
+ * firmware build gets undefined-reference link errors on _getentropy /
+ * mbedtls_hardware_poll instead of silently predictable key material —
+ * wire a hardware RNG or your board's approved entropy source. */
+#ifdef TST_QEMU_TEST_ENTROPY
 int _getentropy(void* buf, size_t n)
 {
     static uint32_t seed = 0x01234567u;
@@ -23,6 +29,7 @@ int _getentropy(void* buf, size_t n)
     }
     return 0;
 }
+#endif /* TST_QEMU_TEST_ENTROPY */
 
 /* __wrap_gettimeofday: with ENABLE_MONOTONIC_CLOCK=OFF, libsrt's sync_posix
  * Condition::wait_for builds its pthread_cond_timedwait abstime from
@@ -53,8 +60,10 @@ int __wrap_gettimeofday(struct timeval* tv, void* tz)
 /* mbedTLS hardware entropy hook (MBEDTLS_ENTROPY_HARDWARE_ALT, Phase B). Bare
  * metal has no entropy source; reuse the deterministic LCG. DETERMINISTIC ON
  * PURPOSE so the CI gate reproduces — both peers share the passphrase, the
- * SEK/salt just need to be self-consistent within the run. NOT production-safe;
- * a real embedded build must wire a hardware RNG. */
+ * SEK/salt just need to be self-consistent within the run. Gated behind the
+ * same TST_QEMU_TEST_ENTROPY define as _getentropy above (it travels with
+ * it — a real embedded build must wire a hardware RNG here instead). */
+#ifdef TST_QEMU_TEST_ENTROPY
 int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t* olen)
 {
     (void)data;
@@ -62,3 +71,4 @@ int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t*
     if (olen) *olen = len;
     return 0;
 }
+#endif /* TST_QEMU_TEST_ENTROPY */

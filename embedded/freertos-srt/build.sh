@@ -21,4 +21,9 @@ case "$t" in
   malloc-stress) export LWIP=0 LIBSRT=0 NETIF=none    APP="tests/malloc-stress/main.cpp" ;;
   *) echo "unknown target: $t" >&2; exit 2 ;;
 esac
+# TST_QEMU_TEST_ENTROPY gates syscalls_stub.c's deterministic entropy hooks
+# (see its header comment) — every target built by this script is a QEMU test
+# build, so it's appended here unconditionally, after the per-target DEFS
+# above (which some cases overwrite rather than extend).
+export DEFS="${DEFS:-} -DTST_QEMU_TEST_ENTROPY=1"
 source substrate/build-common.sh

@@ -89,6 +89,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Vendored dependency updates: libsrt v1.5.6 → v1.5.7 (security),
+  librist v0.2.18 → v0.2.20 (security audit), FreeRTOS-Kernel V11.3.0 →
+  V11.3.1.** libsrt 1.5.7 is a security-hardening release: KM message
+  length validation before internal conversion/copy routines, prevention
+  of post-establishment KMRSP encryption downgrade, minimum-MSS
+  enforcement against heap corruption, forged-ACK send-buffer protection,
+  DROPREQ range validation, FEC payload-size checks, and a use-after-free
+  fix in the bonding BACKUP send path (Haivision/srt#3359, #3323) — all
+  hostile-wire-input surface. Every build of `tst-srt` / `tst-c` / the
+  Python wheels / the JVM JAR vendors this statically, so consumers pick
+  the fixes up by rebuilding/upgrading. librist 0.2.20 stays
+  ABI-compatible with 0.2.18 and carries an upstream tool/API
+  memory-safety audit (parser over-reads, short-datagram rejection in the
+  ipv4-mux receiver and OOB message handler, key-material wiping) plus
+  new opt-in features (`cbr-output` pacing, RTT-based bonded-leg muting)
+  that `tst-rist` does not yet expose; no build-system changes (the LZ4
+  and meson option story is unchanged from 0.2.18). FreeRTOS-Kernel
+  V11.3.1 is a patch release (SVC privilege checks, timer command ID
+  validation, queue-set type verification). mbedTLS (3.6.7 LTS), lwIP
+  (2.2.1) and FreeRTOS-Plus-POSIX were already at their latest upstream
+  versions.
 - **`ReconnectPolicy` gained a `mode: ReconnectMode` field.** Full
   struct literals (not using `..Default::default()`) need the new
   field. This is compile-breaking for those callers, so the next

@@ -108,7 +108,7 @@ type stubs (`mypy --strict` clean).
 ## SRT transport
 
 `tstrans.srt` ships full SRT (Secure Reliable Transport) bindings on top
-of libsrt 1.5.6 — 18 PyClasses spanning low-level `Builder` / `Socket` /
+of libsrt 1.5.7 — 18 PyClasses spanning low-level `Builder` / `Socket` /
 `Listener` primitives, high-level `Sender` / `Receiver` for raw bytes,
 `MuxSender` / `DemuxReceiver` for one-call mux/demux convenience, and
 `ManagedSender` / `ManagedReceiver` / `ManagedMuxSender` /

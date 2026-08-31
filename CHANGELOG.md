@@ -96,7 +96,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of post-establishment KMRSP encryption downgrade, minimum-MSS
   enforcement against heap corruption, forged-ACK send-buffer protection,
   DROPREQ range validation, FEC payload-size checks, and a use-after-free
-  fix in the bonding BACKUP send path (Haivision/srt#3359, #3323) — all
+  fix in the bonding BACKUP send path (Haivision/srt#3359,
+  Haivision/srt#3323) — all
   hostile-wire-input surface. Every build of `tst-srt` / `tst-c` / the
   Python wheels / the JVM JAR vendors this statically, so consumers pick
   the fixes up by rebuilding/upgrading. librist 0.2.20 stays

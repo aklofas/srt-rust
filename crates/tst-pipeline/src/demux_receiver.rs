@@ -50,7 +50,10 @@
 
 use crate::receiver::{Receiver, ReceiverConfig, ReceiverErrorSource};
 use crate::shell_error::ShellErrorKind;
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use tracing::info_span;
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig};
@@ -133,12 +136,12 @@ pub struct DemuxReceiver<R: RecvTransport> {
     _span: crate::shell_error::ShellSpan,
 }
 
-impl<R: RecvTransport> std::fmt::Debug for DemuxReceiver<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<R: RecvTransport> core::fmt::Debug for DemuxReceiver<R> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DemuxReceiver")
             .field("is_alive", &self.is_alive())
             .field("byte_sinks", &self.byte_sinks.len())
-            .field("transport_kind", &std::any::type_name::<R>())
+            .field("transport_kind", &core::any::type_name::<R>())
             .finish()
     }
 }
@@ -149,7 +152,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         let span = info_span!(
             target: "tst_pipeline::demux_receiver",
             "demux_receiver",
-            transport_kind = std::any::type_name::<R>(),
+            transport_kind = core::any::type_name::<R>(),
         );
         let _enter = span.enter();
         tracing::info!("DemuxReceiver opened");
@@ -159,7 +162,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             demux: Demuxer::new(),
             byte_sinks: Vec::new(),
             terminal_error: None,
-            _span: std::panic::AssertUnwindSafe(span),
+            _span: core::panic::AssertUnwindSafe(span),
         }
     }
 
@@ -168,7 +171,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         let span = info_span!(
             target: "tst_pipeline::demux_receiver",
             "demux_receiver",
-            transport_kind = std::any::type_name::<R>(),
+            transport_kind = core::any::type_name::<R>(),
         );
         let _enter = span.enter();
         tracing::info!("DemuxReceiver opened");
@@ -178,7 +181,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             demux: Demuxer::with_config(options),
             byte_sinks: Vec::new(),
             terminal_error: None,
-            _span: std::panic::AssertUnwindSafe(span),
+            _span: core::panic::AssertUnwindSafe(span),
         }
     }
 
@@ -498,7 +501,7 @@ pub struct DemuxReceiverStats {
     pub pmt_versions_seen: u64,
     pub discontinuities: u64,
     pub nonconformant: u64,
-    pub per_stream: std::collections::BTreeMap<u16, tst_core::mpegts::stats::StreamStats>,
+    pub per_stream: BTreeMap<u16, tst_core::mpegts::stats::StreamStats>,
 }
 
 impl<R: RecvTransport> DemuxReceiver<R> {

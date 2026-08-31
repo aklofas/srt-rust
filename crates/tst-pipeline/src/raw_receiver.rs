@@ -12,7 +12,9 @@
 //! - You want to handle framing yourself.
 //! - You're writing a test that needs a bare receive loop.
 
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use tracing::info_span;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
@@ -78,13 +80,13 @@ pub struct RawReceiver<R: RecvTransport> {
     _span: crate::shell_error::ShellSpan,
 }
 
-impl<R: RecvTransport> std::fmt::Debug for RawReceiver<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<R: RecvTransport> core::fmt::Debug for RawReceiver<R> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("RawReceiver")
             .field("is_alive", &self.is_alive())
             .field("buf_capacity", &self.buf.capacity())
             .field("bytes_received", &self.stats.bytes_received)
-            .field("transport_kind", &std::any::type_name::<R>())
+            .field("transport_kind", &core::any::type_name::<R>())
             .finish()
     }
 }
@@ -165,7 +167,7 @@ impl<R: RecvTransport> RawReceiver<R> {
         let span = info_span!(
             target: "tst_pipeline::raw_receiver",
             "raw_receiver",
-            transport_kind = std::any::type_name::<R>(),
+            transport_kind = core::any::type_name::<R>(),
         );
         let _enter = span.enter();
         tracing::info!("RawReceiver opened");
@@ -175,7 +177,7 @@ impl<R: RecvTransport> RawReceiver<R> {
             transport,
             buf: vec![0u8; cap],
             stats: RawRecvStats::default(),
-            _span: std::panic::AssertUnwindSafe(span),
+            _span: core::panic::AssertUnwindSafe(span),
         }
     }
 

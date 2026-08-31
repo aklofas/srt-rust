@@ -6,6 +6,8 @@
 
 extern crate alloc;
 
+mod recv;
+
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
@@ -126,32 +128,42 @@ struct SmoltcpUdpTransport {
     acc: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
+/// Shared smoltcp loopback UDP/IP stack: a `Loopback` device + `Interface`
+/// bound to 127.0.0.1/8, with one UDP socket bound to `LOOPBACK_PORT`.
+/// Factored out so both the send-side (`SmoltcpUdpTransport`, check 3) and
+/// receive-side (`recv::LoopbackRecvTransport`, check 4) harnesses build an
+/// identical stack without duplicating the setup — each gets its own
+/// independent `Loopback` device instance, so both may bind the same local
+/// port with no conflict.
+fn new_loopback_udp_stack() -> (Loopback, Interface, SocketSet<'static>, SocketHandle) {
+    let mut device = Loopback::new(Medium::Ethernet);
+
+    // Locally-administered fake MAC; loopback resolves its own ARP.
+    let config = Config::new(EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]).into());
+    let mut iface = Interface::new(config, &mut device, Instant::from_millis(0));
+    iface.update_ip_addrs(|addrs| {
+        addrs
+            .push(IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8))
+            .expect("ip addr slot");
+    });
+
+    // Owned (Vec-backed) packet buffers — available because the smoltcp
+    // `alloc` feature is enabled. 16 metadata slots / 4 KiB payload each is
+    // ample for the 564-byte golden (one ~564-byte datagram per chunk).
+    let rx_buf = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 16], vec![0u8; 4096]);
+    let tx_buf = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 16], vec![0u8; 4096]);
+    let mut socket = udp::Socket::new(rx_buf, tx_buf);
+    socket.bind(LOOPBACK_PORT).expect("udp bind");
+
+    let mut sockets = SocketSet::new(vec![]);
+    let handle = sockets.add(socket);
+
+    (device, iface, sockets, handle)
+}
+
 impl SmoltcpUdpTransport {
     fn new(acc: Arc<Mutex<Vec<Vec<u8>>>>) -> Self {
-        let mut device = Loopback::new(Medium::Ethernet);
-
-        // Locally-administered fake MAC; loopback resolves its own ARP.
-        let config = Config::new(EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]).into());
-        let mut iface = Interface::new(config, &mut device, Instant::from_millis(0));
-        iface.update_ip_addrs(|addrs| {
-            addrs
-                .push(IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8))
-                .expect("ip addr slot");
-        });
-
-        // Owned (Vec-backed) packet buffers — available because the smoltcp
-        // `alloc` feature is enabled. 16 metadata slots / 4 KiB payload each is
-        // ample for the 564-byte golden (one ~564-byte datagram per chunk).
-        let rx_buf =
-            udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 16], vec![0u8; 4096]);
-        let tx_buf =
-            udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 16], vec![0u8; 4096]);
-        let mut socket = udp::Socket::new(rx_buf, tx_buf);
-        socket.bind(LOOPBACK_PORT).expect("udp bind");
-
-        let mut sockets = SocketSet::new(vec![]);
-        let handle = sockets.add(socket);
-
+        let (device, iface, sockets, handle) = new_loopback_udp_stack();
         Self {
             device,
             iface,
@@ -339,9 +351,28 @@ fn main() -> ! {
         loop {}
     }
 
+    // Check 4 — no_std DemuxReceiver<LoopbackRecvTransport> recovers the
+    // pushed video AUs over a real smoltcp UDP/IP receive-side stack: the
+    // runtime proof for the receiver-path no_std work. Builds its own
+    // dedicated send-side dataset (see recv.rs module docs for why — the
+    // 3-packet check-3 golden is one confirming sync byte short of what
+    // Receiver's sync-lock heuristic needs); compares against the same
+    // synthetic AU the send side pushed, repeated once per push — not
+    // GOLDEN, since DemuxReceiver hands back the demuxed video payload, not
+    // raw TS bytes.
+    let recv_out = recv::udp_recv_check();
+    let expected_au = synthetic_h264_idr().repeat(recv::CHECK4_AU_PUSHES);
+    if recv_out != expected_au {
+        report_mismatch("udp_recv", &recv_out, &expected_au);
+        debug::exit(debug::EXIT_FAILURE);
+        loop {}
+    }
+
     hprintln!(
-        "PASS: muxer + mux_sender + udp_loopback all match golden ({} bytes)",
-        GOLDEN.len()
+        "PASS: muxer + mux_sender + udp_loopback match golden ({} bytes); \
+         udp_recv recovered {} AU(s) byte-exact via DemuxReceiver",
+        GOLDEN.len(),
+        recv::CHECK4_AU_PUSHES
     );
     debug::exit(debug::EXIT_SUCCESS);
     loop {}

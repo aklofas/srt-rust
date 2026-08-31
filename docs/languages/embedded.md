@@ -100,6 +100,7 @@ Gate targets:
 | `fault-smoke` | HardFault/assert prints labeled `FAIL[…]` and exits, not hangs |
 | `malloc-stress` | 4 tasks × 20000 malloc/free + concurrent exception handling + per-task errno isolation |
 | `example` | Real-NIC SRT caller streams the golden to a host listener, plain and AES-128 |
+| `srt-recv` | Real-NIC SRT listener receives from a host caller and demuxes the golden on-device, byte-exact (the reverse of `example`) |
 
 ### Production crypto warning
 

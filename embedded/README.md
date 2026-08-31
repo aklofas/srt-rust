@@ -15,7 +15,7 @@ of it runs under QEMU — no hardware required.
 |---|---|---|
 | `baremetal-qemu/` | the `tst-core` muxer + `tst-pipeline` `MuxSender`/`DemuxReceiver` run `no_std` on **both ARM (Cortex-M4) and RISC-V** and byte-match the committed golden, including smoltcp UDP loopback egress and ingress | Rust `no_std`, QEMU `mps2-an386` (ARM) + `virt` (RISC-V) |
 | `baremetal-qemu-c/` | the offline C ABI (`tst-c-core`) works from C firmware via a `no_std` staticlib (`libtstrans_firmware.a`) | Rust staticlib + arm-none-eabi C firmware, QEMU |
-| `freertos-srt/` | **reference product**: libsrt + the muxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress from a microcontroller, plain and AES-128 | C/C++ substrate, arm-none-eabi GCC, QEMU |
+| `freertos-srt/` | **reference product**: libsrt + the muxer/demuxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress AND ingress from/to a microcontroller (plain and AES-128 on egress; on-device demux verification on ingress) | C/C++ substrate, arm-none-eabi GCC, QEMU |
 
 ## Layout
 
@@ -59,6 +59,7 @@ bash embedded/scripts/check/freertos-srt.sh libsrt-smoke   # cross-built libsrt 
 bash embedded/scripts/check/freertos-srt.sh loopback-arq      # SRT ARQ + AES-128 over a lossy netif
 bash embedded/scripts/check/freertos-srt.sh arq-connfail      # caller at dead port fails fast with labeled verdict (EMB-JOIN-1)
 bash embedded/scripts/check/freertos-srt.sh example           # NIC egress to a host listener
+bash embedded/scripts/check/freertos-srt.sh srt-recv          # NIC ingress from a host caller, demuxed + verified on-device
 bash embedded/scripts/check/freertos-srt.sh fault-smoke       # deliberate fault produces labeled FAIL token + fast exit (gate asserts the failure)
 bash embedded/scripts/check/freertos-srt.sh malloc-stress     # 4 tasks × 20000 malloc/free + EH + errno isolation
 ```

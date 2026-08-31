@@ -831,7 +831,11 @@ jobs:
       # installed above; cmake is preinstalled on the runner image; the apt step
       # installs the rest; embedded/vendor/{lwip,freertos-*} +
       # vendor/{srt,mbedtls} come from the recursive submodule checkout; the
-      # example host harness builds the vendored host libsrt via cargo.
+      # example host harness builds the vendored host libsrt via cargo, and
+      # srt-recv additionally builds the embedded/baremetal-qemu-c staticlib
+      # (libtstrans_firmware.a, thumbv7em-none-eabihf) via cargo -- the
+      # target is already installed for this job (see the toolchain step
+      # above), so no new prerequisite here either.
 
       # exceptions (was S0): concurrent per-task C++ throw/catch with exception
       # isolation on FreeRTOS + FreeRTOS-Plus-POSIX (pthread backend). Hard-gate.

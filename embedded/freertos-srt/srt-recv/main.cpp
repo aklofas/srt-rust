@@ -13,7 +13,10 @@
 // Topology: `-nic user,model=lan9118,hostfwd=udp::H-:9003` (SLIRP UDP port
 // forward) — SRT's base protocol is UDP, so the inbound handshake traverses
 // SLIRP's NAT the same way an outbound one does in `example`. Verified by a
-// standalone probe firmware before this file was written (see the PR body).
+// standalone probe firmware before this file was written: a minimal SRT
+// listener bound to the guest NIC accepted a connection from the host
+// launched with the same hostfwd flag on the first attempt — no fallback
+// topology (firmware-as-caller) was needed.
 #include <cstdio>
 #include <cstdint>
 #include <cstring>

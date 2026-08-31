@@ -37,7 +37,18 @@ fn main() {
 // is the authoritative verifier (on-device demux + byte-compare), so this
 // driver only needs to prove the bytes actually left the host.
 fn run_send(addr: &str) {
-    let mut sock = match SocketBuilder::new().connect(addr) {
+    // sender_defaults() (connect_timeout=15s, linger=5s, role=Sender) is the
+    // house preset for a pure caller-sender socket — see its doc example in
+    // crates/tst-srt/src/builder.rs and crates/tst-interop/src/transport.rs's
+    // rationale for why a SHARED send/recv builder can't use it (this
+    // function is send-only, so nothing here blocks using it directly).
+    // Explicit over SocketBuilder::new()'s raw (receiver-shaped) defaults —
+    // the golden's LIVE handshake proved fine either way over lossless SLIRP
+    // loopback, but a real radio-link deployment of this driver shape
+    // shouldn't be timing-sensitive on the caller-role/connect-timeout knobs.
+    let mut b = SocketBuilder::new();
+    b.sender_defaults();
+    let mut sock = match b.connect(addr) {
         Ok(s) => s,
         Err(e) => { eprintln!("FAIL[srt_recv_host_send]: connect {addr}: {e}"); exit(1); }
     };
@@ -45,18 +56,30 @@ fn run_send(addr: &str) {
         eprintln!("FAIL[srt_recv_host_send]: send: {e}");
         exit(1);
     }
-    // The golden is a single small LIVE message (564 B); a short fixed grace
-    // is enough for the pacer to push it onto the wire over the lossless
-    // SLIRP loopback path (no drain-polling loop needed at this size — that
-    // pattern in example/main.cpp exists for a 36 KB REPEAT stream, not a
-    // single message). The firmware-side listener closes its accepted socket
-    // immediately once it has read all the bytes it expects (it has nothing
-    // to send back), so by the time this sleep elapses the peer has often
-    // already closed its end — sock.close() below treats that race as
-    // expected, not fatal: the data already left via the successful send()
-    // above, and the firmware is the authoritative verifier (it demuxes
-    // on-device and prints its own PASS/FAIL token).
-    std::thread::sleep(Duration::from_millis(500));
+    // Deterministic drain: poll the send buffer until libsrt reports it
+    // empty, bounded to 5s in 50ms steps (the golden is a single small LIVE
+    // message, 564 B — should drain in well under a second over lossless
+    // SLIRP loopback; the bound is a backstop, not the expected path). The
+    // firmware-side listener closes its accepted socket immediately once it
+    // has read all the bytes it expects (it has nothing to send back), so a
+    // stats() error mid-poll most often means the peer already closed after
+    // reading everything — treated as "nothing left to drain", not fatal:
+    // the data already left via the successful send() above, and the
+    // firmware is the authoritative verifier (it demuxes on-device and
+    // prints its own PASS/FAIL token).
+    let mut drained = false;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        match sock.stats() {
+            Ok(s) if s.send_buffer_packets == 0 => { drained = true; break; }
+            Ok(_) => {}
+            Err(_) => { drained = true; break; }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if !drained {
+        eprintln!("WARN[srt_recv_host_send]: send buffer did not report empty within 5s; proceeding anyway");
+    }
     if let Err(e) = sock.close() {
         eprintln!("NOTE[srt_recv_host_send]: close after send: {e} (harmless if the peer closed first)");
     }

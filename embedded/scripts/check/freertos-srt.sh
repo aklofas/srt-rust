@@ -32,7 +32,9 @@ if arm-none-eabi-nm "$TMPO" | grep -qE ' T (_getentropy|mbedtls_hardware_poll)$'
   echo "FAIL[entropy-stub]: deterministic hooks emitted without TST_QEMU_TEST_ENTROPY"; rm -f "$TMPO"; exit 1
 fi
 arm-none-eabi-gcc -c "$STUB" -o "$TMPO" -I embedded/freertos-srt/substrate -DTST_QEMU_TEST_ENTROPY=1
-arm-none-eabi-nm "$TMPO" | grep -qE ' T _getentropy$' || { echo "FAIL[entropy-stub]: hooks missing WITH the define"; rm -f "$TMPO"; exit 1; }
+NM_OUT=$(arm-none-eabi-nm "$TMPO")
+grep -qE ' T _getentropy$' <<<"$NM_OUT" || { echo "FAIL[entropy-stub]: hooks missing WITH the define"; rm -f "$TMPO"; exit 1; }
+grep -qE ' T mbedtls_hardware_poll$' <<<"$NM_OUT" || { echo "FAIL[entropy-stub]: hooks missing WITH the define"; rm -f "$TMPO"; exit 1; }
 rm -f "$TMPO"
 
 # ---------------------------------------------------------------------------

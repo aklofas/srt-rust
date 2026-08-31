@@ -146,7 +146,7 @@ the trigger that would unblock it.
 ## Protocol-version pinning (`SRTO_PEERVERSION`, `SRTO_MINVERSION`)
 
 - **Status:** Not exposed.
-- **Why deferred:** libsrt 1.5.6 negotiates with anything 1.3 or
+- **Why deferred:** libsrt 1.5.7 negotiates with anything 1.3 or
   newer. No current consumer needs to refuse older peers.
 - **Trigger to revisit:** Integration with a peer that has a known
   protocol bug below some version.
@@ -806,7 +806,7 @@ the trigger that would unblock it.
   etc.) instead of the libsrt errno (`SRT_ENOSERVER`, `SRT_ECONNREJ`,
   `SRT_ELARGEMSG`, `SRT_EMSGSIZE`, etc.). The current `SrtErrno` enum
   collapses to major categories only.
-- **Why deferred:** String-matching works against libsrt 1.5.6 today;
+- **Why deferred:** String-matching works against libsrt 1.5.7 today;
   the audit recommended deferring this refactor until either a libsrt
   upgrade breaks a string match or a user reports a misclassified
   error. Either trigger is well-defined and should reach the

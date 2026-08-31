@@ -14,7 +14,7 @@
 //! By default, the build script tries [`pkg-config`] first. If a
 //! system libsrt isn't found (or `SRT_FORCE_VENDORED` is set), it
 //! compiles the vendored copy at `vendor/srt` (a git submodule pinned
-//! at libsrt v1.5.6) via `cmake` and links it statically.
+//! at libsrt v1.5.7) via `cmake` and links it statically.
 //!
 //! Encryption is on by default via the `mbedtls` cargo feature, which
 //! builds the vendored mbedTLS submodule and links it into libsrt with

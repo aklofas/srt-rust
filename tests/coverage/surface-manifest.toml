@@ -11791,3 +11791,39 @@ reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surfac
 [[exempt]]
 item = "rist_sys::socklen_t"
 reason = "librist 0.2.18 bindgen surface growth 2026-07-24; graduate to [[surface]] as coverage is asserted"
+[[exempt]]
+item = "rist_sys::RIST_DEFAULT_RTT_DROP"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_DEFAULT_RTT_DROP_SETTLE"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_DEFAULT_RTT_DROP_TRICKLE"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_DEFAULT_RTT_RESTORE"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_CBR_OUTPUT"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_RTT_DROP"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_RTT_DROP_SETTLE"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_RTT_DROP_TRICKLE"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "rist_sys::RIST_URL_PARAM_RTT_RESTORE"
+reason = "librist 0.2.20 bindgen surface growth 2026-08-30; graduate to [[surface]] as coverage is asserted"
+

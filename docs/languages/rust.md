@@ -41,7 +41,7 @@ Running `cargo` inside the workspace auto-uses 1.85 via rustup.
 | `tst-srt`     | `log`     | on      | Forwards libsrt's internal logging through the `log` facade.     |
 | `tst-core`    | `file`    | on      | Gates file I/O helpers. Disable for embedded targets without `std::fs`. |
 
-A clean rebuild compiles libsrt 1.5.6 and mbedTLS 3.6.7 from vendored
+A clean rebuild compiles libsrt 1.5.7 and mbedTLS 3.6.7 from vendored
 submodules — expect **3–5 minutes** on a cold cache, seconds when warm.
 Force the vendored path with `SRT_FORCE_VENDORED=1` (otherwise the build
 script tries `pkg-config srt ≥ 1.5.0` first).

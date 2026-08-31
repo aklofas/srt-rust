@@ -316,6 +316,10 @@ pub rist_sys::rist_peer_config::recovery_reorder_buffer: u32
 pub rist_sys::rist_peer_config::recovery_rtt_max: u32
 pub rist_sys::rist_peer_config::recovery_rtt_min: u32
 pub rist_sys::rist_peer_config::reflector: core::ffi::primitives::c_int
+pub rist_sys::rist_peer_config::rtt_drop: u32
+pub rist_sys::rist_peer_config::rtt_drop_settle: u32
+pub rist_sys::rist_peer_config::rtt_drop_trickle: u32
+pub rist_sys::rist_peer_config::rtt_restore: u32
 pub rist_sys::rist_peer_config::secret: [core::ffi::primitives::c_char; 128]
 pub rist_sys::rist_peer_config::session_timeout: u32
 pub rist_sys::rist_peer_config::split_mode: u32
@@ -449,6 +453,8 @@ pub rist_sys::rist_stats_sender_peer::retransmitted: u64
 pub rist_sys::rist_stats_sender_peer::retransmitted_bytes: u64
 pub rist_sys::rist_stats_sender_peer::retry_bandwidth: usize
 pub rist_sys::rist_stats_sender_peer::rtt: u32
+pub rist_sys::rist_stats_sender_peer::rtt_mute_events: u32
+pub rist_sys::rist_stats_sender_peer::rtt_muted: u8
 pub rist_sys::rist_stats_sender_peer::sent: u64
 pub rist_sys::rist_stats_sender_peer::sent_bytes: u64
 impl core::clone::Clone for rist_sys::rist_stats_sender_peer
@@ -504,6 +510,8 @@ impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_transport_ops
 #[repr(C)] pub struct rist_sys::rist_udp_config
 pub rist_sys::rist_udp_config::address: [core::ffi::primitives::c_char; 256]
 pub rist_sys::rist_udp_config::address_family: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::cbr_output: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::cbr_output_set: core::ffi::primitives::c_int
 pub rist_sys::rist_udp_config::initiate_conn: core::ffi::primitives::c_int
 pub rist_sys::rist_udp_config::miface: [core::ffi::primitives::c_char; 128]
 pub rist_sys::rist_udp_config::multicast_source: [core::ffi::primitives::c_char; 256]
@@ -561,6 +569,10 @@ pub const rist_sys::RIST_DEFAULT_RECOVERY_PRIORITY: u32
 pub const rist_sys::RIST_DEFAULT_RECOVERY_REORDER_BUFFER: u32
 pub const rist_sys::RIST_DEFAULT_RECOVERY_RTT_MAX: u32
 pub const rist_sys::RIST_DEFAULT_RECOVERY_RTT_MIN: u32
+pub const rist_sys::RIST_DEFAULT_RTT_DROP: u32
+pub const rist_sys::RIST_DEFAULT_RTT_DROP_SETTLE: u32
+pub const rist_sys::RIST_DEFAULT_RTT_DROP_TRICKLE: u32
+pub const rist_sys::RIST_DEFAULT_RTT_RESTORE: u32
 pub const rist_sys::RIST_DEFAULT_SESSION_TIMEOUT: u32
 pub const rist_sys::RIST_DEFAULT_VIRT_DST_PORT: u32
 pub const rist_sys::RIST_DEFAULT_VIRT_SRC_PORT: u32
@@ -588,6 +600,7 @@ pub const rist_sys::RIST_URL_PARAM_BANDWIDTH: &[u8; 10]
 pub const rist_sys::RIST_URL_PARAM_BUFFER_SIZE: &[u8; 7]
 pub const rist_sys::RIST_URL_PARAM_BUFFER_SIZE_MAX: &[u8; 11]
 pub const rist_sys::RIST_URL_PARAM_BUFFER_SIZE_MIN: &[u8; 11]
+pub const rist_sys::RIST_URL_PARAM_CBR_OUTPUT: &[u8; 11]
 pub const rist_sys::RIST_URL_PARAM_CNAME: &[u8; 6]
 pub const rist_sys::RIST_URL_PARAM_COMPRESSION: &[u8; 12]
 pub const rist_sys::RIST_URL_PARAM_CONGESTION_CONTROL: &[u8; 19]
@@ -611,9 +624,13 @@ pub const rist_sys::RIST_URL_PARAM_RTP_OUTPUT_PTYPE: &[u8; 10]
 pub const rist_sys::RIST_URL_PARAM_RTP_SEQUENCE: &[u8; 13]
 pub const rist_sys::RIST_URL_PARAM_RTP_TIMESTAMP: &[u8; 14]
 pub const rist_sys::RIST_URL_PARAM_RTT: &[u8; 4]
+pub const rist_sys::RIST_URL_PARAM_RTT_DROP: &[u8; 9]
+pub const rist_sys::RIST_URL_PARAM_RTT_DROP_SETTLE: &[u8; 16]
+pub const rist_sys::RIST_URL_PARAM_RTT_DROP_TRICKLE: &[u8; 17]
 pub const rist_sys::RIST_URL_PARAM_RTT_MAX: &[u8; 8]
 pub const rist_sys::RIST_URL_PARAM_RTT_MIN: &[u8; 8]
 pub const rist_sys::RIST_URL_PARAM_RTT_MULTIPLIER: &[u8; 15]
+pub const rist_sys::RIST_URL_PARAM_RTT_RESTORE: &[u8; 12]
 pub const rist_sys::RIST_URL_PARAM_SECRET: &[u8; 7]
 pub const rist_sys::RIST_URL_PARAM_SESSION_TIMEOUT: &[u8; 16]
 pub const rist_sys::RIST_URL_PARAM_SPLIT_MODE: &[u8; 6]
@@ -708,6 +725,7 @@ pub unsafe c fn rist_sys::rist_receiver_data_read2(*mut rist_sys::rist_ctx, *mut
 pub unsafe c fn rist_sys::rist_receiver_flow_attr_callback_set(*mut rist_sys::rist_ctx, rist_sys::receiver_flow_attr_callback_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_receiver_nack_type_set(*mut rist_sys::rist_ctx, rist_sys::rist_nack_type) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_receiver_session_timeout_callback_set(*mut rist_sys::rist_ctx, rist_sys::receiver_session_timeout_callback_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_set_cbr_output(*mut rist_sys::rist_ctx, bool) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_receiver_set_output_fifo_size(*mut rist_sys::rist_ctx, u32) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_recovery_depth_set(*mut rist_sys::rist_ctx, u8) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_recovery_rtt_multiplier_set(*mut rist_sys::rist_ctx, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
@@ -728,6 +746,7 @@ pub unsafe c fn rist_sys::rist_transport_set(*mut rist_sys::rist_ctx, *const ris
 pub unsafe c fn rist_sys::rist_tun_bring_up(*const core::ffi::primitives::c_char) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_tun_close(core::ffi::primitives::c_int)
 pub unsafe c fn rist_sys::rist_tun_open(*const core::ffi::primitives::c_char, *mut core::ffi::primitives::c_char, usize) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_tun_parse_cidr(*const core::ffi::primitives::c_char, *mut core::ffi::primitives::c_char, usize, *mut core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_tun_read(core::ffi::primitives::c_int, *mut u8, usize) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_tun_set_ip(*const core::ffi::primitives::c_char, *const core::ffi::primitives::c_char, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
 pub unsafe c fn rist_sys::rist_tun_set_mtu(*const core::ffi::primitives::c_char, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int

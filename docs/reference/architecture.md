@@ -29,7 +29,7 @@ directory owns one concern:
 | `bindings/` | Language bindings for downstream consumers | `bindings/c` (crate `tst-c` — cdylib/staticlib + `include/tstrans.h`) with its embeddable rlib at `bindings/c/core` (crate `tst-c-core`); `bindings/python` (crate `tst-py`); `bindings/jvm` (crate `tst-jni`); `bindings/apple-android` planned |
 | `embedded/` | Bare-metal / QEMU firmware test harnesses (workspace-excluded) | `baremetal-qemu` (no_std muxer/pipeline QEMU smoke), `baremetal-qemu-c` (C-firmware staticlib glue), `freertos-srt` (libsrt-on-FreeRTOS) |
 | `examples/` | Runnable Rust examples (crate `tst-examples`, `publish = false`) | Task-oriented subfolders; C examples mirror this taxonomy under `bindings/c/examples/` |
-| `vendor/` (workspace root) | No longer used for `srt`/`librist`/`mbedtls` — each now bundles its native source inside its owning crate (crates.io requires a package to be self-contained) | `crates/srt-sys/vendor/srt` (libsrt 1.5.6), `crates/rist-sys/vendor/librist`, `crates/mbedtls-src/vendor/mbedtls` (3.6.7 LTS) |
+| `vendor/` (workspace root) | No longer used for `srt`/`librist`/`mbedtls` — each now bundles its native source inside its owning crate (crates.io requires a package to be self-contained) | `crates/srt-sys/vendor/srt` (libsrt 1.5.7), `crates/rist-sys/vendor/librist`, `crates/mbedtls-src/vendor/mbedtls` (3.6.7 LTS) |
 | `scripts/` | CI ratchets + generators + dev tools | `check/{c,python,rust,embedded,repo}/` rails, `gen/` generators, `dev/` tools, plus `ratchets/` (TSV-driven coverage) and `lib/` |
 | `tests/` | Cross-cutting advisory control plane | `tests/coverage/` manifests (fixture/skip-ledger/stream-matrix) |
 | `oss-fuzz/` | OSS-Fuzz packaging (options + seed corpora) | Per-crate fuzz targets live in `crates/<c>/fuzz/` |
@@ -52,7 +52,7 @@ srt-sys (raw FFI)  ──→  tst-core  ──→  tst-c (cdylib + staticlib + c
 dev-only: tst-test-helpers (publish = false; shared test fixtures and
 helpers consumed by tst-core / tst-pipeline / tst-srt test suites)
 vendored (bundled per-crate, not at the workspace root): crates/srt-sys/vendor/srt
-(libsrt 1.5.6), crates/rist-sys/vendor/librist, crates/mbedtls-src/vendor/mbedtls
+(libsrt 1.5.7), crates/rist-sys/vendor/librist, crates/mbedtls-src/vendor/mbedtls
 (3.6.7 LTS)
 ```
 
@@ -63,12 +63,12 @@ layers. Binding crates (`tst-c`, `tst-jni`, `tst-uniffi`) depend on
 the same safe Rust API and means a fix in `tst-core` reaches every
 binding without per-binding patches.
 
-`srt-sys` (published as `tstrans-srt-sys`) is the raw FFI layer — bindgen-generated against libsrt 1.5.6,
+`srt-sys` (published as `tstrans-srt-sys`) is the raw FFI layer — bindgen-generated against libsrt 1.5.7,
 exposing roughly 72 `srt_*` functions and the full `SRT_*` constant
 surface, with `mbedtls` wired in as the encryption backend by default.
 `tst-core` is the safe Rust API; nothing above it should ever pull
 `srt-sys` into its dependency graph. The vendored libsrt and mbedTLS
-submodules are pinned by tag (`v1.5.6`, `v3.6.7` LTS); submodule advances
+submodules are pinned by tag (`v1.5.7`, `v3.6.7` LTS); submodule advances
 are deliberate, separate commits. Both vendored builds link statically,
 so `tst-c`'s shared library has no runtime dependency on a system libsrt
 or libmbedtls.

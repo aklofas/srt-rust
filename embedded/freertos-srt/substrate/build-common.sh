@@ -74,6 +74,23 @@ case "${NETIF:-none}" in
   lan9118) C_SRC="$C_SRC $SUB/drivers/lan9118_netif.c $SUB/net_shim.c" ;;
 esac
 
+# TSTC=1 (srt-recv only): link the offline tst_demuxer_* C ABI, via the same
+# thumbv7em-none-eabihf libtstrans_firmware.a embedded/baremetal-qemu-c builds
+# for the firmware-qemu.sh gate (tst-c-core no_std + a global allocator
+# forwarding to newlib memalign/free + an abort()-on-panic handler — see that
+# crate's src/lib.rs). Reused as-is rather than duplicated: the glue is
+# RTOS-agnostic (Cortex-M critical-section + newlib heap calls), so it
+# composes with FreeRTOS's own newlib_lock.c-backed heap_4 allocator here
+# exactly as it does standalone there.
+TSTC_LIB=""
+if [ "${TSTC:-0}" = "1" ]; then
+  TSTC_CRATE="$ROOT/embedded/baremetal-qemu-c"
+  ( cd "$TSTC_CRATE" && cargo build --release --locked )
+  TSTC_LIB="$TSTC_CRATE/target/thumbv7em-none-eabihf/release/libtstrans_firmware.a"
+  [ -f "$TSTC_LIB" ] || { echo "FATAL: $TSTC_LIB missing after cargo build" >&2; exit 1; }
+  INC="$INC -I$ROOT/bindings/c/include"
+fi
+
 # libsrt (+ optional mbedTLS) cross-build, keyed on ENCRYPT so plain/AES trees
 # don't clobber. Only for LIBSRT targets. Everything lands under build/.
 SRT_LIB=""; MBED_LIBS=""; MBED_INSTALL="$BUILD/mbedtls-install"
@@ -220,6 +237,6 @@ WRAPS="-Wl,--wrap=clock_gettime -Wl,--wrap=gettimeofday"
 [ "${NETIF:-none}" != "none" ] && WRAPS="$WRAPS -Wl,--wrap=setsockopt"
 $CXX $ARCH $OPT --specs=rdimon.specs -T "$SUB/mps2_an386.ld" -Wl,--gc-sections \
   $WRAPS \
-  -Wl,--start-group "$OBJ"/*.o $SRT_LIB $MBED_LIBS -lstdc++ -Wl,--end-group \
+  -Wl,--start-group "$OBJ"/*.o $SRT_LIB $TSTC_LIB $MBED_LIBS -lstdc++ -Wl,--end-group \
   -o "$BUILD/firmware.elf"
 arm-none-eabi-size "$BUILD/firmware.elf"

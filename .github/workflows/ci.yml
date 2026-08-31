@@ -821,8 +821,9 @@ jobs:
         run: bash embedded/scripts/check/firmware-qemu.sh
 
       # Runtime gates for the embedded/freertos-srt/ reference product (the
-      # consolidated S0-S4 arc: one shared substrate, the NIC-egress example, and
-      # eight named test targets, all driven by the
+      # consolidated S0-S4 arc plus the srt-recv ingress gate: one shared
+      # substrate, the NIC-egress example, the NIC-ingress srt-recv, and seven
+      # named test targets, all driven by the
       # embedded/scripts/check/freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
       # `command -v` guards if the cross-toolchain/QEMU/cmake/cargo is absent, so
       # promotion can't false-red on a runner-image change. No new apt packages --
@@ -895,6 +896,17 @@ jobs:
       - name: QEMU runtime gate (freertos-srt NIC egress example)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash embedded/scripts/check/freertos-srt.sh example
+
+      # srt-recv: real-NIC ingress, the reverse of `example`. A bare-metal SRT
+      # LISTENER accepts an inbound connection from a host tst-srt caller over
+      # QEMU SLIRP user-net (hostfwd=udp forwards the port), receives the
+      # golden, and demuxes + verifies it ON-DEVICE via the offline
+      # tst_demuxer_* C ABI (libtstrans_firmware.a, the same staticlib the C
+      # firmware gate above builds) -- the firmware is the authoritative
+      # verifier here, not the host.
+      - name: QEMU runtime gate (freertos-srt NIC ingress srt-recv)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
+        run: bash embedded/scripts/check/freertos-srt.sh srt-recv
 
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)

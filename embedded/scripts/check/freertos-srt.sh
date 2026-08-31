@@ -9,7 +9,7 @@
 # reducing coverage to a no-op pass.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|fault-smoke|malloc-stress>}"
+t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|srt-recv|fault-smoke|malloc-stress>}"
 D=embedded/freertos-srt
 REQUIRE="${FREERTOS_SRT_REQUIRE_TOOLS:-0}"
 
@@ -142,6 +142,9 @@ case "$t" in
   example)       need cmake cmake
                  need cargo cargo
                  bash "$(dirname "$0")/../lib/run-freertos-srt-example.sh" || exit 1 ;;
+  srt-recv)      need cmake cmake
+                 need cargo cargo
+                 bash "$(dirname "$0")/../lib/run-freertos-srt-srt-recv.sh" || exit 1 ;;
   fault-smoke)   ( cd "$D" && ./build.sh fault-smoke >/dev/null 2>&1 )
                  retry_leg 30 "$t" v_fault_smoke
                  echo "OK: deliberate fault produced labeled fast failure" ;;
@@ -151,6 +154,6 @@ case "$t" in
                  echo "OK: caller connect-failure aborted the listener and reported fast" ;;
   malloc-stress) ( cd "$D" && ./build.sh malloc-stress >/dev/null )
                  assert_pass 90 'PASS: s5_malloc_stress' "$t" ;;
-  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|fault-smoke|malloc-stress)" >&2; exit 2 ;;
+  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|srt-recv|fault-smoke|malloc-stress)" >&2; exit 2 ;;
 esac
 echo "OK: freertos-srt $t"

@@ -1,10 +1,11 @@
 # `freertos-srt` — libsrt on bare-metal FreeRTOS
 
-A reference port of **libsrt** (and the MPEG-TS muxer) onto a bare-metal
-Cortex-M target running **FreeRTOS + FreeRTOS-Plus-POSIX + lwIP**, demonstrated
-as SRT video egress from a microcontroller. Everything builds with the stock
-`arm-none-eabi` GCC toolchain and runs under QEMU (`mps2-an386`, Cortex-M4F) —
-no hardware required.
+A reference port of **libsrt** (and the MPEG-TS muxer/demuxer) onto a
+bare-metal Cortex-M target running **FreeRTOS + FreeRTOS-Plus-POSIX + lwIP**,
+demonstrated as SRT video egress AND ingress from/to a microcontroller
+(`example` streams out; `srt-recv` receives in and demuxes on-device).
+Everything builds with the stock `arm-none-eabi` GCC toolchain and runs under
+QEMU (`mps2-an386`, Cortex-M4F) — no hardware required.
 
 > **Most consumers do not need this.** If you are integrating from an
 > application runtime, use the language bindings instead — the Python package
@@ -31,7 +32,10 @@ freertos-srt/
     srt_opts.h            shared SRT socket setup (transtype/buffers/passphrase)
     freertos/  lwip/  posix-shims/  drivers/  mbedtls/  patches/
   example/              the flagship: SRT egress out a real NIC to a host
-    main.cpp  README.md  host/   (a tst-srt listener that verifies byte-exact)
+    main.cpp  README.md  host/   (a tst-srt listener that verifies byte-exact;
+                                  host/ also holds the srt-recv sender below)
+  srt-recv/             the reverse: SRT ingress from a real NIC, verified on-device
+    main.cpp              SRT listener -> offline tst_demuxer_* -> byte-exact assert
   tests/               six layered verifications, smallest first
     exceptions/        concurrent per-task C++ throw/catch
     lwip-loopback/     564B golden through a lwIP UDP loopback socket
@@ -51,7 +55,7 @@ path, with `#ifndef`-guarded toggles overridden per target via `-D`.
 
 ```bash
 # from this directory
-./build.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|loopback-arq-connfail|fault-smoke|malloc-stress|example>
+./build.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|loopback-arq-connfail|fault-smoke|malloc-stress|example|srt-recv>
 # ENCRYPT=1 selects the mbedTLS AES-128 build for loopback-arq / example
 ENCRYPT=1 ./build.sh loopback-arq
 ```
@@ -95,8 +99,8 @@ bash embedded/scripts/check/freertos-srt.sh <target>   # from the workspace root
 ```
 
 It skips cleanly when the cross-toolchain / QEMU / cmake / cargo is absent. All
-targets — including `arq-connfail` and the NIC-egress `example` — are CI
-hard-gates.
+targets — including `arq-connfail`, the NIC-egress `example`, and the
+NIC-ingress `srt-recv` — are CI hard-gates.
 
 ## The gate targets, one line each
 
@@ -110,6 +114,7 @@ hard-gates.
 | `fault-smoke` | a deliberate fault produces the labeled `FAIL[hardfault]` token and exits fast, not hangs |
 | `malloc-stress` | 4 tasks × 20000 malloc/free with per-block canaries + concurrent EH + per-task errno isolation |
 | `example` | a real-NIC SRT caller streams the golden to a host listener byte-exact, plain and AES-128 |
+| `srt-recv` | a real-NIC SRT listener receives from a host caller and demuxes the golden on-device (offline `tst_demuxer_*` C ABI), asserting event census + video payload bytes |
 
 ## Newlib locking
 

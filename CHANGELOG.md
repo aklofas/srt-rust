@@ -99,6 +99,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   heap-sizing decision as well as a wire-protocol ceiling. Verified
   against the same bare-metal targets (`thumbv7em-none-eabihf` /
   `riscv32imac-unknown-none-elf`) as the sender path.
+- **`embedded/baremetal-qemu` gains a fourth on-device check, `udp_recv`,
+  and a second architecture, RISC-V (`qemu-system-riscv32 -machine
+  virt`).** `udp_recv` drives a `no_std` `DemuxReceiver` over its own
+  dedicated smoltcp loopback `RecvTransport` and recovers the pushed
+  video AU(s) byte-exact — the runtime counterpart to the receiver-path
+  `no_std` compile gate above. `riscv32imac-unknown-none-elf` moves from
+  a compile-gate-only Tier 2 platform to a full QEMU runtime gate (same
+  four checks as `thumbv7em-none-eabihf`, the same source unmodified on
+  both instruction sets). `cargo run --release --locked --target
+  riscv32imac-unknown-none-elf` from `embedded/baremetal-qemu/`, or
+  `bash embedded/scripts/check/qemu-runtime.sh` (both architectures,
+  per-target skip if the matching QEMU binary is absent).
+- **`embedded/freertos-srt` gains a `srt-recv` gate — SRT ingress with
+  on-device demux, the reverse of `example`.** A bare-metal SRT listener
+  on the real lan9118 NIC accepts an inbound connection from a host
+  `tst-srt` caller (over QEMU SLIRP `hostfwd=udp`), receives the golden
+  video-roundtrip stream, and demuxes it on-device via the offline
+  `tst_demuxer_*` C ABI, asserting both the event census and the raw
+  video payload bytes — the firmware itself is the authoritative
+  verifier here, unlike `example`, where the host listener verifies.
+  `bash embedded/scripts/check/freertos-srt.sh srt-recv`; the 12th
+  embedded CI gate (3 standalone scripts + 9 `freertos-srt.sh` targets).
 
 ### Changed
 
@@ -124,6 +146,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   validation, queue-set type verification). mbedTLS (3.6.7 LTS), lwIP
   (2.2.1) and FreeRTOS-Plus-POSIX were already at their latest upstream
   versions.
+- **`embedded/freertos-srt`'s deterministic test-entropy hooks
+  (`_getentropy` / `mbedtls_hardware_poll` in
+  `substrate/syscalls_stub.c`) are now emitted only under
+  `-DTST_QEMU_TEST_ENTROPY=1`** (which `build.sh` sets for every gate
+  target here). `freertos-srt/` is a *reference port* — copying
+  `substrate/` into a downstream firmware tree is its intended reuse
+  path — so a downstream integrator who does that and rebuilds outside
+  `build.sh` now gets undefined-reference link errors on those two
+  symbols, instead of the previous behavior of silently linking the
+  fixed-seed LCG that makes the `ENCRYPT=1` QEMU/CI gates reproducible.
+  Deliberate fail-loud: wire a real hardware RNG or your board's
+  approved entropy source in their place before enabling SRT encryption
+  in production firmware — see the production-crypto warning in
+  `embedded/freertos-srt/README.md` and `docs/languages/embedded.md`.
 - **`ReconnectPolicy` gained a `mode: ReconnectMode` field.** Full
   struct literals (not using `..Default::default()`) need the new
   field. This is compile-breaking for those callers, so the next

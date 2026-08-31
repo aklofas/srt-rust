@@ -21,6 +21,7 @@ need() { # $1=binary  $2=human label
   echo "SKIP: $2 not installed"; exit 0
 }
 need arm-none-eabi-g++ arm-none-eabi-g++
+need arm-none-eabi-gcc arm-none-eabi-gcc
 need qemu-system-arm   qemu-system-arm
 
 # Entropy-stub contract: without TST_QEMU_TEST_ENTROPY the substrate must NOT

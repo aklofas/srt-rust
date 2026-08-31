@@ -85,6 +85,12 @@ esac
 TSTC_LIB=""
 if [ "${TSTC:-0}" = "1" ]; then
   TSTC_CRATE="$ROOT/embedded/baremetal-qemu-c"
+  # Self-heal the Rust target, mirroring firmware-qemu.sh (which builds this
+  # same crate): a box with the ARM toolchain + QEMU + cmake + cargo but
+  # without the rustup target installed would otherwise hard-fail on a cargo
+  # error instead of skipping cleanly — a rustup target isn't a binary on
+  # PATH, so the `need` guards in freertos-srt.sh structurally can't cover it.
+  rustup target add thumbv7em-none-eabihf --toolchain 1.85 >/dev/null 2>&1 || true
   ( cd "$TSTC_CRATE" && cargo build --release --locked )
   TSTC_LIB="$TSTC_CRATE/target/thumbv7em-none-eabihf/release/libtstrans_firmware.a"
   [ -f "$TSTC_LIB" ] || { echo "FATAL: $TSTC_LIB missing after cargo build" >&2; exit 1; }

@@ -18,7 +18,7 @@ ts-transformer has three embedded consumption paths:
 | **C firmware staticlib** | Offline mux/demux C ABI (the `tst-c-core` crate) bundled as `libtstrans_firmware.a` | [`embedded/baremetal-qemu-c/`](/embedded/baremetal-qemu-c/) |
 | **FreeRTOS reference port** | Full libsrt + the MPEG-TS muxer/demuxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress AND ingress from/to a microcontroller, plain and AES-128 on egress | [`embedded/freertos-srt/`](/embedded/freertos-srt/) |
 
-All three run under QEMU (`mps2-an386`, Cortex-M4) — no vendor hardware or BSPs are required or provided. See [`/docs/reference/compatibility.md`](/docs/reference/compatibility.md) for the platform-support tiers.
+All three run under QEMU — no vendor hardware or BSPs are required or provided. Path 1 runs on both Cortex-M4 (`mps2-an386`) and RISC-V (`virt`); Paths 2 and 3 are Cortex-M4-only. See [`/docs/reference/compatibility.md`](/docs/reference/compatibility.md) for the platform-support tiers.
 
 ## Path 1 — no_std Rust
 
@@ -37,17 +37,20 @@ tst-pipeline = { version = "0.5.1", default-features = false }
 
 ### QEMU reference
 
-[`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) is the runnable reference. It exercises three checks on a Cortex-M4 under QEMU:
+[`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) is the runnable reference. It exercises four checks under QEMU, on both a Cortex-M4 and a RISC-V core (the same source, unmodified, on two unrelated instruction sets):
 
 1. Bare `Muxer` — mux the `video-roundtrip` fixture and byte-compare to the committed golden.
 2. `MuxSender` over an in-memory `Vec`-backed transport — same golden, proves the pipeline shell runs on bare metal.
 3. `MuxSender` through a real `no_std` smoltcp IPv4/UDP stack over a loopback device.
+4. `DemuxReceiver` over its own dedicated smoltcp loopback `RecvTransport` — proves the receiver-path `no_std` shells run correctly on target.
 
 ```bash
-# Run locally (needs qemu-system-arm + thumbv7em-none-eabihf target):
-cd embedded/baremetal-qemu && cargo run --release --locked
+# Run locally (needs qemu-system-arm + qemu-system-misc + thumbv7em-none-eabihf + riscv32imac-unknown-none-elf targets):
+cd embedded/baremetal-qemu
+cargo run --release --locked                                       # ARM
+cargo run --release --locked --target riscv32imac-unknown-none-elf # RISC-V
 
-# Or via the CI gate script (skips cleanly if QEMU is absent):
+# Or via the CI gate script (skips cleanly, per-target, if the matching QEMU binary is absent):
 bash embedded/scripts/check/qemu-runtime.sh
 ```
 
@@ -110,7 +113,7 @@ Gate targets:
 
 ```bash
 git submodule update --init --recursive   # embedded/vendor/* + vendor/{srt,mbedtls}
-sudo apt install qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi \
+sudo apt install qemu-system-arm qemu-system-misc gcc-arm-none-eabi libnewlib-arm-none-eabi \
                  libstdc++-arm-none-eabi-newlib cmake python3
 rustup target add thumbv7em-none-eabihf riscv32imac-unknown-none-elf
 ```

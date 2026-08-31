@@ -28,11 +28,32 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
     "proto-ipv4",
     "socket-udp",
 ] }
+embedded-alloc = "0.5"
+
+# Arch-specific runtime/semihosting/panic-handler crates. `panic-semihosting`
+# and `cortex-m*` are ARM-only (panic-semihosting's crate root is literally
+# `#![cfg(target_arch = "arm")]` — built for any other arch it compiles to an
+# empty crate with no `#[panic_handler]`, so it must NOT be a plain
+# unconditional dependency). The riscv32 leg gets its own hand-written
+# semihosting panic handler in `main.rs` mirroring panic-semihosting's exact
+# behavior (see the `#[panic_handler]` there), since no published
+# riscv-semihosting-backed panic crate exists.
+[target.'cfg(target_arch = "arm")'.dependencies]
 cortex-m-rt = "0.7"
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
-embedded-alloc = "0.5"
 cortex-m-semihosting = "0.5"
 panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+# "memory" turns on riscv-rt's `INCLUDE memory.x` line in its generated
+# link.x, the same seam cortex-m-rt's link.x uses (see build.rs).
+riscv-rt = { version = "0.18", default-features = false, features = ["memory"] }
+riscv-semihosting = "0.2"
+# Explicit dependency (riscv-rt already pulls `riscv` transitively, but
+# without this feature) purely to register a `critical-section` impl for the
+# single-hart QEMU `virt` target — the riscv32 mirror of cortex-m's
+# `critical-section-single-core`. `embedded-alloc`'s `Heap` needs one.
+riscv = { version = "0.16", default-features = false, features = ["critical-section-single-hart"] }
 
 [profile.release]
 opt-level = "s"

@@ -40,20 +40,25 @@
 //!
 //! # Cargo features
 //!
-//! - `std` (default-on) — the full pipeline surface: the receiver shells
-//!   (`Receiver`/`DemuxReceiver`/`RawReceiver`), the `Managed*` reconnect
-//!   wrappers, `MuxPublisher`, and `ext::pairing`. With `--no-default-features`
-//!   the crate is `#![no_std]` + `alloc` and exposes only the **sender** shells
-//!   (`MuxSender`/`Sender`/`RawSender`) for bare-metal / FreeRTOS senders. The
-//!   embedding binary must supply a `#[global_allocator]`. Verified in CI
-//!   against `thumbv7em-none-eabihf` and `riscv32imac-unknown-none-elf`, and at
-//!   runtime under QEMU. Under no_std the `MuxSender` lock is a `spin::Mutex`
-//!   with no priority inheritance and no interrupt masking — drive each
-//!   sender shell from a **single task** (one-sender-per-task). The type
-//!   system still permits cross-task sharing (`MuxSender` is `Sync`), but
-//!   doing so under a preemptive scheduler risks priority-inversion
-//!   livelock: a higher-priority task spinning on a lock a preempted task
-//!   holds. See the `MuxSender` docs' "`no_std` concurrency" section.
+//! - `std` (default-on) — the full pipeline surface, adding the `Managed*`
+//!   reconnect wrappers, `MuxPublisher`, and `ext::pairing` on top of the
+//!   sender and receiver shells. With `--no-default-features` the crate is
+//!   `#![no_std]` + `alloc` and exposes the **sender** shells
+//!   (`MuxSender`/`Sender`/`RawSender`) and the **receiver** shells
+//!   (`Receiver`/`DemuxReceiver`/`RawReceiver`) for bare-metal / FreeRTOS
+//!   use; the `Managed*` wrappers, `MuxPublisher`, and `ext::pairing` stay
+//!   `std`-only. The embedding binary must supply a `#[global_allocator]`.
+//!   Verified in CI against `thumbv7em-none-eabihf` and
+//!   `riscv32imac-unknown-none-elf`, and at runtime under QEMU. Under no_std
+//!   the `MuxSender` lock is a `spin::Mutex` with no priority inheritance
+//!   and no interrupt masking — drive each sender shell from a **single
+//!   task** (one-sender-per-task). The type system still permits
+//!   cross-task sharing (`MuxSender` is `Sync`), but doing so under a
+//!   preemptive scheduler risks priority-inversion livelock: a
+//!   higher-priority task spinning on a lock a preempted task holds. See
+//!   the `MuxSender` docs' "`no_std` concurrency" section. The receiver
+//!   shells hold no internal lock (their hot-path methods take `&mut
+//!   self`), so this concurrency caveat does not apply to them.
 
 #![warn(rustdoc::broken_intra_doc_links)]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -63,7 +68,6 @@ extern crate alloc;
 
 mod mutex;
 
-#[cfg(feature = "std")]
 pub mod demux_receiver;
 pub mod dyn_aliases;
 #[cfg(feature = "std")]
@@ -75,7 +79,6 @@ pub mod managed_receive;
 #[cfg(feature = "std")]
 pub mod mux_publisher;
 pub mod mux_sender;
-#[cfg(feature = "std")]
 pub mod raw_receiver;
 pub mod raw_sender;
 
@@ -89,11 +92,9 @@ pub mod raw_sender;
 /// OOM. 256 MiB exceeds any realistic transport payload (UDP datagrams cap
 /// at 64 KiB, SRT/TCP buffers at tens of MiB), so clamping here never
 /// truncates legitimate traffic — it only bounds the eager allocation.
-#[cfg(feature = "std")]
 pub(crate) const MAX_RECV_BUFFER: usize = 256 * 1024 * 1024;
 
 /// Clamp an eager receive-buffer pre-allocation to [`MAX_RECV_BUFFER`].
-#[cfg(feature = "std")]
 pub(crate) fn clamp_recv_capacity(cap: usize) -> usize {
     if cap > MAX_RECV_BUFFER {
         tracing::warn!(
@@ -106,7 +107,6 @@ pub(crate) fn clamp_recv_capacity(cap: usize) -> usize {
         cap
     }
 }
-#[cfg(feature = "std")]
 pub mod receiver;
 #[cfg(feature = "std")]
 pub mod reconnect;
@@ -114,13 +114,13 @@ pub mod sender;
 pub mod shell_error;
 
 // Top-level re-exports of the most common types.
-#[cfg(feature = "std")]
 pub use demux_receiver::{
     ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource, DemuxReceiverStats,
 };
-#[cfg(feature = "std")]
-pub use dyn_aliases::{BoxedDemuxReceiver, BoxedRawReceiver, BoxedReceiver};
-pub use dyn_aliases::{BoxedMuxSender, BoxedRawSender, BoxedSender};
+pub use dyn_aliases::{
+    BoxedDemuxReceiver, BoxedMuxSender, BoxedRawReceiver, BoxedRawSender, BoxedReceiver,
+    BoxedSender,
+};
 #[cfg(feature = "std")]
 pub use managed_demux_receiver::{ManagedDemuxReceiver, ManagedDemuxReceiverConfig};
 #[cfg(feature = "std")]
@@ -132,14 +132,12 @@ pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderS
 // under `ext::pairing` to signal its opt-in, extension-module nature.
 // Callers write `use tst_pipeline::ext::pairing::Pairer` explicitly.
 // See `crate::ext` for rationale.
-#[cfg(feature = "std")]
 pub use raw_receiver::{
     RawReceiver, RawReceiverConfig, RawReceiverError, RawReceiverErrorSource, RawRecvStats,
 };
 pub use raw_sender::{
     RawSendStats, RawSender, RawSenderConfig, RawSenderError, RawSenderErrorSource,
 };
-#[cfg(feature = "std")]
 pub use receiver::{Receiver, ReceiverConfig, ReceiverError, ReceiverErrorSource, ReceiverStats};
 #[cfg(feature = "std")]
 pub use reconnect::{

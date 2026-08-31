@@ -17,6 +17,7 @@
 //! two-pass sync strategy: don't declare lock until you've seen several
 //! back-to-back aligned sync bytes.
 
+use alloc::vec::Vec;
 use tst_core::mpegts::common::{SRT_TS_BUNDLE_BYTES, TS_PACKET_SIZE, TS_SYNC_BYTE};
 
 /// Current state of the sync state machine.

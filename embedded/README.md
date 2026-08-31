@@ -13,7 +13,7 @@ of it runs under QEMU — no hardware required.
 
 | Directory | What it proves | Stack |
 |---|---|---|
-| `baremetal-qemu/` | the `tst-core` muxer + `tst-pipeline` `MuxSender`/`DemuxReceiver` run `no_std` on a Cortex-M4 and byte-match the committed golden, including smoltcp UDP loopback egress and ingress | Rust `no_std`, QEMU `mps2-an386` |
+| `baremetal-qemu/` | the `tst-core` muxer + `tst-pipeline` `MuxSender`/`DemuxReceiver` run `no_std` on **both ARM (Cortex-M4) and RISC-V** and byte-match the committed golden, including smoltcp UDP loopback egress and ingress | Rust `no_std`, QEMU `mps2-an386` (ARM) + `virt` (RISC-V) |
 | `baremetal-qemu-c/` | the offline C ABI (`tst-c-core`) works from C firmware via a `no_std` staticlib (`libtstrans_firmware.a`) | Rust staticlib + arm-none-eabi C firmware, QEMU |
 | `freertos-srt/` | **reference product**: libsrt + the muxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress from a microcontroller, plain and AES-128 | C/C++ substrate, arm-none-eabi GCC, QEMU |
 
@@ -33,10 +33,14 @@ pin bare-metal targets and profiles) and consume the workspace crates by path
 
 ```bash
 git submodule update --init --recursive   # embedded/vendor/* + crates/{srt-sys,mbedtls-src}/vendor/*
-sudo apt install qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi \
+sudo apt install qemu-system-arm qemu-system-misc gcc-arm-none-eabi libnewlib-arm-none-eabi \
                  libstdc++-arm-none-eabi-newlib cmake python3
 rustup target add thumbv7em-none-eabihf riscv32imac-unknown-none-elf
 ```
+
+(`qemu-system-arm` provides the `mps2-an386` ARM runner; `qemu-system-misc`
+provides `qemu-system-riscv32` for the `virt` RISC-V runner — both used by
+`baremetal-qemu/`'s two-architecture QEMU runtime gate below.)
 
 ## Running the gates
 
@@ -47,7 +51,7 @@ CI hard-gates fail closed instead via per-script env knobs
 
 ```bash
 bash embedded/scripts/check/no-std-baremetal.sh   # no_std compile proof (3 crates x 2 targets)
-bash embedded/scripts/check/qemu-runtime.sh       # baremetal-qemu golden byte-match under QEMU
+bash embedded/scripts/check/qemu-runtime.sh       # baremetal-qemu golden byte-match under QEMU (ARM + RISC-V)
 bash embedded/scripts/check/firmware-qemu.sh      # C firmware via libtstrans_firmware.a
 bash embedded/scripts/check/freertos-srt.sh exceptions     # C++ exceptions on FreeRTOS
 bash embedded/scripts/check/freertos-srt.sh lwip-loopback  # lwIP UDP loopback round-trip

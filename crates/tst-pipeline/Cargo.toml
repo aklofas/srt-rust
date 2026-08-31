@@ -13,10 +13,12 @@ categories   = ["multimedia::video", "network-programming"]
 
 [features]
 default = ["std"]
-# `std` pulls in the receiver path, the Managed* reconnect wrappers,
-# mux_publisher, ext::pairing, and the std-backed lock + tracing subscriber
-# integration. Without it the crate is #![no_std] + alloc and exposes only the
-# sender shells (MuxSender / Sender / RawSender).
+# `std` pulls in the Managed* reconnect wrappers, mux_publisher, ext::pairing,
+# and the std-backed tracing subscriber integration. Without it the crate is
+# #![no_std] + alloc and still exposes both the sender shells (MuxSender /
+# Sender / RawSender) and the receiver shells (Receiver / DemuxReceiver /
+# RawReceiver) — only MuxSender's internal lock swaps to the no_std spin-lock
+# backend (the receiver shells hold no internal lock).
 std = ["tst-core/std", "tracing/std"]
 
 [dependencies]

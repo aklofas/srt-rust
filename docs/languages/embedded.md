@@ -14,7 +14,7 @@ ts-transformer has three embedded consumption paths:
 
 | Path | What you get | Reference |
 |---|---|---|
-| **no_std Rust** | `tst-core` + `tst-pipeline` sender shells, `#![no_std]` + `alloc`, compile-gated for two bare-metal targets | [`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) |
+| **no_std Rust** | `tst-core` + `tst-pipeline` sender and receiver shells, `#![no_std]` + `alloc`, compile-gated for two bare-metal targets | [`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) |
 | **C firmware staticlib** | Offline mux/demux C ABI (the `tst-c-core` crate) bundled as `libtstrans_firmware.a` | [`embedded/baremetal-qemu-c/`](/embedded/baremetal-qemu-c/) |
 | **FreeRTOS reference port** | Full libsrt + the MPEG-TS muxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress from a microcontroller, plain and AES-128 | [`embedded/freertos-srt/`](/embedded/freertos-srt/) |
 
@@ -22,7 +22,7 @@ All three run under QEMU (`mps2-an386`, Cortex-M4) — no vendor hardware or BSP
 
 ## Path 1 — no_std Rust
 
-Pull in `tst-core` and the pipeline sender shells with the standard library disabled:
+Pull in `tst-core` and the pipeline sender and receiver shells with the standard library disabled:
 
 ```toml
 [dependencies]
@@ -33,7 +33,7 @@ tst-pipeline = { version = "0.5.1", default-features = false }
 `default-features = false` drops the `std` feature on both crates. What you get:
 
 - `tst-core` — the full MPEG-TS mux/demux engine, KLV substrate and MISB typed sets, in-crate codec parameter-set parsers, and the `Transport`/`RecvTransport` traits. The `std` feature (default-on) gates the `net` helpers, file I/O, and `serde_json`/`toml` serialization — none of that is present in a `no_std` build.
-- `tst-pipeline` sender path — `MuxSender`, `Sender`, and `RawSender`. The receiver shells (`Receiver`, `DemuxReceiver`, `RawReceiver`), the `Managed*` reconnect wrappers, and `ext::pairing` require `std` and are not available in a `no_std` build.
+- `tst-pipeline` sender and receiver shells — `MuxSender`, `Sender`, `RawSender`, `Receiver`, `DemuxReceiver`, and `RawReceiver`. The `Managed*` reconnect wrappers, `MuxPublisher`, and `ext::pairing` still require `std` and are not available in a `no_std` build. The receiver shells eagerly allocate a `transport.max_payload()`-sized scratch buffer at construction, and allocation failure aborts (no fallible-alloc path) — so on a device with a fixed heap, `max_payload()` is effectively a heap-sizing decision, not just a wire-protocol ceiling. The crate's internal 256 MiB clamp on that allocation is a sanity bound against a hostile/misbehaving `Transport`, not a substitute for budgeting the allocation against your actual device heap.
 
 ### QEMU reference
 

@@ -349,12 +349,15 @@ the trigger that would unblock it.
 
 ## `no_std` support for `klv`
 
-- **Status:** Requires `std`.
-- **Why deferred:** Every shipping target has `std`. `no_std` means
-  replacing `Vec` / `String` / `format!` with allocator equivalents —
-  bounded but not free.
-- **Trigger to revisit:** An embedded target with a hard `no_std`
-  requirement.
+- **Status:** Shipped 2026-05-30 (tst-core no_std baseline). `pub mod
+  klv;` (`crates/tst-core/src/lib.rs:73`) carries no `std` feature
+  gate; `no-std-baremetal.sh` compiles it for both
+  `thumbv7em-none-eabihf` and `riscv32imac-unknown-none-elf` alongside
+  the rest of `tst-core`. Residual std-only corners: none — the only
+  two `#[cfg(not(feature = "std"))]` sites under `klv/` (`imapb.rs`,
+  `st0601/mapping.rs`) are the `no_std` *enabling* code itself (routing
+  float ops through `float_ext::FloatExt`'s `libm` shim in place of
+  `std::f64` methods), not a remaining std requirement.
 
 ## Multi-stream `mpegts::mux` — `tst-jni` / `tst-uniffi` binding surface
 

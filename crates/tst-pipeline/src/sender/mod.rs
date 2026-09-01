@@ -27,16 +27,12 @@ pub struct SenderConfig {
     /// flags that sync has not been acquired. Default 18,800 (≈100
     /// packets' worth).
     ///
-    /// This is a diagnostic-only threshold in the current implementation:
-    /// the sender does NOT stop or fail when it is exceeded — RECOVER
-    /// mode keeps scanning for a sync byte indefinitely. Callers who
-    /// want fail-fast on persistent no-sync should monitor
-    /// [`SenderStats::bytes_skipped_for_sync`] against their own
-    /// threshold and abort externally.
-    ///
-    /// [`TsFramingError::NoSyncAfterLimit`] is part of the public error
-    /// type for forward compatibility but is not currently emitted by
-    /// the sender.
+    /// When scanning for sync consumes more than this many bytes without
+    /// acquiring it, `send_ts` returns
+    /// [`TsFramingError::NoSyncAfterLimit`]. The counter resets after the
+    /// error is raised, so RECOVER mode keeps scanning afterward — the
+    /// watchdog fires again only after another full `max_unsynced_bytes`
+    /// of unrecovered garbage.
     pub max_unsynced_bytes: usize,
 }
 
@@ -230,7 +226,10 @@ impl<T: Transport> Sender<T> {
     ///
     /// # Errors
     /// - [`SenderErrorSource::Framing`] in STRICT mode when the input fails
-    ///   to align on a TS sync byte (`0x47`).
+    ///   to align on a TS sync byte (`0x47`); in RECOVER mode when
+    ///   scanning for sync consumes more than
+    ///   [`SenderConfig::max_unsynced_bytes`] without acquiring it
+    ///   ([`TsFramingError::NoSyncAfterLimit`]).
     /// - [`SenderErrorSource::Transport`] when the underlying [`Transport`]
     ///   returns an error (e.g. `Closed`, `Broken`, `Backpressure`).
     ///
@@ -304,8 +303,10 @@ impl<T: Transport> Sender<T> {
         self.drain_pending()
             .map_err(|e| e.with_input_consumed(false))?;
         let bundles = if self.mode == TsFramingMode::Recover {
-            let (bundles, _stats) = self.framing.push(bytes);
-            bundles
+            self.framing
+                .push(bytes)
+                .map(|(bundles, _stats)| bundles)
+                .map_err(|e| SenderError::from(e).with_input_consumed(false))?
         } else {
             self.framing
                 .push_strict(bytes)

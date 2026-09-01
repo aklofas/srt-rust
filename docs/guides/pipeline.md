@@ -168,15 +168,12 @@ best-effort flushes.
   `TsFramingError::SyncLost { offset }` on any non-aligned input.
 - `max_unsynced_bytes: usize` — threshold (in bytes consumed while
   UNSYNCED) above which RECOVER mode flags that sync has not been
-  acquired. The current implementation tracks this threshold for
-  diagnostic accounting only — the sender does NOT stop or fail when
-  it is exceeded; RECOVER mode keeps scanning for a sync byte
-  indefinitely. Default 18,800 (≈100 packets' worth). Callers who
-  want fail-fast on persistent no-sync should monitor
-  `stats.bytes_skipped_for_sync` against their own threshold and
-  abort externally. `TsFramingError::NoSyncAfterLimit` is part of the
-  public error type for forward compatibility but is not currently
-  emitted by the sender.
+  acquired. Default 18,800 (≈100 packets' worth). When scanning for
+  sync consumes more than this many bytes without acquiring it,
+  `send_ts` returns `TsFramingError::NoSyncAfterLimit`. The counter
+  resets after the error is raised, so RECOVER mode keeps scanning
+  afterward — the watchdog fires again only after another full
+  `max_unsynced_bytes` of unrecovered garbage.
 
 `SenderError` is a `{ kind: ShellErrorKind, source: SenderErrorSource }`
 struct; its `source` enum has two variants: `Framing(TsFramingError)`

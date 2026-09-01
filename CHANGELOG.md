@@ -383,6 +383,19 @@ is a separate, JVM-only behavior change from an earlier arc.)
   stopgap since the MISB full-tag arc. The NPE message names the
   offending parameter; javadocs updated to match.
 
+- **`Sender`'s `max_unsynced_bytes` knob now does what it's documented
+  to do.** Previously the RECOVER-mode watchdog tracked bytes consumed
+  while scanning for TS sync but never acted on the threshold —
+  `TsFramingError::NoSyncAfterLimit` was defined and reachable from
+  the C ABI setter (`tst_sender_config_set_max_unsynced_bytes`) but
+  never constructed. `send_ts` now returns `NoSyncAfterLimit { max }`
+  once scanning exceeds the configured threshold without acquiring
+  sync; the counter resets afterward so the watchdog can fire again on
+  the next `max_unsynced_bytes` of unrecovered garbage.
+  `TsFraming::push` (RECOVER mode) is now fallible to carry this error
+  (`Result<(Vec<Vec<u8>>, &SenderStats), TsFramingError>`, was an
+  infallible tuple).
+
 ---
 
 ## [0.5.1] — 2026-08-18

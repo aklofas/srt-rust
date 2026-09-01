@@ -583,7 +583,6 @@ pub const TST_CODEC_KIND_AUDIO: u32 = 3;
 
 /// Convert a Rust public [`tst_core::mpegts::stats::StreamCodecStats`] to
 /// the C tagged union.
-#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn codec_stats_to_c(
     stats: tst_core::mpegts::stats::StreamCodecStats,
 ) -> TstStreamCodecStats {

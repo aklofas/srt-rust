@@ -74,8 +74,6 @@ use tst_srt::url::Mode;
 // tst_demux_receiver_t
 // ------------------------------------------------------------------
 
-// fields arena, stream_stats_buf, cancel, was_cancelled consumed in Tasks 12-15
-#[allow(dead_code)]
 pub struct TstDemuxReceiver {
     pub(super) inner: Handle<DemuxReceiver<SrtTransport>>,
     /// Reusable per-handle backing storage for `_recv_event` output.

@@ -647,7 +647,6 @@ impl Default for TstEvent {
 /// while `payload` was borrowed from the input `DemuxEvent`, which is
 /// dropped at the end of the `recv_event` closure — leaving C callers
 /// with dangling pointers (validate-1 A2 / Codex CABI-02).
-#[allow(dead_code)]
 pub(crate) struct EventArena {
     pub(crate) nals: Vec<TstNal>,
     pub(crate) obus: Vec<TstObu>,
@@ -677,7 +676,6 @@ pub(crate) struct EventArena {
     pub(crate) last_payload: Option<tst_core::shared::SharedBytes>,
 }
 
-#[allow(dead_code)]
 impl EventArena {
     pub(crate) fn new() -> Self {
         Self {
@@ -723,7 +721,6 @@ impl EventArena {
 ///   are unspecified (they share storage via the union).
 /// * Pointer fields point into the arena's Vec buffers; valid until
 ///   the next `convert()` call clears the arena.
-#[allow(dead_code)]
 pub(crate) fn convert(
     arena: &mut EventArena,
     ev: &tst_core::mpegts::demux::DemuxEvent,

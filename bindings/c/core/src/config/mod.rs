@@ -112,7 +112,6 @@ impl TstMuxConfig {
     /// interval / buffer overrides. The `programs` vec is cloned so the
     /// config may be opened multiple times (the C API allows `_free` after
     /// `_open`, but tests call `_open` more than once in practice).
-    #[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
     pub(crate) fn build_config(&self) -> Result<MuxerConfig, MuxError> {
         let mut cfg = MuxerConfig::default();
         cfg.programs = self.programs.clone();

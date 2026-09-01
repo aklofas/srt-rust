@@ -7,7 +7,6 @@ use crate::error::{TstError, record_shell_error, record_transport_error, set_las
 use crate::handle::Handle;
 use crate::sender::mux_sender::parse_c_srt_url;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use tst_pipeline::{ManagedTransport, RawSender, TransportCancel};
 use tst_srt::SrtTransport;
 
@@ -18,12 +17,6 @@ use tst_srt::SrtTransport;
 pub struct TstRawSender {
     inner: Handle<RawSender<SrtTransport>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
-    /// Informational only on the sender side — set by `_cancel` and `_close`
-    /// but never read by `_send` paths. Kept for shape uniformity with the
-    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
-    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
-    /// the same shape across all 8 handle families.
-    was_cancelled: Arc<AtomicBool>,
 }
 
 /// Open a `tst_raw_sender_t` connected via SRT.
@@ -64,11 +57,9 @@ pub unsafe extern "C" fn tst_raw_sender_open(
         };
         let sender = RawSender::new(transport, cfg);
         let cancel = sender.cancel_handle();
-        let was_cancelled = Arc::new(AtomicBool::new(false));
         Box::into_raw(Box::new(TstRawSender {
             inner: Handle::new(sender),
             cancel,
-            was_cancelled,
         }))
     })
 }
@@ -105,7 +96,6 @@ pub unsafe extern "C" fn tst_raw_sender_close(p: *mut TstRawSender) {
             return;
         }
         let boxed = unsafe { Box::from_raw(p) };
-        boxed.was_cancelled.store(true, Ordering::Release);
         if let Some(c) = &boxed.cancel {
             c.cancel();
         }
@@ -130,9 +120,7 @@ pub unsafe extern "C" fn tst_raw_sender_cancel(p: *mut TstRawSender) -> libc::c_
             return TstError::InvalidConfig as i32;
         };
         // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
-        // send holds it). The was_cancelled flag + cancel-handle Arc are
-        // accessible without locking.
-        handle.was_cancelled.store(true, Ordering::Release);
+        // send holds it). The cancel-handle Arc is accessible without locking.
         if let Some(c) = &handle.cancel {
             c.cancel();
         }
@@ -147,12 +135,6 @@ pub unsafe extern "C" fn tst_raw_sender_cancel(p: *mut TstRawSender) -> libc::c_
 pub struct TstManagedRawSender {
     inner: Handle<RawSender<ManagedTransport<SrtTransport>>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
-    /// Informational only on the sender side — set by `_cancel` and `_close`
-    /// but never read by `_send` paths. Kept for shape uniformity with the
-    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
-    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
-    /// the same shape across all 8 handle families.
-    was_cancelled: Arc<AtomicBool>,
     /// Reconnect/gap telemetry observer, captured from the `ManagedTransport`
     /// before it moved into the shell (same capture-before-move timing as
     /// `cancel_handle()`). Read by `tst_managed_raw_sender_get_reconnect_stats`.
@@ -208,11 +190,9 @@ pub unsafe extern "C" fn tst_managed_raw_sender_open(
         let stats_handle = managed.stats_handle();
         let sender = RawSender::new(managed, cfg);
         let cancel = sender.cancel_handle();
-        let was_cancelled = Arc::new(AtomicBool::new(false));
         Box::into_raw(Box::new(TstManagedRawSender {
             inner: Handle::new(sender),
             cancel,
-            was_cancelled,
             stats_handle,
         }))
     })
@@ -250,7 +230,6 @@ pub unsafe extern "C" fn tst_managed_raw_sender_close(p: *mut TstManagedRawSende
             return;
         }
         let boxed = unsafe { Box::from_raw(p) };
-        boxed.was_cancelled.store(true, Ordering::Release);
         if let Some(c) = &boxed.cancel {
             c.cancel();
         }
@@ -273,9 +252,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_cancel(p: *mut TstManagedRawSend
             return TstError::InvalidConfig as i32;
         };
         // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
-        // send holds it). The was_cancelled flag + cancel-handle Arc are
-        // accessible without locking.
-        handle.was_cancelled.store(true, Ordering::Release);
+        // send holds it). The cancel-handle Arc is accessible without locking.
         if let Some(c) = &handle.cancel {
             c.cancel();
         }

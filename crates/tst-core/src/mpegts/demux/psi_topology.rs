@@ -1,20 +1,32 @@
 //! PSI section dispatch + PAT/PMT topology tracking.
 //!
-//! Hosts 5 helper methods on `Demuxer`:
+//! Hosts 9 helper methods on `Demuxer`:
 //!
 //! - `handle_psi` — router from `process_packet` into PAT vs PMT
 //!   continuation logic, including strict-mode CC-discontinuity drop.
+//! - `dispatch_psi_result` — routes a completed PAT/PMT reassembly
+//!   outcome to the corresponding `handle_*_section` call.
 //! - `handle_pat_section` — full PAT parse + program-tracker diff
 //!   (programs added / removed across PAT version bumps).
+//! - `apply_pat_programs` — diffs a parsed PAT's program list against
+//!   tracked state, dropping programs (and their elementary PID state)
+//!   that disappeared.
+//! - `drop_elementary_pid_state` — clears every per-PID cache entry for
+//!   an elementary PID no longer reachable (program left the PAT, or the
+//!   stream was dropped by a PMT version change).
 //! - `handle_pmt_section` — full PMT parse + per-program PMT version
 //!   bump + stream-binding update + KLV link inference + descriptor
 //!   diagnostics + cross-program PID collision policy.
 //! - `build_program_map` — composes a `ProgramMap` event from a parsed
 //!   PMT after the topology has settled.
+//! - `check_psi_syntax` — validates fixed/reserved PSI syntax fields
+//!   (section_syntax_indicator, section_number, reserved bits) on a
+//!   section whose CRC already passed; shared by both section handlers.
 //! - `klv_mismatch_insert` — per-program coalesce-set helper for KLV
 //!   stream-type-mismatch event deduplication.
 //!
-//! All items are `pub(super)` — invisible outside `mpegts::demux`.
+//! All items are visible only within `mpegts::demux` (`pub(super)` or
+//! private).
 
 use crate::error::DemuxError;
 use crate::mpegts::common::StreamTypeCode;

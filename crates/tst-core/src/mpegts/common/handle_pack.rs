@@ -1,8 +1,8 @@
 //! Shared bit-packing for opaque stream handles.
 //!
 //! Each `VideoStreamHandle` / `KlvStreamHandle` / `AudioStreamHandle` /
-//! `SubtitleStreamHandle` wraps a `u32` containing
-//! `(program_index << PROGRAM_SHIFT) | within_index`. The four types
+//! `SubtitleStreamHandle` / `DataStreamHandle` wraps a `u32` containing
+//! `(program_index << PROGRAM_SHIFT) | within_index`. The five types
 //! had byte-identical `pack` / `unpack` bodies before this substrate;
 //! here they share one.
 //!

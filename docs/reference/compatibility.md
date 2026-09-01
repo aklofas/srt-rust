@@ -407,7 +407,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | PES reassembly cap (`pes_cap_total`) | ✅ Full | Default 64 MiB aggregate; overflow surfaces as `Discontinuity::PesTotalOversize`. |
 | Sync recovery (HUNT/VERIFY/LOCKED) | ✅ Full | Internal syncer state machine; ~6 KiB search window, then `DemuxError::Unrecoverable`. |
 | `StrictMode::Off` (lenient default) | ✅ Full | `NonConformant` events surface as data; receive loop continues. |
-| `StrictMode::TimingOnly` | ✅ Full | Hard-fail on `PcrAnomaly`, `PusiMidPes`, `PsiChecksumMismatch`. |
+| `StrictMode::TimingOnly` | ✅ Full | Hard-fail on `PcrAnomaly`, `PusiMidPes` (vestigial — not currently emitted), `PsiChecksumMismatch`. |
 | `StrictMode::DescriptorsOnly` | ✅ Full | Hard-fail on `MissingMetadataDescriptor`, `StreamTypeMismatch{Sync,Async}OnPid`. |
 | `StrictMode::Full` | ✅ Full | Hard-fail on every `NonConformantIssue` variant including future-added ones; except PAT multi-section (table_id 0x00), which degrades to a surface-only event ("don't blame the sender" — REF-PSI-02). |
 | KLV-mismatch event coalescing | ✅ Full | One `StreamTypeMismatch*` event per (PID, PMT version); avoids flooding. |

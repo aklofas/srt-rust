@@ -251,7 +251,7 @@ on most live data.
 | Mode | Rejects | Use case |
 | --- | --- | --- |
 | `Off` (default) | nothing | Triage, real-world capture analysis, live receivers. |
-| `TimingOnly` | `PcrAnomaly`, `PusiMidPes`, `PsiChecksumMismatch` | Receivers paranoid about clock integrity but tolerant of encoder quirks. |
+| `TimingOnly` | `PcrAnomaly`, `PusiMidPes` (vestigial — not currently emitted), `PsiChecksumMismatch` | Receivers paranoid about clock integrity but tolerant of encoder quirks. |
 | `DescriptorsOnly` | `StreamTypeMismatch{Sync,Async}OnPid`, `MissingMetadataDescriptor` | Spec-compliance gating: did the encoder declare its streams correctly? |
 | `Full` | every variant including future-added ones | CI-grade compliance test against a known-good encoder. |
 
@@ -349,10 +349,13 @@ is preserved — the CC jump is a signal, not a teardown.
 
 **PUSI mid-PES.** A new PUSI-set TS packet arrives before the previous
 PES's `PES_packet_length` has been satisfied (or before a length-zero
-PES has had a chance to terminate). The demuxer discards the partial
-PES, emits `NonConformantIssue::PusiMidPes`, and starts fresh on the
-new PUSI. This is the recovery shape for live captures where a few
-packets dropped upstream split a PES across a gap.
+PES has had a chance to terminate). The demuxer silently discards the
+partial PES and starts fresh on the new PUSI — this is the normal
+start-of-PES path, not a separate diagnostic event, so no
+`NonConformantIssue` is emitted. This is the recovery shape for live
+captures where a few packets dropped upstream split a PES across a gap.
+(`NonConformantIssue::PusiMidPes` exists in the enum but is vestigial —
+kept for non-exhaustive-enum binary-compatibility parity only.)
 
 **Oversize PES.** A PES grows past the per-PID or total cap. The demuxer
 drops the partial bytes, emits `Discontinuity::PesOversize { pid }` (or

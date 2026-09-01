@@ -1,8 +1,6 @@
-//! Shared types for `mpegts::mux` (and eventually `mpegts::demux`).
+//! Shared types for `mpegts::mux` and `mpegts::demux`.
 //!
-//! Concrete types only — no traits, no generics. The deferred `mpegts::demux`
-//! reuses these from day one to avoid mid-flight refactors. See the design
-//! doc for the full deferral rationale.
+//! Concrete types only — no traits, no generics.
 
 pub mod crc32;
 pub(crate) mod handle_pack;

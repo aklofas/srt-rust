@@ -2,7 +2,8 @@
 #
 # base-builder-rust ships rustup + nightly + cargo-fuzz.
 # We add cmake (libsrt build) and pkg-config (build-script probe path).
-# Submodule clone pulls vendor/srt (libsrt 1.5.5) and vendor/mbedtls (3.6.x).
+# Submodule clone pulls crates/srt-sys/vendor/srt (libsrt) and
+# crates/mbedtls-src/vendor/mbedtls (3.6.x).
 FROM gcr.io/oss-fuzz-base/base-builder-rust
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -26,7 +26,7 @@
 //! - Metadata OBUs (pass-through).
 //! - Padding OBUs.
 
-mod decode;
+pub(crate) mod decode;
 mod model;
 
 #[cfg(test)]
@@ -34,8 +34,3 @@ mod tests;
 
 pub use decode::{parse_frame_header_light, parse_obu_stream, parse_sequence_header};
 pub use model::{Av1FrameHeaderLight, Av1ObuStream, Av1SequenceHeader};
-
-// Back-compat re-export: `mpegts::demux::payload` imports
-// `crate::codec::av1::leb128::read_leb128`. The decode/ reorg moves the
-// source file but this re-export keeps the consumer path unchanged.
-pub(crate) use decode::leb128;

@@ -158,7 +158,7 @@ pub fn decode_standalone(bytes: &[u8]) -> Result<RvtLs, KlvDecodeError> {
             .checked_add(4)
             .is_some_and(|end| end <= bytes.len());
         if in_bounds {
-            let computed = crate::klv::crc32::crc32_mpeg2(&bytes[..value_offset]);
+            let computed = crate::mpegts::common::crc32::crc32_mpeg2(&bytes[..value_offset]);
             if computed != expected {
                 return Err(KlvDecodeError::Crc32Mismatch {
                     expected,

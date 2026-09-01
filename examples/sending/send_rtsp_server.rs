@@ -108,10 +108,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         // PTS in 90kHz units. 33ms ≈ 2970 ticks.
         let pts = Pts90khz::new(pts_ticks);
         if let Err(e) = mount.push_video(&nal, pts, /* key_frame= */ true) {
-            // The push API surfaces MountError; the most common cause
-            // pre-PLAY is `PeerBackpressure` (informational) which
-            // simply means a peer's broadcast subscriber lagged. The
-            // muxer still drained the bytes; we keep going.
+            // The push API surfaces MountError (muxer failures / the
+            // mount being closed). A lagging peer's dropped frames are
+            // NOT an error here — they're tracked separately in
+            // `MountStats::frames_dropped_total`.
             eprintln!("push_video error (continuing): {e}");
         }
         pts_ticks = pts_ticks.wrapping_add(2970_i64);

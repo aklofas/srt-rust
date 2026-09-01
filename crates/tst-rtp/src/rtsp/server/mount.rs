@@ -228,11 +228,10 @@ impl MountHandle {
     /// - [`crate::error::MountError::Closed`] if the inner mutex is
     ///   poisoned (the mount's owning task panicked while holding the
     ///   lock).
-    /// - [`crate::error::MountError::PeerBackpressure`] is NOT raised
-    ///   here — it's a forward-looking variant for callers that want to
-    ///   observe broadcast lag. The push itself always succeeds if the
-    ///   muxer accepts the frame; missing subscribers silently drop the
-    ///   bytes.
+    ///
+    /// The push itself always succeeds if the muxer accepts the frame; a
+    /// lagging peer's dropped frames are tracked in
+    /// [`MountStats::frames_dropped_total`], not surfaced as an error here.
     pub fn push_video(
         &self,
         nal: &[u8],

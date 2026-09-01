@@ -116,7 +116,7 @@ name = "rtp_packet_decode"
 
 [[target]]
 crate = "tst-rtp"
-name = "rtsp_interleaved_demux"
+name = "rtsp_client_pump_framing"
 
 [[target]]
 crate = "tst-rtp"

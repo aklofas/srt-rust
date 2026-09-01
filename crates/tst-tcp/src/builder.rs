@@ -191,30 +191,10 @@ impl TcpListenerBuilder {
     /// - TLS handshake setup fails (for `tcps://`).
     /// - The TLS feature is disabled but the URL used `tcps://`.
     pub fn build(self) -> Result<TcpListener, TcpError> {
-        let mut listener = TcpListener::from_url(&self.format_url())?;
+        let mut listener = TcpListener::from_parsed(&self.url)?;
         // Apply any builder-set config overrides.
         *listener.config_mut() = self.config;
         Ok(listener)
-    }
-
-    fn format_url(&self) -> String {
-        let scheme = if self.url.tls { "tcps" } else { "tcp" };
-        // IPv6 literals must be bracketed in URLs (e.g. `[::1]`).
-        let host = if self.url.host.contains(':') {
-            format!("[{}]", self.url.host)
-        } else {
-            self.url.host.clone()
-        };
-        let mut url = format!("{}://{}:{}?listen=1", scheme, host, self.url.port);
-
-        if let Some(cert) = &self.url.cert {
-            url.push_str(&format!("&cert={}", cert));
-        }
-        if let Some(key) = &self.url.key {
-            url.push_str(&format!("&key={}", key));
-        }
-
-        url
     }
 }
 
@@ -254,12 +234,14 @@ mod tests {
     }
 
     #[test]
-    fn ipv6_listener_url_round_trips() {
-        // format_url must bracket IPv6 literals so the re-parsed URL is valid.
-        let b = TcpListenerBuilder::from_url("tcp://[::1]:7001?listen=1").unwrap();
-        let formatted = b.format_url();
-        let reparsed = crate::url::TcpUrl::parse(&formatted).expect("re-parse must succeed");
-        assert_eq!(reparsed.host, "::1");
-        assert!(reparsed.listen);
+    fn ipv6_listener_builds() {
+        // build() now goes straight from the parsed TcpUrl to TcpListener::
+        // from_parsed — no format-then-reparse round trip to bracket IPv6
+        // literals for.
+        let listener = TcpListenerBuilder::from_url("tcp://[::1]:0?listen=1")
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(listener.local_addr().unwrap().ip().to_string(), "::1");
     }
 }

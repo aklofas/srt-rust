@@ -14,9 +14,6 @@ pub enum TcpError {
     #[error("TCP I/O error: {0}")]
     Io(#[from] io::Error),
 
-    #[error("payload {len} exceeds max {max} bytes per send call")]
-    PayloadTooLarge { len: usize, max: usize },
-
     #[error("transport closed by caller")]
     Closed,
 
@@ -41,7 +38,6 @@ pub enum TcpError {
 pub enum TcpErrorKind {
     Url = 1,
     Io = 2,
-    PayloadTooLarge = 3,
     Closed = 4,
     ConnectTimeout = 5,
     InvalidConfig = 6,
@@ -54,7 +50,6 @@ impl TcpError {
         match self {
             Self::Url(_) => TcpErrorKind::Url,
             Self::Io(_) => TcpErrorKind::Io,
-            Self::PayloadTooLarge { .. } => TcpErrorKind::PayloadTooLarge,
             Self::Closed => TcpErrorKind::Closed,
             Self::ConnectTimeout { .. } => TcpErrorKind::ConnectTimeout,
             Self::InvalidConfig(_) => TcpErrorKind::InvalidConfig,

@@ -58,8 +58,9 @@ public final class RtspSession extends NativeHandle {
     }
 
     /**
-     * RTCP-derived stats snapshot. Wave C always returns a zeroed snapshot — the
-     * counters wire in with the RTP data plane. Mirrors tst-py's wave-A behavior.
+     * RTCP-derived stats snapshot. Reserved — always returns a zeroed snapshot
+     * until RTCP session stats land; see
+     * {@code docs/project/deferred-features.md}. Mirrors tst-py's behavior.
      *
      * @throws IllegalStateException if the session is closed
      */

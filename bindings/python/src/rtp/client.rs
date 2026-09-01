@@ -364,12 +364,9 @@ impl PyRtspClientConfig {
 // RtspStats — RTCP-derived snapshot
 // ---------------------------------------------------------------------------
 
-/// RTSP session stats snapshot. RTCP fields populated only when the
-/// session is in PLAY and the server has sent at least one RR / SR.
-///
-/// RTCP counters from `RtpRecvTransport` are populated once
-/// `into_demux_receiver` is called. On TCP-interleaved transports the
-/// RTCP stats stay at 0 (deferred; see `docs/project/deferred-features.md`).
+/// RTSP session stats snapshot. Reserved — all fields always report
+/// zero until RTCP session stats land; see
+/// `docs/project/deferred-features.md`.
 #[pyclass(name = "RtspStats", module = "tstrans.rtp", frozen)]
 #[derive(Debug, Clone, Default)]
 pub struct PyRtspStats {
@@ -816,11 +813,8 @@ impl PyRtspSession {
 
     /// RTCP-derived stats snapshot.
     ///
-    /// Wave A returns a zeroed snapshot — Wave B Task 23 wires
-    /// `into_demux_receiver` and the RTCP counters from the
-    /// `RtpRecvTransport` land then. The shape is stable across the
-    /// wave boundary so user code written against Wave A doesn't
-    /// need to change.
+    /// Reserved — always returns a zeroed snapshot until RTCP session
+    /// stats land; see `docs/project/deferred-features.md`.
     fn stats(&self) -> PyRtspStats {
         PyRtspStats::default()
     }

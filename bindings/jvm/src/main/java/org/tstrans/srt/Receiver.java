@@ -12,7 +12,7 @@ import org.tstrans.SrtException;
  * (one-shot accept). The accepted socket becomes the receive transport.
  *
  * <p>For a server that handles many peers, use the lower-level
- * {@code Listener} class (Task 3) and accept in a loop.
+ * {@code Listener} class and accept in a loop.
  *
  * <p><b>Thread safety:</b> a single {@code Receiver} is NOT thread-safe.
  * Use one receiver per thread, or guard with external synchronisation.

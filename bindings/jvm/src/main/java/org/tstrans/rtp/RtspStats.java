@@ -2,9 +2,8 @@ package org.tstrans.rtp;
 
 /**
  * RTSP session RTCP-derived stats snapshot. Mirrors tst-py
- * {@code tstrans.rtp.RtspStats}. RTCP fields are populated only when the session
- * is in PLAY and the server has sent at least one RR/SR; wave C always reports a
- * zeroed snapshot (the counters wire in with the RTCP-over-RTP data plane).
+ * {@code tstrans.rtp.RtspStats}. Reserved — all fields always report zero until
+ * RTCP session stats land; see {@code docs/project/deferred-features.md}.
  *
  * <p>Unsigned counters are reinterpreted as signed {@code long}/{@code int}; for
  * the magnitudes seen here they are effectively non-negative.

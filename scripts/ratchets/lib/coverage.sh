@@ -5,13 +5,20 @@
 # clones; the extraction and failure messages are kept byte-for-byte equivalent
 # to those clones (only parameterised by enum / fn / file).
 #
-# Two enforced shapes:
-#   rust : every `<Enum>ErrorKind` variant in a tst-<proto> crate has an arm in
-#          `fn <proto>_error_to_code` in bindings/c/core/src/error.rs, and no
-#          wildcard arm unless the enum is #[non_exhaustive].
-#   py   : every `class <Enum>ErrorKind` member in tstrans.exceptions has at
-#          least one `make_<proto>_error(py, "KIND", ...)` call site under
-#          bindings/python/src/, and no call site names an unknown kind.
+# Three enforced shapes:
+#   rust  : every `<Enum>ErrorKind` variant in a tst-<proto> crate has an arm in
+#           `fn <proto>_error_to_code` in bindings/c/core/src/error.rs, and no
+#           wildcard arm unless the enum is #[non_exhaustive].
+#   py    : every `class <Enum>ErrorKind` member in tstrans.exceptions has at
+#           least one `make_<proto>_error(py, "KIND", ...)` call site under
+#           bindings/python/src/, and no call site names an unknown kind.
+#   pyarm : every variant of a tst-core Rust enum (e.g. `DemuxError`) has an
+#           explicit `<Enum>::<Variant>` arm somewhere in a Python-binding
+#           `.rs` source file. Unlike `rust`/`py`, the enum here isn't a
+#           per-protocol `*ErrorKind` and the arm file is a binding source
+#           file, not bindings/c/core/src/error.rs — these mappers carry a
+#           forward-compat wildcard fallback by design, so there's no
+#           wildcard/non_exhaustive cross-check (that would always fire).
 
 # --- Rust extraction (identical to the former clones) -----------------------
 
@@ -106,5 +113,54 @@ assert_py_row() { # <class> <make_fn> <exc_file> <src_dir>
         return 1
     fi
     echo "OK: all $(echo "$expected" | wc -l | tr -d ' ') $class variants mapped"
+    return 0
+}
+
+# --- pyarm: Rust-enum-variant -> explicit arm in a Python-binding .rs file --
+
+rust_arm_enum_variants() { # <enum> <src_file>
+    awk '
+        /^pub enum '"$1"'/ { in_block = 1; next }
+        in_block && /^}/ { in_block = 0 }
+        in_block && /^    [A-Z][A-Za-z0-9]*[ ({,]/ {
+            sub(/^    /, "")
+            sub(/[ ({,].*$/, "")
+            print
+        }
+    ' "$2"
+}
+
+# Returns 0 if covered, 1 (and prints a failure summary) on any gap.
+assert_rust_arm_row() { # <enum> <src_file> <py_file> <label> [match_names]
+    local enum="$1" src="$2" py_file="$3" label="$4" match_names="${5:-$1}"
+    if [[ ! -f "$src" ]]; then echo "FAIL: $src not found" >&2; return 1; fi
+    if [[ ! -f "$py_file" ]]; then echo "FAIL: $py_file not found" >&2; return 1; fi
+
+    local variants=()
+    while IFS= read -r v; do
+        [[ -z "$v" ]] && continue
+        variants+=("$v")
+    done < <(rust_arm_enum_variants "$enum" "$src")
+
+    if [[ "${#variants[@]}" -eq 0 ]]; then
+        echo "FAIL: extracted 0 $enum variants — awk pattern may have drifted from $src" >&2
+        return 1
+    fi
+
+    local missing=()
+    for v in "${variants[@]}"; do
+        if ! grep -qE "($match_names)::${v}\b" "$py_file"; then
+            missing+=("$v")
+        fi
+    done
+
+    if [[ "${#missing[@]}" -ne 0 ]]; then
+        echo "FAIL: $enum variants missing explicit arm in $py_file ($label):" >&2
+        for v in "${missing[@]}"; do echo "  - $v" >&2; done
+        echo "Add an explicit \`${enum}::<Variant> =>\` arm in $label (before any" >&2
+        echo "wildcard fallback) so the new variant maps to a specific kind." >&2
+        return 1
+    fi
+    echo "OK: all ${#variants[@]} $enum variants mapped explicitly in $label"
     return 0
 }

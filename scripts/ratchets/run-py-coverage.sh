@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Driver: run the `py` rows of error-mapping.tsv through lib/coverage.sh.
-# Each row asserts every `class <Enum>ErrorKind` member in
-# tstrans.exceptions has a make_<proto>_error call site under bindings/python/src/.
+# Driver: run the `py` and `pyarm` rows of error-mapping.tsv through
+# lib/coverage.sh. Each `py` row asserts every `class <Enum>ErrorKind` member
+# in tstrans.exceptions has a make_<proto>_error call site under
+# bindings/python/src/. Each `pyarm` row asserts every tst-core Rust enum
+# variant has an explicit arm in a named Python-binding .rs source file.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$DIR/../.." && pwd)"          # scripts/ratchets -> scripts -> workspace root
@@ -23,17 +25,32 @@ if [[ ! -f "$TSV" ]]; then echo "FAIL: TSV $TSV not found" >&2; exit 1; fi
 
 rc=0
 rows=0
-while IFS=$'\t' read -r lang name class make_fn _rest; do
+while IFS=$'\t' read -r lang name col3 col4 col5 col6 col7; do
     [[ "$lang" == \#* || -z "${lang:-}" ]] && continue
-    [[ "$lang" != "py" ]] && continue
-    rows=$((rows + 1))
-    if ! assert_py_row "$class" "$make_fn" "$EXC_FILE" "$SRC_DIR"; then
-        rc=1
-    fi
+    case "$lang" in
+        py)
+            rows=$((rows + 1))
+            if ! assert_py_row "$col3" "$col4" "$EXC_FILE" "$SRC_DIR"; then
+                rc=1
+            fi
+            ;;
+        pyarm)
+            rows=$((rows + 1))
+            col7="${col7%$'\r'}"  # tolerate a CRLF checkout (match_names is the last field)
+            # variant_source/py_file are used as-is (workspace-relative, like
+            # the `rust` rows in run-rust-coverage.sh) — resolves correctly
+            # because every caller (CI steps, the pre-push rail sweep, the
+            # hermetic self-test) runs from the workspace root.
+            if ! assert_rust_arm_row "$col3" "$col4" "$col5" "$col6" "$col7"; then
+                rc=1
+            fi
+            ;;
+        *) continue ;;
+    esac
 done < "$TSV"
 
 if [[ "$rows" -eq 0 ]]; then
-    echo "FAIL: no py rows found in $TSV (malformed table?)" >&2
+    echo "FAIL: no py/pyarm rows found in $TSV (malformed table?)" >&2
     exit 1
 fi
 exit "$rc"

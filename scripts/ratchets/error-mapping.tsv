@@ -3,13 +3,19 @@
 #
 # Only the genuinely-uniform clones live here. Bespoke/multi-enum rails
 # (rtsp, server, mux-error-kind, shell-error-kind, raw-c-mapper,
-# non-conformant, py-codec/demux/klv) keep their own scripts/check/<group>/ rail.
+# non-conformant) keep their own scripts/check/<group>/ rail.
 #
 # rust rows:  lang  name  enum            variant_source                       arm_fn
 #             (arm file is always bindings/c/core/src/error.rs)
 # py rows:    lang  name  class           make_fn                              (col5 unused)
 #             (exceptions file = bindings/python/python/tstrans/exceptions.py,
 #              call-site dir = bindings/python/src)
+# pyarm rows: lang  name  enum            variant_source                       py_file  [match_names]
+#             (every <enum> variant in variant_source needs an explicit
+#              <match_names (default: enum)>::<Variant> arm somewhere in
+#              py_file — a Python-binding .rs source, not the C ABI;
+#              match_names may be an alternation like "KlvEncodeError|RustE"
+#              for a mapper that locally aliases the enum)
 rust	udp	UdpErrorKind	crates/tst-udp/src/error.rs	udp_error_to_code
 rust	tcp	TcpErrorKind	crates/tst-tcp/src/error.rs	tcp_error_to_code
 rust	rist	RistErrorKind	crates/tst-rist/src/error.rs	rist_error_to_code
@@ -29,3 +35,7 @@ java	codec	CodecParseException.Kind	throw_codec	-
 java	srt	SrtException.Kind	throw_srt	-
 java	rtp	RtpException.Kind	throw_rtp	-
 java	rtsp	RtspException.Kind	throw_rtsp	-
+pyarm	codec	CodecParseError	crates/tst-core/src/codec/mod.rs	bindings/python/src/errors.rs	codec_parse_error_to_pyerr
+pyarm	demux	DemuxError	crates/tst-core/src/error.rs	bindings/python/src/mpegts.rs	demux_error_to_pyerr
+pyarm	klv_decode	KlvDecodeError	crates/tst-core/src/error.rs	bindings/python/src/klv.rs	klv_decode_error_to_pyerr
+pyarm	klv_encode	KlvEncodeError	crates/tst-core/src/error.rs	bindings/python/src/errors.rs	klv_encode_error_to_pyerr	KlvEncodeError|RustE

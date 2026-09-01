@@ -31,9 +31,9 @@
  *   1. In one terminal (receiver first, so the port is ready):
  *        ./recv_ts_to_file out.ts
  *   2. In another terminal (any sender pushing TS bytes to srt://127.0.0.1:7000):
- *        cargo run -p tst-examples --example sender_loopback
- *      (or any mux_to_file sender redirected over SRT — see
- *       examples/sending/ for the catalogue).
+ *        cargo run -p tst-examples --example ts_relay_from_file -- input.ts 127.0.0.1:7000
+ *      (input.ts can come from mux_to_file.rs, or any pre-muxed .ts file —
+ *       see examples/sending/ for the full catalogue).
  *   3. When the sender disconnects, recv_ts_to_file exits automatically
  *      after printing a final summary.
  *   4. Inspect the output:

@@ -16,7 +16,6 @@ from tstrans.klv import (
     parse_klv_universal,
 )
 
-from _builders.klv_tlv import ber_short as _ber_short
 from _builders.klv_tlv import tlv as _tlv
 
 

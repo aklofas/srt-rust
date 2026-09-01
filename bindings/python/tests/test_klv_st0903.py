@@ -9,7 +9,6 @@ import pytest
 from tstrans.exceptions import KlvError, KlvErrorKind
 from tstrans.klv import Klv0903, VmtiLs, VTargetPack, decode_vmti
 
-from _builders.klv_tlv import ber_short as _ber_short
 from _builders.klv_tlv import tlv as _tlv
 
 

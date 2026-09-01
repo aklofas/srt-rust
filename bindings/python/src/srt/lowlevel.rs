@@ -17,7 +17,7 @@
 //!
 //! Error mapping for `UrlError`/`ConnectError`/`BindError`/`AcceptError`/
 //! `IoError` reuses the canonical mappers in `srt/errors.rs` (the coverage
-//! ratchet greps the whole `srt/` directory, not per-file).
+//! ratchet greps the whole `src/` directory, not per-file).
 
 #![allow(
     unsafe_op_in_unsafe_fn,

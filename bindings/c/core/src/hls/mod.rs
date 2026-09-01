@@ -20,8 +20,6 @@
 //! - [`mux_publisher`] — `TstMuxPublisher` (a `MuxPublisher<HlsPublisher>`)
 //!   + the `tst_mux_publisher_*` encoded-elementary push family.
 
-pub(crate) mod url;
-
 pub mod builder;
 pub mod publisher;
 pub mod mux_publisher;

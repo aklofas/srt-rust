@@ -118,7 +118,9 @@ pub unsafe extern "C" fn tst_hls_publisher_builder_bind(
             set_last_error(TstError::InvalidConfig, "null hls builder pointer");
             return TstError::InvalidConfig as i32;
         };
-        let Some(s) = (unsafe { super::url::parse_str(bind_addr, "bind_addr") }) else {
+        let Some(s) =
+            (unsafe { crate::c_str::parse_c_str(bind_addr, TstError::HlsConfig, "bind_addr") })
+        else {
             return TstError::HlsConfig as i32;
         };
         let addr: SocketAddr = match s.parse() {
@@ -155,7 +157,9 @@ pub unsafe extern "C" fn tst_hls_publisher_builder_output_dir(
             set_last_error(TstError::InvalidConfig, "null hls builder pointer");
             return TstError::InvalidConfig as i32;
         };
-        let Some(s) = (unsafe { super::url::parse_str(path, "output_dir") }) else {
+        let Some(s) =
+            (unsafe { crate::c_str::parse_c_str(path, TstError::HlsConfig, "output_dir") })
+        else {
             return TstError::HlsConfig as i32;
         };
         let owned = s.to_string();
@@ -307,10 +311,12 @@ pub unsafe extern "C" fn tst_hls_publisher_builder_basic_auth(
             set_last_error(TstError::InvalidConfig, "null hls builder pointer");
             return TstError::InvalidConfig as i32;
         };
-        let Some(u) = (unsafe { super::url::parse_str(user, "user") }) else {
+        let Some(u) = (unsafe { crate::c_str::parse_c_str(user, TstError::HlsConfig, "user") })
+        else {
             return TstError::HlsConfig as i32;
         };
-        let Some(p) = (unsafe { super::url::parse_str(pass, "pass") }) else {
+        let Some(p) = (unsafe { crate::c_str::parse_c_str(pass, TstError::HlsConfig, "pass") })
+        else {
             return TstError::HlsConfig as i32;
         };
         let (u, p) = (u.to_string(), p.to_string());
@@ -344,10 +350,14 @@ pub unsafe extern "C" fn tst_hls_publisher_builder_enable_tls(
             set_last_error(TstError::InvalidConfig, "null hls builder pointer");
             return TstError::InvalidConfig as i32;
         };
-        let Some(cert) = (unsafe { super::url::parse_str(cert_path, "cert_path") }) else {
+        let Some(cert) =
+            (unsafe { crate::c_str::parse_c_str(cert_path, TstError::HlsConfig, "cert_path") })
+        else {
             return TstError::HlsConfig as i32;
         };
-        let Some(key) = (unsafe { super::url::parse_str(key_path, "key_path") }) else {
+        let Some(key) =
+            (unsafe { crate::c_str::parse_c_str(key_path, TstError::HlsConfig, "key_path") })
+        else {
             return TstError::HlsConfig as i32;
         };
         let (cert, key) = (cert.to_string(), key.to_string());
@@ -380,7 +390,8 @@ pub unsafe extern "C" fn tst_hls_publisher_builder_from_url(
             set_last_error(TstError::InvalidConfig, "null hls builder pointer");
             return TstError::InvalidConfig as i32;
         };
-        let Some(url_str) = (unsafe { super::url::parse_str(url, "url") }) else {
+        let Some(url_str) = (unsafe { crate::c_str::parse_c_str(url, TstError::HlsConfig, "url") })
+        else {
             return TstError::HlsConfig as i32;
         };
         match HlsPublisherBuilder::from_url(url_str) {

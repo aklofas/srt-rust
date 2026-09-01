@@ -74,7 +74,7 @@ pub struct TstRistReceiver {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_recv_open(url: *const c_char) -> *mut TstRistReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
-        let url_str = match unsafe { super::url::parse_url_str(url) } {
+        let url_str = match unsafe { crate::c_str::parse_c_str(url, TstError::RistConfig, "url") } {
             Some(s) => s,
             None => return std::ptr::null_mut(),
         };

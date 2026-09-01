@@ -78,10 +78,12 @@ pub struct TstTcpListener {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_bind(bind_addr: *const c_char) -> *mut TstTcpListener {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
-        let addr_str = match unsafe { super::url::parse_url_str(bind_addr) } {
-            Some(s) => s,
-            None => return std::ptr::null_mut(),
-        };
+        let addr_str =
+            match unsafe { crate::c_str::parse_c_str(bind_addr, TstError::TcpConfig, "bind_addr") }
+            {
+                Some(s) => s,
+                None => return std::ptr::null_mut(),
+            };
         let addr: SocketAddr = match addr_str.parse() {
             Ok(a) => a,
             Err(e) => {
@@ -118,7 +120,7 @@ pub unsafe extern "C" fn tst_tcp_listener_bind(bind_addr: *const c_char) -> *mut
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_from_url(url: *const c_char) -> *mut TstTcpListener {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
-        let url_str = match unsafe { super::url::parse_url_str(url) } {
+        let url_str = match unsafe { crate::c_str::parse_c_str(url, TstError::TcpConfig, "url") } {
             Some(s) => s,
             None => return std::ptr::null_mut(),
         };

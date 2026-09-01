@@ -294,9 +294,9 @@ class RtspClientConfig:
 
 
 class RtspStats:
-    """RTSP session stats snapshot. RTCP fields populated only when the
-    session is in PLAY and the server has sent at least one RR / SR.
-    Frozen.
+    """RTSP session stats snapshot. Reserved — all fields always report
+    zero until RTCP session stats land; see
+    docs/project/deferred-features.md. Frozen.
     """
 
     @property

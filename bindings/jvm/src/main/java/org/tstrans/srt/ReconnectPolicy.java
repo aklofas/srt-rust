@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Tuning for the managed-reconnect SRT wrappers (sub-wave C). Mirrors
+ * Tuning for the managed-reconnect SRT wrappers. Mirrors
  * {@code tstrans.srt.ReconnectPolicy}. Build with {@link #builder()}.
  *
  * <p>Defaults mirror {@code tst_pipeline::ReconnectPolicy::default()}:

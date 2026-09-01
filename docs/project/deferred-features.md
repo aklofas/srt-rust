@@ -1622,6 +1622,24 @@ the trigger that would unblock it.
   monitoring, or interoperability with an endpoint that acts on received
   SR/RR values.
 
+## `RtspSession.stats()` / `RtspStats` binding accessor (Python / JVM)
+
+- **Status:** Deferred. Both bindings expose an `RtspSession.stats()` (JVM)
+  / `RtspSession.stats()` (Python) accessor returning an `RtspStats`
+  record/dataclass, but every field always reports zero — there is no
+  Rust-core `RtspSession::stats()` counterpart these call, and no other
+  code path ever constructs a non-default `RtspStats`. The accessor is
+  kept (removing it would be a binding API break for no gain), but its
+  docs on both bindings are explicit that it is reserved, not partially
+  wired.
+- **Why deferred:** Wiring real values here needs the underlying RTCP
+  receive-side subsystem described in the entry above (RR report-block
+  tracking, jitter/loss accounting, UDP-side RTCP reception) — this
+  accessor is a thin projection of that subsystem, not a separate gap.
+- **Trigger to revisit:** Ride the RTCP statistics reporting entry above;
+  once `tst_rtp` has a real per-session stats source, project it through
+  both bindings' `stats()` accessors.
+
 ## ST 0605 Nano Precision Time Stamp Pack
 
 - **Status:** Not implemented. The `tst_core::klv::st0605` module

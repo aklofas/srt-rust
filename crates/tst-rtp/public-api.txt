@@ -6,7 +6,6 @@ impl tst_rtp::builder::RtpRecvSocketBuilder
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::build(self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::from_url(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
-pub fn tst_rtp::builder::RtpRecvSocketBuilder::listen(&self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::rtcp(self, bool) -> Self
 impl core::clone::Clone for tst_rtp::builder::RtpRecvSocketBuilder
@@ -23,7 +22,6 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtpRecvSocketBui
 pub struct tst_rtp::builder::RtpSocketBuilder
 impl tst_rtp::builder::RtpSocketBuilder
 pub fn tst_rtp::builder::RtpSocketBuilder::build(self) -> core::result::Result<tst_rtp::transport::RtpTransport, tst_rtp::transport::ConnectError>
-pub fn tst_rtp::builder::RtpSocketBuilder::connect(&self) -> core::result::Result<tst_rtp::transport::RtpTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpSocketBuilder::from_url(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::builder::RtpSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
 pub fn tst_rtp::builder::RtpSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
@@ -137,8 +135,6 @@ pub mod tst_rtp::error
 #[non_exhaustive] pub enum tst_rtp::error::MountError
 pub tst_rtp::error::MountError::Closed
 pub tst_rtp::error::MountError::Mux(tst_core::error::MuxError)
-pub tst_rtp::error::MountError::PeerBackpressure
-pub tst_rtp::error::MountError::PeerBackpressure::dropped_frames: u64
 impl core::convert::From<tst_core::error::MuxError> for tst_rtp::error::MountError
 pub fn tst_rtp::error::MountError::from(tst_core::error::MuxError) -> Self
 impl core::error::Error for tst_rtp::error::MountError
@@ -162,8 +158,6 @@ pub tst_rtp::error::RtspError::BadResponse
 pub tst_rtp::error::RtspError::BadResponse::detail: &'static str
 pub tst_rtp::error::RtspError::BadSdp
 pub tst_rtp::error::RtspError::BadSdp::detail: alloc::string::String
-pub tst_rtp::error::RtspError::InterleavedFraming
-pub tst_rtp::error::RtspError::InterleavedFraming::detail: &'static str
 pub tst_rtp::error::RtspError::InvalidHeader
 pub tst_rtp::error::RtspError::InvalidHeader::detail: &'static str
 pub tst_rtp::error::RtspError::Io(core::io::error::ErrorKind)
@@ -1058,47 +1052,6 @@ impl core::marker::Unpin for tst_rtp::rtsp::client::RtspClient
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::RtspClient
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::RtspClient
 impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::client::RtspClient
-pub mod tst_rtp::rtsp::interleaved
-pub enum tst_rtp::rtsp::interleaved::Frame
-pub tst_rtp::rtsp::interleaved::Frame::Binary
-pub tst_rtp::rtsp::interleaved::Frame::Binary::channel: u8
-pub tst_rtp::rtsp::interleaved::Frame::Binary::payload: bytes::bytes::Bytes
-pub tst_rtp::rtsp::interleaved::Frame::Rtsp(bytes::bytes::Bytes)
-impl core::clone::Clone for tst_rtp::rtsp::interleaved::Frame
-pub fn tst_rtp::rtsp::interleaved::Frame::clone(&self) -> tst_rtp::rtsp::interleaved::Frame
-impl core::fmt::Debug for tst_rtp::rtsp::interleaved::Frame
-pub fn tst_rtp::rtsp::interleaved::Frame::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl !core::marker::Freeze for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::Send for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::Sync for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::Unpin for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::Frame
-impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::Frame
-impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::Frame
-pub struct tst_rtp::rtsp::interleaved::InterleavedReader<R: std::io::BufRead>
-impl<R: std::io::BufRead> tst_rtp::rtsp::interleaved::InterleavedReader<R>
-pub fn tst_rtp::rtsp::interleaved::InterleavedReader<R>::new(R) -> Self
-pub fn tst_rtp::rtsp::interleaved::InterleavedReader<R>::next_frame(&mut self) -> core::result::Result<core::option::Option<tst_rtp::rtsp::interleaved::Frame>, tst_rtp::error::RtspError>
-impl<R> core::marker::Freeze for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Freeze
-impl<R> core::marker::Send for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Send
-impl<R> core::marker::Sync for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Sync
-impl<R> core::marker::Unpin for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Unpin
-impl<R> core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::UnsafeUnpin
-impl<R> core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::panic::unwind_safe::RefUnwindSafe
-impl<R> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::panic::unwind_safe::UnwindSafe
-pub struct tst_rtp::rtsp::interleaved::InterleavedWriter<W: std::io::Write>
-impl<W: std::io::Write> tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-pub fn tst_rtp::rtsp::interleaved::InterleavedWriter<W>::new(W) -> Self
-pub fn tst_rtp::rtsp::interleaved::InterleavedWriter<W>::write_binary(&self, u8, &[u8]) -> core::result::Result<(), tst_rtp::error::RtspError>
-pub fn tst_rtp::rtsp::interleaved::InterleavedWriter<W>::write_rtsp(&self, &[u8]) -> core::result::Result<(), tst_rtp::error::RtspError>
-impl<W> !core::marker::Freeze for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-impl<W> core::marker::Send for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::Send
-impl<W> core::marker::Sync for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::Send
-impl<W> core::marker::Unpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::Unpin
-impl<W> core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::UnsafeUnpin
-impl<W> core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-impl<W> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-pub const tst_rtp::rtsp::interleaved::MAX_BINARY_FRAME_LEN: usize
 pub mod tst_rtp::rtsp::message
 #[non_exhaustive] pub enum tst_rtp::rtsp::message::RtspMethod
 pub tst_rtp::rtsp::message::RtspMethod::Describe
@@ -1173,10 +1126,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::message::RtspRes
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::message::RtspResponse
 pub mod tst_rtp::rtsp::server
 pub mod tst_rtp::rtsp::server::auth
-pub mod tst_rtp::rtsp::server::builder
 pub mod tst_rtp::rtsp::server::fanout
 pub mod tst_rtp::rtsp::server::handlers
-pub mod tst_rtp::rtsp::server::interleaved_pump
 pub mod tst_rtp::rtsp::server::listener
 pub mod tst_rtp::rtsp::server::mount
 #[non_exhaustive] pub enum tst_rtp::rtsp::server::mount::MountKind
@@ -1255,7 +1206,6 @@ impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountStats
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountStats
 pub mod tst_rtp::rtsp::server::multicast
-pub mod tst_rtp::rtsp::server::runtime
 pub mod tst_rtp::rtsp::server::session
 pub struct tst_rtp::rtsp::server::session::ServerSessionState
 pub tst_rtp::rtsp::server::session::ServerSessionState::auth_failures: u8
@@ -1647,7 +1597,6 @@ pub tst_rtp::url::RtspUrl::tcp_keepalive: core::option::Option<core::time::Durat
 pub tst_rtp::url::RtspUrl::transport_preference: tst_rtp::url::RtspTransportPref
 pub tst_rtp::url::RtspUrl::username: core::option::Option<alloc::string::String>
 impl tst_rtp::url::RtspUrl
-pub fn tst_rtp::url::RtspUrl::is_server_bind(&self) -> bool
 pub fn tst_rtp::url::RtspUrl::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::url::RtspUrl::render_no_credentials(&self) -> alloc::string::String
 pub fn tst_rtp::url::RtspUrl::scheme(&self) -> tst_rtp::url::RtspScheme
@@ -1732,27 +1681,9 @@ impl core::marker::Unpin for tst_rtp::rtsp::auth::DigestAlgorithm
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::auth::DigestAlgorithm
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::auth::DigestAlgorithm
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::auth::DigestAlgorithm
-pub enum tst_rtp::Frame
-pub tst_rtp::Frame::Binary
-pub tst_rtp::Frame::Binary::channel: u8
-pub tst_rtp::Frame::Binary::payload: bytes::bytes::Bytes
-pub tst_rtp::Frame::Rtsp(bytes::bytes::Bytes)
-impl core::clone::Clone for tst_rtp::rtsp::interleaved::Frame
-pub fn tst_rtp::rtsp::interleaved::Frame::clone(&self) -> tst_rtp::rtsp::interleaved::Frame
-impl core::fmt::Debug for tst_rtp::rtsp::interleaved::Frame
-pub fn tst_rtp::rtsp::interleaved::Frame::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl !core::marker::Freeze for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::Send for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::Sync for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::Unpin for tst_rtp::rtsp::interleaved::Frame
-impl core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::Frame
-impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::Frame
-impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::Frame
 #[non_exhaustive] pub enum tst_rtp::MountError
 pub tst_rtp::MountError::Closed
 pub tst_rtp::MountError::Mux(tst_core::error::MuxError)
-pub tst_rtp::MountError::PeerBackpressure
-pub tst_rtp::MountError::PeerBackpressure::dropped_frames: u64
 impl core::convert::From<tst_core::error::MuxError> for tst_rtp::error::MountError
 pub fn tst_rtp::error::MountError::from(tst_core::error::MuxError) -> Self
 impl core::error::Error for tst_rtp::error::MountError
@@ -1944,8 +1875,6 @@ pub tst_rtp::RtspError::BadResponse
 pub tst_rtp::RtspError::BadResponse::detail: &'static str
 pub tst_rtp::RtspError::BadSdp
 pub tst_rtp::RtspError::BadSdp::detail: alloc::string::String
-pub tst_rtp::RtspError::InterleavedFraming
-pub tst_rtp::RtspError::InterleavedFraming::detail: &'static str
 pub tst_rtp::RtspError::InvalidHeader
 pub tst_rtp::RtspError::InvalidHeader::detail: &'static str
 pub tst_rtp::RtspError::Io(core::io::error::ErrorKind)
@@ -2308,29 +2237,6 @@ impl core::marker::Unpin for tst_rtp::h264::receiver::H264Receiver
 impl core::marker::UnsafeUnpin for tst_rtp::h264::receiver::H264Receiver
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::receiver::H264Receiver
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::receiver::H264Receiver
-pub struct tst_rtp::InterleavedReader<R: std::io::BufRead>
-impl<R: std::io::BufRead> tst_rtp::rtsp::interleaved::InterleavedReader<R>
-pub fn tst_rtp::rtsp::interleaved::InterleavedReader<R>::new(R) -> Self
-pub fn tst_rtp::rtsp::interleaved::InterleavedReader<R>::next_frame(&mut self) -> core::result::Result<core::option::Option<tst_rtp::rtsp::interleaved::Frame>, tst_rtp::error::RtspError>
-impl<R> core::marker::Freeze for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Freeze
-impl<R> core::marker::Send for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Send
-impl<R> core::marker::Sync for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Sync
-impl<R> core::marker::Unpin for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::Unpin
-impl<R> core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::marker::UnsafeUnpin
-impl<R> core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::panic::unwind_safe::RefUnwindSafe
-impl<R> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::InterleavedReader<R> where R: core::panic::unwind_safe::UnwindSafe
-pub struct tst_rtp::InterleavedWriter<W: std::io::Write>
-impl<W: std::io::Write> tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-pub fn tst_rtp::rtsp::interleaved::InterleavedWriter<W>::new(W) -> Self
-pub fn tst_rtp::rtsp::interleaved::InterleavedWriter<W>::write_binary(&self, u8, &[u8]) -> core::result::Result<(), tst_rtp::error::RtspError>
-pub fn tst_rtp::rtsp::interleaved::InterleavedWriter<W>::write_rtsp(&self, &[u8]) -> core::result::Result<(), tst_rtp::error::RtspError>
-impl<W> !core::marker::Freeze for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-impl<W> core::marker::Send for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::Send
-impl<W> core::marker::Sync for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::Send
-impl<W> core::marker::Unpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::Unpin
-impl<W> core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::UnsafeUnpin
-impl<W> core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
-impl<W> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
 pub struct tst_rtp::MountHandle
 impl tst_rtp::rtsp::server::mount::MountHandle
 pub fn tst_rtp::rtsp::server::mount::MountHandle::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
@@ -2612,7 +2518,6 @@ impl tst_rtp::builder::RtpRecvSocketBuilder
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::build(self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::from_url(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
-pub fn tst_rtp::builder::RtpRecvSocketBuilder::listen(&self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::rtcp(self, bool) -> Self
 impl core::clone::Clone for tst_rtp::builder::RtpRecvSocketBuilder
@@ -2656,7 +2561,6 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpRecvTransp
 pub struct tst_rtp::RtpSocketBuilder
 impl tst_rtp::builder::RtpSocketBuilder
 pub fn tst_rtp::builder::RtpSocketBuilder::build(self) -> core::result::Result<tst_rtp::transport::RtpTransport, tst_rtp::transport::ConnectError>
-pub fn tst_rtp::builder::RtpSocketBuilder::connect(&self) -> core::result::Result<tst_rtp::transport::RtpTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpSocketBuilder::from_url(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::builder::RtpSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
 pub fn tst_rtp::builder::RtpSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
@@ -2936,7 +2840,6 @@ pub tst_rtp::RtspUrl::tcp_keepalive: core::option::Option<core::time::Duration>
 pub tst_rtp::RtspUrl::transport_preference: tst_rtp::url::RtspTransportPref
 pub tst_rtp::RtspUrl::username: core::option::Option<alloc::string::String>
 impl tst_rtp::url::RtspUrl
-pub fn tst_rtp::url::RtspUrl::is_server_bind(&self) -> bool
 pub fn tst_rtp::url::RtspUrl::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::url::RtspUrl::render_no_credentials(&self) -> alloc::string::String
 pub fn tst_rtp::url::RtspUrl::scheme(&self) -> tst_rtp::url::RtspScheme
@@ -3105,7 +3008,6 @@ impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::transport_negotiation:
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::transport_negotiation::TransportResponse
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::client::transport_negotiation::TransportResponse
 pub const tst_rtp::DEFAULT_PKT_SIZE: usize
-pub const tst_rtp::MAX_BINARY_FRAME_LEN: usize
 pub const tst_rtp::RTCP_BASE_INTERVAL: core::time::Duration
 pub const tst_rtp::RTP_HEADER_LEN: usize
 pub const tst_rtp::RTP_PT_MP2T: u8

@@ -423,6 +423,37 @@ is a separate, JVM-only behavior change from an earlier arc.)
   genuinely gone from the surface — `tstrans.exceptions.UdpErrorKind`
   loses `HOST_NOT_LITERAL` and `IFACE_UNSUPPORTED` (7 → 5 members); a
   caller matching on either name by attribute gets `AttributeError`.
+- **`tst_rtp::rtsp::interleaved` (`Frame`, `InterleavedReader`,
+  `InterleavedWriter`, `MAX_BINARY_FRAME_LEN`) and
+  `RtspError::InterleavedFraming`** — a second, unused RFC 7826 §14
+  framing implementation; both real interleaved-frame paths
+  (`RtspClient`'s pump, the RTSP server's session loop) parse `$`-frames
+  inline and never called it. The one caller was the crate's own fuzz
+  target, which fuzzed dead code — it now drives the pump's real
+  boundary-detection logic via new `#[doc(hidden)]` helpers instead
+  (not part of the public API).
+- **`tst_rtp::rtsp::server::interleaved_pump`** (the empty-from-outside
+  server-side counterpart to the client pump) — the RTSP server never
+  expects client→server `$`-frames (no ANNOUNCE/RECORD support in this
+  release), so nothing constructed it; the real request loop reads
+  plain RTSP bytes in `rtsp::server::session`.
+- **`tst_rtp::rtsp::server::builder` / `tst_rtp::rtsp::server::runtime`**
+  — two empty placeholder modules left over from Phase 3 planning, with
+  no contents and no callers.
+- **`RtpSocketBuilder::connect` / `RtpRecvSocketBuilder::listen`** —
+  byte-identical duplicates of `build`, kept for an internal Phase 1
+  builder shape that was never a shipped contract. Use `.build()`.
+- **`RtspUrl::is_server_bind`** — four of its five disjuncts were
+  subsumed by the fifth (`host.parse::<IpAddr>().is_ok()`), and it
+  contradicted its own doc by treating non-loopback `127.x` hosts as
+  bindable. Real callers already use
+  `RtspUrl::validate_for_server_bind`, which reports a typed error
+  instead of a bool.
+- **`MountError::PeerBackpressure`** — never constructed (nothing
+  measures per-peer broadcast lag as a push-time condition); all three
+  bindings mapped it regardless. A lagging peer's dropped-frame count
+  is tracked in `MountStats::frames_dropped_total`, not surfaced as a
+  push error.
 
 ### Fixed
 

@@ -169,6 +169,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   compile-breaking shape as `ReconnectPolicy`'s `mode` field above.
 - **`StreamStats` gained a `last_seen: Option<SystemTime>` field**
   (std builds only). Full struct literals need the new field.
+- **`TsFraming::push` (RECOVER mode) is now fallible.** Was `fn
+  push(&mut self, bytes: &[u8]) -> (Vec<Vec<u8>>, &SenderStats)`; is
+  now `fn push(&mut self, bytes: &[u8]) -> Result<(Vec<Vec<u8>>,
+  &SenderStats), TsFramingError>`, carrying the new
+  `NoSyncAfterLimit` (see `### Fixed`) up through the framing
+  primitive. `TsFraming` is classified Stable in
+  `docs/reference/api-stability.md`, but it is not re-exported at the
+  crate root (only reachable via `tst_pipeline::sender::TsFraming`)
+  and has no known consumer outside `Sender` itself — which already
+  absorbs the new `Result` internally, so `Sender::send_ts`'s own
+  signature is unchanged. **Migration:** code calling
+  `TsFraming::push` directly needs to handle the new `Result`, e.g.
+  `let (bundles, stats) = framing.push(bytes)?;` or `.unwrap()` if
+  RECOVER-mode errors aren't expected in that context.
 - **Clean RTSP server teardown now ends a receive session as a clean
   end of stream, not `ShellErrorKind::TransportBroken`.** A
   `DemuxReceiver` / `Receiver` / `RawReceiver` wrapping a transport from
@@ -391,10 +405,17 @@ is a separate, JVM-only behavior change from an earlier arc.)
   never constructed. `send_ts` now returns `NoSyncAfterLimit { max }`
   once scanning exceeds the configured threshold without acquiring
   sync; the counter resets afterward so the watchdog can fire again on
-  the next `max_unsynced_bytes` of unrecovered garbage.
-  `TsFraming::push` (RECOVER mode) is now fallible to carry this error
-  (`Result<(Vec<Vec<u8>>, &SenderStats), TsFramingError>`, was an
-  infallible tuple).
+  the next `max_unsynced_bytes` of unrecovered garbage (cumulative
+  across `send_ts` calls until sync is acquired — how the garbage is
+  chunked across calls can affect exactly when it fires). Set
+  `max_unsynced_bytes` to `usize::MAX` to effectively disable the
+  watchdog. C-visible: `tst_sender_send_ts` can now return
+  `TST_E_INVALID_TS` where it previously always returned 0 for a
+  stream that never finds sync; a C caller cannot distinguish this
+  from a STRICT-mode `SyncLost` (both route through the same
+  `InputMalformed` → `TST_E_INVALID_TS` mapping — only the last-error
+  string differs). See the `TsFraming::push` entry under `### Changed`
+  for the accompanying signature break.
 
 - **Security: `hlss://` with no `?cert=`/`?key=` no longer silently
   serves plaintext HTTP.** `HlsUrl.tls` (set from the `hlss` scheme)
@@ -403,7 +424,11 @@ is a separate, JVM-only behavior change from an earlier arc.)
   neither param validated clean and bound plain HTTP with no
   indication that TLS was never applied. `HlsConfig` gains a `tls`
   field, set by `merge_from_url`; `validate()` now rejects `tls: true`
-  without both `tls_cert` and `tls_key`.
+  without both `tls_cert` and `tls_key`. **Migration:** an `hlss://`
+  bind that previously validated and served plaintext HTTP now fails
+  at `HlsPublisher::with_config` / `HlsPublisherBuilder::build` with
+  `HlsError::InvalidConfig` — supply both `?cert=` and `?key=` (or
+  call `.enable_tls(cert, key)` on the builder before `.build()`).
 
 ---
 

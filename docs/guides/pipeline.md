@@ -471,9 +471,10 @@ Where errors come from:
 - `MuxSenderError::Transport(TransportError)` — the transport layer
   reported an error (`MuxSender`).
 - `SenderError::Framing(TsFramingError)` — STRICT mode rejected
-  unaligned input (`SyncLost`). RECOVER mode does not return
-  `Framing` errors; the `max_unsynced_bytes` threshold is tracked
-  for diagnostic accounting only and does not stop the sender.
+  unaligned input (`SyncLost`). RECOVER mode returns
+  `NoSyncAfterLimit` once scanning for sync consumes more than
+  `max_unsynced_bytes` without acquiring it — see `max_unsynced_bytes`
+  under the `SenderConfig` knobs above.
 - `SenderError::Transport(TransportError)` — transport error (`Sender`).
 - `RawSender::send` returns `RawSenderError`, which wraps the underlying
   `TransportError`.

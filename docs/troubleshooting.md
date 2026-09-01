@@ -194,6 +194,12 @@ Strict mode requires the input bytes to start with a TS sync byte (`0x47`) at of
 
 Fix: switch to `TsFramingMode::Recover` to auto-resync, or fix the producer to emit aligned bytes from the start. See [guides/pipeline.md](/docs/guides/pipeline.md) for the framing state machine details.
 
+**`Sender` in `TsFramingMode::Recover` (the default) returns `TsFramingError::NoSyncAfterLimit`**
+
+RECOVER mode scanned more than `SenderConfig::max_unsynced_bytes` bytes (default 18,800, ≈100 packets' worth) without finding a TS sync byte — the input doesn't look like a TS stream at all, not just misaligned. This is cumulative across `send_ts` calls until sync is acquired, so it can fire mid-stream on a producer that goes silent or starts emitting non-TS bytes, not just at startup.
+
+Fix: check the upstream producer is actually emitting MPEG-TS (188-byte-aligned packets starting with `0x47`) on this connection. If the threshold is simply too tight for a legitimately noisy startup, raise `SenderConfig::max_unsynced_bytes`, or set it to `usize::MAX` to disable the watchdog. `send_ts`'s `input_consumed` on this error is `Some(true)` — do not resend the same bytes; push new data (or call `flush()`) to continue.
+
 **Receiver gets garbled TS**
 
 After the run, check `Sender::stats()` and inspect `bytes_skipped_for_sync` and `resync_events`. If either is nonzero in production, the producer is emitting non-aligned bytes intermittently. In `Recover` mode the sender still emits a clean stream (it realigns silently), so the receiver should be fine; in `Strict` mode you'd have already errored.

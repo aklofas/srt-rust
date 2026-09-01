@@ -32,7 +32,13 @@ pub struct SenderConfig {
     /// [`TsFramingError::NoSyncAfterLimit`]. The counter resets after the
     /// error is raised, so RECOVER mode keeps scanning afterward — the
     /// watchdog fires again only after another full `max_unsynced_bytes`
-    /// of unrecovered garbage.
+    /// of unrecovered garbage. The count is cumulative across `send_ts`
+    /// calls until sync is acquired, so whether a given amount of garbage
+    /// trips the watchdog can depend on how it's chunked (e.g. it clears on
+    /// the call where sync is finally found, even if that call alone pushed
+    /// more unsynced bytes than the limit, because the limit is only
+    /// checked while still scanning). Set to `usize::MAX` to effectively
+    /// disable the watchdog.
     pub max_unsynced_bytes: usize,
 }
 
@@ -242,9 +248,14 @@ impl<T: Transport> Sender<T> {
     ///
     /// Whether THIS call's `bytes` were consumed is reported via
     /// [`SenderError::input_consumed`] — `Some(true)` means `bytes` were
-    /// framed and queued (do **not** call `send_ts` again with the same
-    /// bytes, or the already-queued prefix is framed and sent a second
-    /// time); `Some(false)` means the failure happened before `bytes` was
+    /// already absorbed into internal state before the error: either framed
+    /// and queued for the transport (do **not** call `send_ts` again with
+    /// the same bytes, or the already-queued prefix is sent a second time),
+    /// or — for RECOVER mode's [`TsFramingError::NoSyncAfterLimit`] —
+    /// extended into the framing scan buffer, which may retain a tail of
+    /// this call's bytes (a "safe" retry would duplicate that tail once
+    /// sync is eventually acquired). Either way, do not resend the same
+    /// `bytes`. `Some(false)` means the failure happened before `bytes` was
     /// touched (e.g. draining bundles retained by a PREVIOUS call), so
     /// retrying the same input is safe. To recover after `Backpressure`,
     /// back off and then call [`Self::flush`] (or the next `send_ts` with
@@ -303,10 +314,13 @@ impl<T: Transport> Sender<T> {
         self.drain_pending()
             .map_err(|e| e.with_input_consumed(false))?;
         let bundles = if self.mode == TsFramingMode::Recover {
+            // NoSyncAfterLimit is the only error this path can raise, and by
+            // the time it fires `bytes` has already been extended into the
+            // framing buffer (see TsFraming::push) — consumed, not untouched.
             self.framing
                 .push(bytes)
                 .map(|(bundles, _stats)| bundles)
-                .map_err(|e| SenderError::from(e).with_input_consumed(false))?
+                .map_err(|e| SenderError::from(e).with_input_consumed(true))?
         } else {
             self.framing
                 .push_strict(bytes)

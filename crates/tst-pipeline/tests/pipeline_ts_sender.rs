@@ -76,3 +76,32 @@ fn ts_sender_strict_rejects_misaligned() {
     let result = sender.send_ts(&input);
     assert!(result.is_err());
 }
+
+#[test]
+fn ts_sender_recover_mode_errors_after_max_unsynced_bytes() {
+    use tst_pipeline::sender::TsFramingError;
+    use tst_pipeline::{SenderErrorSource, ShellErrorKind};
+
+    let transport = MockTransport::new(1316);
+    let mut sender = Sender::new(transport, {
+        let mut cfg = SenderConfig::default();
+        cfg.max_unsynced_bytes = 500;
+        cfg
+    });
+
+    // 501 bytes, never 0x47 — one past the configured limit, RECOVER mode
+    // (the default) still applies.
+    let garbage = vec![0x00u8; 501];
+    let err = sender.send_ts(&garbage).unwrap_err();
+
+    assert_eq!(err.kind, ShellErrorKind::InputMalformed);
+    // The garbage was already extended into the framing buffer before the
+    // limit check fires — do not resend the same bytes.
+    assert_eq!(err.input_consumed, Some(true));
+    match err.source {
+        SenderErrorSource::Framing(TsFramingError::NoSyncAfterLimit { max }) => {
+            assert_eq!(max, 500);
+        }
+        other => panic!("expected Framing(NoSyncAfterLimit), got {other:?}"),
+    }
+}

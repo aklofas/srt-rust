@@ -8,8 +8,8 @@
 # us when a new ShellErrorKind variant has been added because the
 # wildcard always matches. This ratchet fills that gap.
 #
-# Replaces the variant-level scripts/check-tst-c-error-coverage.sh
-# (deleted in Plan A Task 10).
+# Replaces the variant-level monolithic tst-c error-coverage ratchet
+# (deleted in Plan A Task 10, split into this file + pipeline-kind-classification.sh).
 
 set -euo pipefail
 

@@ -26,9 +26,9 @@
 //!   the transport/session is still alive)
 //! - all others (`Broken`, `Closed`) → `TRANSPORT`
 //!
-//! The 25th bash ratchet `scripts/check-py-rtp-error-mapping-coverage.sh`
-//! enforces that every `RtpErrorKind` variant has at least one literal
-//! `make_rtp_error(py, "<VARIANT>", ...)` call site in this crate.
+//! The consolidated `scripts/check/python/error-mapping-coverage.sh`
+//! ratchet enforces that every `RtpErrorKind` variant has at least one
+//! literal `make_rtp_error(py, "<VARIANT>", ...)` call site in this crate.
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
@@ -57,8 +57,8 @@ use crate::errors::make_rtp_error;
 /// instance carrying the right `RtpErrorKind`.
 ///
 /// Each of the four `RtpErrorKind` variants gets a literal call site
-/// below so the `check-py-rtp-error-mapping-coverage.sh` ratchet stays
-/// green.
+/// below so the consolidated `scripts/check/python/error-mapping-coverage.sh`
+/// ratchet stays green.
 fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
     match e {
         TransportError::ExplicitClose => {

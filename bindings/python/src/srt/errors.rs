@@ -33,10 +33,10 @@
 //!   `CONFIG_INVALID` (the cap is a configurable payload size, so the
 //!   caller can tune it); future `#[non_exhaustive]` additions → `IO`.
 //!
-//! The bash ratchet `scripts/check-py-srt-error-mapping-coverage.sh`
-//! verifies every `SrtErrorKind` variant has at least one
+//! The consolidated `scripts/check/python/error-mapping-coverage.sh`
+//! ratchet verifies every `SrtErrorKind` variant has at least one
 //! `make_srt_error(py, "<KIND>", ...)` call site under
-//! `bindings/python/src/srt/`. The single-line kind literal is required
+//! `bindings/python/src/`. The single-line kind literal is required
 //! by the line-based grep — multi-line wraps will not match.
 
 use pyo3::prelude::*;

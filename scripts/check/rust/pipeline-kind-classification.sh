@@ -7,8 +7,9 @@
 # Each inner enum is #[non_exhaustive] requiring a wildcard, so Rust's
 # exhaustiveness checker can't catch a missing arm. This ratchet does.
 #
-# Replaces the variant-level scripts/check-tst-c-error-coverage.sh
-# (deleted in Plan A Task 10) for the new kind-derivation layer.
+# Replaces the variant-level monolithic tst-c error-coverage ratchet
+# (deleted in Plan A Task 10, split into this file + shell-error-kind-coverage.sh)
+# for the new kind-derivation layer.
 
 set -euo pipefail
 

@@ -5,38 +5,23 @@
 //! `throw_srt(env, "<CONST>", ...)` — keep each KIND literal on the call line.
 
 use jni::JNIEnv;
-use jni::objects::{JObject, JThrowable, JValue};
 use tst_core::transport::TransportError;
 use tst_srt::UrlError;
 use tst_srt::error::{AcceptError, BindError, ConnectError, IoError};
+
+use crate::error::throw_family;
 
 /// Construct + throw `org.tstrans.SrtException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `SrtException.Kind` enum constant names
 /// (SCREAMING_SNAKE_CASE). The ratchet greps for `throw_srt(env, "<CONST>", ...)`.
 pub(crate) fn throw_srt(env: &mut JNIEnv, kind: &str, message: &str) {
-    if env.exception_check().unwrap_or(false) {
-        return; // don't clobber an already-pending exception
-    }
-    if let Err(e) = throw_srt_inner(env, kind, message) {
-        let _ = env.throw_new(
-            "java/lang/RuntimeException",
-            format!("SrtException throw failed ({kind}): {e}"),
-        );
-    }
-}
-
-fn throw_srt_inner(env: &mut JNIEnv, kind: &str, message: &str) -> jni::errors::Result<()> {
-    let kind_sig = "Lorg/tstrans/SrtException$Kind;";
-    let kind_val = env
-        .get_static_field("org/tstrans/SrtException$Kind", kind, kind_sig)?
-        .l()?;
-    let msg = env.new_string(message)?;
-    let exc: JObject = env.new_object(
+    throw_family(
+        env,
         "org/tstrans/SrtException",
-        format!("({kind_sig}Ljava/lang/String;)V"),
-        &[JValue::Object(&kind_val), JValue::Object(&msg)],
-    )?;
-    env.throw(JThrowable::from(exc))
+        "Lorg/tstrans/SrtException$Kind;",
+        kind,
+        message,
+    );
 }
 
 /// Map a `tst_srt::UrlError` (raised by `SrtUrl::parse`) to

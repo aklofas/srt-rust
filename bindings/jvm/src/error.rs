@@ -46,66 +46,39 @@ pub fn throw_closed(env: &mut JNIEnv, what: &str) {
 /// `kind` MUST be one of the `DemuxException.Kind` enum constant names
 /// (SCREAMING_SNAKE_CASE), matching the Rust `DemuxError` variants 1:1.
 pub fn throw_demux(env: &mut JNIEnv, kind: &str, message: &str) {
-    if env.exception_check().unwrap_or(false) {
-        return; // don't clobber an already-pending exception
-    }
-    if let Err(e) = throw_kinded(
+    throw_family(
         env,
         "org/tstrans/DemuxException",
         "Lorg/tstrans/DemuxException$Kind;",
         kind,
         message,
-    ) {
-        // Fallback: a plain RuntimeException so the failure is never silent.
-        let _ = env.throw_new(
-            "java/lang/RuntimeException",
-            format!("DemuxException throw failed ({kind}): {e}"),
-        );
-    }
+    );
 }
 
 /// Construct + throw `org.tstrans.MuxException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `MuxException.Kind` enum constant names
 /// (SCREAMING_SNAKE_CASE), matching the 5-variant `MuxErrorKind` buckets.
 pub fn throw_mux(env: &mut JNIEnv, kind: &str, message: &str) {
-    if env.exception_check().unwrap_or(false) {
-        return; // don't clobber an already-pending exception
-    }
-    if let Err(e) = throw_kinded(
+    throw_family(
         env,
         "org/tstrans/MuxException",
         "Lorg/tstrans/MuxException$Kind;",
         kind,
         message,
-    ) {
-        // Fallback: a plain RuntimeException so the failure is never silent.
-        let _ = env.throw_new(
-            "java/lang/RuntimeException",
-            format!("MuxException throw failed ({kind}): {e}"),
-        );
-    }
+    );
 }
 
 /// Construct + throw `org.tstrans.KlvDecodeException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `KlvDecodeException.Kind` constant names
 /// (SCREAMING_SNAKE_CASE). The ratchet greps for `throw_klv_decode(env, "<CONST>", ...)`.
 pub fn throw_klv_decode(env: &mut JNIEnv, kind: &str, message: &str) {
-    if env.exception_check().unwrap_or(false) {
-        return; // don't clobber an already-pending exception
-    }
-    if let Err(e) = throw_kinded(
+    throw_family(
         env,
         "org/tstrans/KlvDecodeException",
         "Lorg/tstrans/KlvDecodeException$Kind;",
         kind,
         message,
-    ) {
-        // Fallback: a plain RuntimeException so the failure is never silent.
-        let _ = env.throw_new(
-            "java/lang/RuntimeException",
-            format!("KlvDecodeException throw failed ({kind}): {e}"),
-        );
-    }
+    );
 }
 
 /// Construct + throw `org.tstrans.KlvEncodeException(Kind.<kind>, tag, message)`.
@@ -454,7 +427,7 @@ pub fn map_codec_parse_error(env: &mut JNIEnv, e: &CodecParseError, codec: &str)
 
 /// Shared builder: looks up `Kind.<kind>` static field, calls the
 /// `(<kind_sig>, String)` constructor, throws the result.
-fn throw_kinded(
+pub(crate) fn throw_kinded(
     env: &mut JNIEnv,
     exc_class: &str,
     kind_sig: &str,
@@ -471,4 +444,31 @@ fn throw_kinded(
         &[JValue::Object(&kind_val), JValue::Object(&msg)],
     )?;
     env.throw(jni::objects::JThrowable::from(exc))
+}
+
+/// Shared per-family wrapper around [`throw_kinded`]: bails if an exception is
+/// already pending, then falls back to a plain `RuntimeException` naming
+/// `exc_class`'s simple name if construction itself fails. Every
+/// `throw_<family>` one-liner (`throw_demux`/`throw_mux`/`throw_klv_decode`
+/// here, plus `throw_srt` in `srt::errors` and `throw_rtp`/`throw_rtsp` in
+/// `rtp::errors`) calls this — the per-family fn names stay because the jvm
+/// error-mapping ratchet greps for `throw_<family>(env, "<KIND>", ...)`.
+pub(crate) fn throw_family(
+    env: &mut JNIEnv,
+    exc_class: &str,
+    kind_sig: &str,
+    kind: &str,
+    message: &str,
+) {
+    if env.exception_check().unwrap_or(false) {
+        return; // don't clobber an already-pending exception
+    }
+    if let Err(e) = throw_kinded(env, exc_class, kind_sig, kind, message) {
+        // Fallback: a plain RuntimeException so the failure is never silent.
+        let simple_name = exc_class.rsplit('/').next().unwrap_or(exc_class);
+        let _ = env.throw_new(
+            "java/lang/RuntimeException",
+            format!("{simple_name} throw failed ({kind}): {e}"),
+        );
+    }
 }

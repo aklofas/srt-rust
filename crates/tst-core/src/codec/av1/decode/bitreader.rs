@@ -4,7 +4,6 @@
 //! `crate::codec::bitreader`). AV1 has its own primitive set:
 //!   * `f(n)` — fixed-width unsigned read (§4.7.2)
 //!   * `uvlc()` — variable-length code (§4.10.3)
-//!   * `byte_align()` — skip to next byte boundary (§5.3.1)
 //!   * (LEB128 lives in [`super::leb128`].)
 //!
 //! AV1 OBU bodies do NOT use emulation-prevention bytes, so this
@@ -91,17 +90,6 @@ impl<'a> Av1BitReader<'a> {
         Ok((1u64 << leading_zeros) - 1 + extra)
     }
 
-    /// Skip until next byte boundary (`byte_alignment()` per §5.3.1).
-    #[allow(dead_code)] // used by #[cfg(test)] byte_align_* tests in this file
-    pub fn byte_align(&mut self) {
-        self.bit_pos = (self.bit_pos + 7) & !7;
-    }
-
-    #[allow(dead_code)] // used by #[cfg(test)] byte_align_* tests in this file
-    pub fn bit_pos(&self) -> usize {
-        self.bit_pos
-    }
-
     /// Test-only: force `bit_pos` to an arbitrary value so the
     /// overflow-guard path on `f()` can be exercised without looping.
     #[cfg(test)]
@@ -148,21 +136,6 @@ mod tests {
     fn truncated_returns_err() {
         let mut br = Av1BitReader::new(&[0xFF]);
         assert!(br.f(16).is_err());
-    }
-
-    #[test]
-    fn byte_align_skips_to_next_byte_boundary() {
-        let mut br = Av1BitReader::new(&[0xFF, 0xFF]);
-        let _ = br.f(3); // consume 3 bits
-        br.byte_align();
-        assert_eq!(br.bit_pos(), 8);
-    }
-
-    #[test]
-    fn byte_align_noop_when_already_aligned() {
-        let mut br = Av1BitReader::new(&[0xFF]);
-        br.byte_align();
-        assert_eq!(br.bit_pos(), 0);
     }
 
     #[test]

@@ -105,6 +105,11 @@ class DemuxErrorKind(enum.Enum):
     SYNC_LOSS = "sync_loss"
     BAD_PMT = "bad_pmt"
     BAD_PES = "bad_pes"
+    # Parity-only: there is NO producer in `tst_core::DemuxError` (the
+    # file path treats truncation as clean EOF and surfaces read
+    # failures as a native `OSError`). Exempted in
+    # scripts/check/python/error-mapping-coverage.sh. Mirrored (also
+    # parity-only) by the JVM `DemuxException.Kind.UNEXPECTED_EOF`.
     UNEXPECTED_EOF = "unexpected_eof"
     # Strict-mode policy rejection — StrictMode converted a non-conformance
     # into a fatal error.  Placed before INTERNAL (increasing severity).

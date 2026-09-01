@@ -5,14 +5,13 @@ Available when tstrans was built with the `srt` cargo feature
 will fail to import this submodule with a friendly ImportError.
 
 Submodule contents are populated by `tstrans._native.srt`:
-- `Sender`, `Receiver`, `SocketStats`, `SrtStats`, `CancelHandle` (Wave A T2)
-- `Socket`, `Listener`, `Builder`                                  (Wave A T3)
-- `MuxSender`, `DemuxReceiver`                                     (Wave B T5)
-- `ReconnectPolicy`, `BackoffStrategy`, `OverflowPolicy`           (Wave B T6)
-- `ManagedSender`, `ManagedReceiver`, `ManagedMuxSender`,
-  `ManagedDemuxReceiver`                                           (Wave C T7+T8)
+- `Sender`, `Receiver`, `SocketStats`, `SrtStats`, `CancelHandle`
+- `Socket`, `Listener`, `Builder`
+- `MuxSender`, `DemuxReceiver`
+- `ReconnectPolicy`, `BackoffStrategy`, `OverflowPolicy`
+- `ManagedSender`, `ManagedReceiver`, `ManagedMuxSender`, `ManagedDemuxReceiver`
 - `ReconnectMode`, `ManagedTransportStats` (`reconnect_stats()` on
-  `ManagedSender`/`ManagedMuxSender`)          (bindings-parity-bundle C4)
+  `ManagedSender`/`ManagedMuxSender`)
 """
 
 from __future__ import annotations

@@ -73,9 +73,6 @@ pub tst_tcp::error::TcpError::ConnectTimeout
 pub tst_tcp::error::TcpError::ConnectTimeout::seconds: u64
 pub tst_tcp::error::TcpError::InvalidConfig(alloc::string::String)
 pub tst_tcp::error::TcpError::Io(core::io::error::Error)
-pub tst_tcp::error::TcpError::PayloadTooLarge
-pub tst_tcp::error::TcpError::PayloadTooLarge::len: usize
-pub tst_tcp::error::TcpError::PayloadTooLarge::max: usize
 pub tst_tcp::error::TcpError::Tls(alloc::string::String)
 pub tst_tcp::error::TcpError::TlsDisabled
 pub tst_tcp::error::TcpError::Url(tst_tcp::url::TcpUrlError)
@@ -103,7 +100,6 @@ pub tst_tcp::error::TcpErrorKind::Closed = 4
 pub tst_tcp::error::TcpErrorKind::ConnectTimeout = 5
 pub tst_tcp::error::TcpErrorKind::InvalidConfig = 6
 pub tst_tcp::error::TcpErrorKind::Io = 2
-pub tst_tcp::error::TcpErrorKind::PayloadTooLarge = 3
 pub tst_tcp::error::TcpErrorKind::Tls = 7
 pub tst_tcp::error::TcpErrorKind::TlsDisabled = 8
 pub tst_tcp::error::TcpErrorKind::Url = 1

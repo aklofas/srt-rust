@@ -20,9 +20,9 @@ use crate::transport::TcpTransport;
 /// instance serves multiple peers, each accepted call returning its own
 /// `TcpTransport`. `TcpListener::from_url` is the URL-style alternative to
 /// `TcpListener::bind`; pass a `tcp://host:port?listen=1` URL to construct the
-/// listener without a raw `SocketAddr`. See
-/// See the receive-side entry-points table in `docs/reference/compatibility.md`
-/// for a side-by-side comparison of all transport receive-entry patterns.
+/// listener without a raw `SocketAddr`. See the receive-side entry-points
+/// table in `docs/reference/compatibility.md` for a side-by-side comparison
+/// of all transport receive-entry patterns.
 pub struct TcpListener {
     inner: StdTcpListener,
     config: SocketConfig,
@@ -45,21 +45,29 @@ impl TcpListener {
     /// Bind from a `tcp://0.0.0.0:port?listen=1` URL.
     pub fn from_url(url: &str) -> Result<Self, TcpError> {
         let parsed = crate::url::TcpUrl::parse(url)?;
+        Self::from_parsed(&parsed)
+    }
+
+    /// Bind from an already-parsed `TcpUrl`. Skips the format-then-reparse
+    /// round trip `TcpListenerBuilder::build` used to go through — a source
+    /// of the class of bug where a field the formatter forgets to re-emit
+    /// silently vanishes on `build()`.
+    pub(crate) fn from_parsed(parsed: &crate::url::TcpUrl) -> Result<Self, TcpError> {
         if !parsed.listen {
             return Err(TcpError::InvalidConfig(
                 "URL does not have ?listen=1 — use TcpTransport::connect for caller-side".into(),
             ));
         }
 
-        let ip: IpAddr = parsed.host.parse().map_err(|_| {
-            TcpError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("listener host '{}' must be an IP literal", parsed.host),
-            ))
-        })?;
+        // TcpUrl::parse already rejected a non-literal host for a
+        // ?listen=1 URL (TcpUrlError::BadHost), so this always succeeds.
+        let ip: IpAddr = parsed
+            .host
+            .parse()
+            .expect("TcpUrl::parse validated the listener host is an IP literal");
         let bind_addr = SocketAddr::new(ip, parsed.port);
         let mut listener = Self::bind(bind_addr)?;
-        listener.config.merge_from_url(&parsed);
+        listener.config.merge_from_url(parsed);
 
         #[cfg(feature = "tls")]
         if parsed.tls {

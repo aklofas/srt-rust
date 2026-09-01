@@ -33,7 +33,7 @@ pub struct UdpUrl {
     pub rcvbuf: Option<usize>,
     /// SO_SNDBUF size in bytes.
     pub sndbuf: Option<usize>,
-    /// Send-side datagram size; receiver-side buffer hint.
+    /// Send-side datagram size. Rejected on a recv-side URL.
     pub pkt_size: Option<usize>,
     /// Local bind address override (for sending from a specific NIC).
     pub localaddr: Option<IpAddr>,
@@ -49,18 +49,6 @@ pub enum UdpUrlError {
     MissingPort,
     #[error("could not resolve host '{host}': {detail}")]
     HostResolve { host: String, detail: String },
-    /// Superseded by [`Self::HostResolve`], which carries the resolver's
-    /// failure detail and covers hostname resolution (0.5.0 accepts
-    /// hostnames, not just IP literals). Never constructed since 0.5.0;
-    /// retained for one deprecation cycle per the Stable-tier policy in
-    /// `docs/reference/api-stability.md` — removal no earlier than 0.6.0.
-    #[deprecated(
-        since = "0.5.0",
-        note = "never constructed since 0.5.0 — match `HostResolve` instead; \
-                removal no earlier than 0.6.0"
-    )]
-    #[error("host '{0}' is not a literal IPv4/IPv6 address")]
-    BadHost(String),
     /// A recv-bind (`@`-prefixed) URL was passed to a send-side entry
     /// point, or vice versa. The message names the right entry point.
     #[error("{0}")]
@@ -344,24 +332,6 @@ mod tests {
             }
             Err(e) => panic!("unexpected error kind: {e:?}"),
         }
-    }
-
-    /// v0.4 callers that name `BadHost` (match arms, constructions) must
-    /// keep compiling through the 0.5 deprecation cycle — the Stable-tier
-    /// promise in docs/reference/api-stability.md this variant's
-    /// deprecation implements.
-    #[test]
-    fn deprecated_bad_host_still_compiles_for_v04_callers() {
-        #[allow(deprecated)]
-        fn classify(e: &UdpUrlError) -> &'static str {
-            match e {
-                UdpUrlError::BadHost(_) => "bad-host",
-                _ => "other",
-            }
-        }
-        #[allow(deprecated)]
-        let e = UdpUrlError::BadHost("example".into());
-        assert_eq!(classify(&e), "bad-host");
     }
 
     use super::*;

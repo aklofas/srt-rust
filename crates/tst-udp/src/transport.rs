@@ -15,8 +15,7 @@ use crate::url::UdpUrl;
 /// UDP sender.
 ///
 /// Construct via [`UdpTransport::connect`] for the URL fast-path, or via
-/// [`crate::builder::UdpTransportBuilder`] (added in a later phase) for full
-/// control over knobs.
+/// [`crate::builder::UdpTransportBuilder`] for full control over knobs.
 ///
 /// Always sends to a single fixed peer via `send_to` on an
 /// **unconnected** socket — fire-and-forget datagram semantics, matching

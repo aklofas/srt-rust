@@ -26,8 +26,6 @@ pub mod stats;
 pub mod transport;
 pub mod url;
 
-mod transport_recv_knobs;
-
 pub use builder::{UdpRecvTransportBuilder, UdpTransportBuilder};
 pub use config::SocketConfig;
 pub use error::{UdpError, UdpErrorKind};

@@ -21,7 +21,7 @@ pub struct SocketConfig {
     /// SO_SNDBUF in bytes.
     pub sndbuf: Option<usize>,
     /// Send-side datagram size. Default 7×188 = 1316 bytes (STANAG 4609 op default).
-    /// Receiver-side: hint for recv buffer pre-allocation.
+    /// Rejected on a recv-side config.
     pub pkt_size: Option<usize>,
     /// Local bind address override (for sending from a specific NIC).
     pub localaddr: Option<IpAddr>,

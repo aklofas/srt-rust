@@ -13,38 +13,23 @@
 //! `throw_rtsp(env, "<CONST>", ...)` — keep each KIND literal on the call line.
 
 use jni::JNIEnv;
-use jni::objects::{JObject, JThrowable, JValue};
 use tst_core::transport::TransportError;
 use tst_rtp::ConnectError;
 use tst_rtp::RtspError;
 use tst_rtp::error::{MountError, RtspServerError};
 
+use crate::error::throw_family;
+
 /// Construct + throw `org.tstrans.RtpException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `RtpException.Kind` constant names.
 pub(crate) fn throw_rtp(env: &mut JNIEnv, kind: &str, message: &str) {
-    if env.exception_check().unwrap_or(false) {
-        return; // don't clobber an already-pending exception
-    }
-    if let Err(e) = throw_rtp_inner(env, kind, message) {
-        let _ = env.throw_new(
-            "java/lang/RuntimeException",
-            format!("RtpException throw failed ({kind}): {e}"),
-        );
-    }
-}
-
-fn throw_rtp_inner(env: &mut JNIEnv, kind: &str, message: &str) -> jni::errors::Result<()> {
-    let kind_sig = "Lorg/tstrans/RtpException$Kind;";
-    let kind_val = env
-        .get_static_field("org/tstrans/RtpException$Kind", kind, kind_sig)?
-        .l()?;
-    let msg = env.new_string(message)?;
-    let exc: JObject = env.new_object(
+    throw_family(
+        env,
         "org/tstrans/RtpException",
-        format!("({kind_sig}Ljava/lang/String;)V"),
-        &[JValue::Object(&kind_val), JValue::Object(&msg)],
-    )?;
-    env.throw(JThrowable::from(exc))
+        "Lorg/tstrans/RtpException$Kind;",
+        kind,
+        message,
+    );
 }
 
 /// Map a `TransportError` from `send_bytes` / `recv_bytes` onto an
@@ -82,29 +67,13 @@ pub(crate) fn connect_error_to_rtp(env: &mut JNIEnv, e: &ConnectError) {
 /// `kind` MUST be one of the `RtspException.Kind` constant names. The ratchet
 /// greps for `throw_rtsp(env, "<CONST>", ...)` — keep each KIND literal on the call line.
 pub(crate) fn throw_rtsp(env: &mut JNIEnv, kind: &str, message: &str) {
-    if env.exception_check().unwrap_or(false) {
-        return; // don't clobber an already-pending exception
-    }
-    if let Err(e) = throw_rtsp_inner(env, kind, message) {
-        let _ = env.throw_new(
-            "java/lang/RuntimeException",
-            format!("RtspException throw failed ({kind}): {e}"),
-        );
-    }
-}
-
-fn throw_rtsp_inner(env: &mut JNIEnv, kind: &str, message: &str) -> jni::errors::Result<()> {
-    let kind_sig = "Lorg/tstrans/RtspException$Kind;";
-    let kind_val = env
-        .get_static_field("org/tstrans/RtspException$Kind", kind, kind_sig)?
-        .l()?;
-    let msg = env.new_string(message)?;
-    let exc: JObject = env.new_object(
+    throw_family(
+        env,
         "org/tstrans/RtspException",
-        format!("({kind_sig}Ljava/lang/String;)V"),
-        &[JValue::Object(&kind_val), JValue::Object(&msg)],
-    )?;
-    env.throw(JThrowable::from(exc))
+        "Lorg/tstrans/RtspException$Kind;",
+        kind,
+        message,
+    );
 }
 
 /// Map a `tst_rtp::RtspError` onto a thrown `RtspException`. Ported 1:1 from

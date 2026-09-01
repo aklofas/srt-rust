@@ -228,6 +228,7 @@ pub tst_tcp::url::TcpUrlError::BadQueryValue::key: alloc::string::String
 pub tst_tcp::url::TcpUrlError::BadQueryValue::value: alloc::string::String
 pub tst_tcp::url::TcpUrlError::BadScheme(alloc::string::String)
 pub tst_tcp::url::TcpUrlError::MissingPort
+pub tst_tcp::url::TcpUrlError::NotAListenerUrl(alloc::string::String)
 pub tst_tcp::url::TcpUrlError::Parse(tst_core::url::common::UrlError)
 impl core::convert::From<tst_core::url::common::UrlError> for tst_tcp::url::TcpUrlError
 pub fn tst_tcp::url::TcpUrlError::from(tst_core::url::common::UrlError) -> Self

@@ -73,6 +73,12 @@ pub enum TcpUrlError {
     MissingPort,
     #[error("listener host '{0}' must be a literal IPv4/IPv6 address")]
     BadHost(String),
+    /// A caller-only URL (no `?listen=1`) was passed to
+    /// `TcpListenerBuilder::from_url`, which requires a listener URL. The
+    /// message names the right entry point (mirrors
+    /// `UdpUrlError::SendRecvMismatch`).
+    #[error("{0}")]
+    NotAListenerUrl(String),
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
     BadQueryValue {
         key: String,

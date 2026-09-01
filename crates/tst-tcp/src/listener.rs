@@ -60,11 +60,15 @@ impl TcpListener {
         }
 
         // TcpUrl::parse already rejected a non-literal host for a
-        // ?listen=1 URL (TcpUrlError::BadHost), so this always succeeds.
+        // ?listen=1 URL (TcpUrlError::BadHost), so this can't-happen path
+        // guards a hand-built TcpUrl that skipped that check (TcpUrl's
+        // fields are public and the struct isn't marked non-exhaustive)
+        // instead of panicking if `from_parsed` is ever promoted to a
+        // public API.
         let ip: IpAddr = parsed
             .host
             .parse()
-            .expect("TcpUrl::parse validated the listener host is an IP literal");
+            .map_err(|_| TcpError::Url(crate::url::TcpUrlError::BadHost(parsed.host.clone())))?;
         let bind_addr = SocketAddr::new(ip, parsed.port);
         let mut listener = Self::bind(bind_addr)?;
         listener.config.merge_from_url(parsed);

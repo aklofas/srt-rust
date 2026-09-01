@@ -112,14 +112,14 @@ pub enum TstError {
     /// Maps from `tst_udp::UdpErrorKind::Io`.
     UdpIo = -26,
     /// (-27) UDP URL/config parse failure or invalid host literal.
-    /// Maps from `UdpErrorKind::{Url, HostNotLiteral, InvalidConfig}`.
+    /// Maps from `UdpErrorKind::{Url, InvalidConfig}`.
     UdpConfig = -27,
     /// (-28) UDP payload too large for the configured MTU / pkt_size.
-    /// Maps from `UdpErrorKind::PayloadTooLarge`.
+    /// Reserved; not currently produced (no `UdpErrorKind` variant maps here).
     UdpPayloadTooLarge = -28,
     /// (-29) UDP multicast interface not supported (e.g., requested
     /// `?iface=eth0` on a platform where `tst-udp` can't apply it).
-    /// Maps from `UdpErrorKind::IfaceUnsupported`.
+    /// Reserved; not currently produced (no `UdpErrorKind` variant maps here).
     UdpIfaceUnsupported = -29,
 
     // Plan A5a — TCP error codes (-30..=-33).
@@ -163,17 +163,17 @@ pub enum TstError {
     RistConfig = -39,
     /// (-40) RIST payload too large for the configured pkt_size
     /// (default 1316 bytes; STANAG-4609-aligned).
-    /// Maps from `RistErrorKind::PayloadTooLarge`.
+    /// Reserved; not currently produced (no `RistErrorKind` variant maps here).
     RistPayloadTooLarge = -40,
     /// (-41) RIST encryption requested but `tst-rist` built without
     /// `mbedtls` feature (uncrypted librist build cannot apply AES).
     /// Maps from `RistErrorKind::EncryptionDisabled`.
     RistEncryptionDisabled = -41,
     /// (-42) RIST receive timeout exceeded the session_timeout.
-    /// Maps from `RistErrorKind::RecvTimeout`.
+    /// Reserved; not currently produced (no `RistErrorKind` variant maps here).
     RistRecvTimeout = -42,
     /// (-43) RIST socket I/O failure underlying the librist transport.
-    /// Maps from `RistErrorKind::Io`.
+    /// Reserved; not currently produced (no `RistErrorKind` variant maps here).
     RistIo = -43,
 
     /// (-44) AV1 OBU input is not a well-formed elementary OBU stream;
@@ -718,14 +718,10 @@ pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
     // enforces this completeness.
     match e.kind() {
         UdpErrorKind::Url => TstError::UdpConfig,
-        UdpErrorKind::HostNotLiteral => TstError::UdpConfig,
         UdpErrorKind::Io => TstError::UdpIo,
-        UdpErrorKind::IfaceUnsupported => TstError::UdpIfaceUnsupported,
-        UdpErrorKind::PayloadTooLarge => TstError::UdpPayloadTooLarge,
-        UdpErrorKind::Closed => TstError::Closed, // reuse global Closed = -7
         UdpErrorKind::InvalidConfig => TstError::UdpConfig,
         // Required by #[non_exhaustive]. CI ratchet allows this arm only
-        // when UdpErrorKind is non_exhaustive; verifies all 7 named
+        // when UdpErrorKind is non_exhaustive; verifies all 3 named
         // variants above are still explicit.
         _ => TstError::UdpIo,
     }
@@ -740,14 +736,13 @@ pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
     match e.kind() {
         TcpErrorKind::Url => TstError::TcpConfig,
         TcpErrorKind::Io => TstError::TcpIo,
-        TcpErrorKind::PayloadTooLarge => TstError::TooLarge, // reuse global TooLarge = -6
-        TcpErrorKind::Closed => TstError::Closed,            // reuse global Closed = -7
+        TcpErrorKind::Closed => TstError::Closed, // reuse global Closed = -7
         TcpErrorKind::ConnectTimeout => TstError::TcpConnectTimeout,
         TcpErrorKind::InvalidConfig => TstError::TcpConfig,
         TcpErrorKind::Tls => TstError::TcpTls,
         TcpErrorKind::TlsDisabled => TstError::TcpTls,
         // Required by #[non_exhaustive]. CI ratchet allows this arm only
-        // when TcpErrorKind is non_exhaustive; verifies all 8 named
+        // when TcpErrorKind is non_exhaustive; verifies all 7 named
         // variants above are still explicit.
         _ => TstError::TcpIo,
     }
@@ -785,16 +780,12 @@ pub(crate) fn rist_error_to_code(e: &tst_rist::RistError) -> TstError {
     match e.kind() {
         RistErrorKind::Url => TstError::RistConfig,
         RistErrorKind::Ffi => TstError::RistFfi,
-        RistErrorKind::PayloadTooLarge => TstError::RistPayloadTooLarge,
-        RistErrorKind::Closed => TstError::Closed, // reuse global Closed = -7
         RistErrorKind::InvalidConfig => TstError::RistConfig,
         RistErrorKind::EncryptionDisabled => TstError::RistEncryptionDisabled,
         RistErrorKind::ContextCreateFailed => TstError::RistFfi,
         RistErrorKind::PeerCreateFailed => TstError::RistFfi,
-        RistErrorKind::RecvTimeout => TstError::RistRecvTimeout,
-        RistErrorKind::Io => TstError::RistIo,
         // Required by #[non_exhaustive]. CI ratchet allows this arm only
-        // when RistErrorKind is non_exhaustive; verifies all 10 named
+        // when RistErrorKind is non_exhaustive; verifies all 6 named
         // variants above are still explicit.
         _ => TstError::RistFfi,
     }

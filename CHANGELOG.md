@@ -392,6 +392,25 @@ is a separate, JVM-only behavior change from an earlier arc.)
   redundant with `Async`, which is what `SRT_ETIMEOUT`'s raw code
   actually maps to). `SrtErrno::Bad` is kept — it's named in C-side
   error-detail prose as the sentinel for an absent errno.
+- **`tst_udp::url::UdpUrlError::BadHost`** — deprecated since 0.5.0
+  ("removal no earlier than 0.6.0"); this is that release. Superseded
+  by `HostResolve` (which carries the resolver's failure detail and
+  covers hostname resolution, not just IP literals) and never
+  constructed since. Match `HostResolve` instead.
+- **Nine never-constructed error variants across the network-transport
+  crates**: `tst_udp::UdpError::{HostNotLiteral, IfaceUnsupported,
+  PayloadTooLarge, Closed}`, `tst_rist::RistError::{PayloadTooLarge,
+  Closed, RecvTimeout, Io}`, `tst_tcp::TcpError::PayloadTooLarge` —
+  none had a construction site; each transport surfaces the equivalent
+  failure through the shared `tst_core::transport::TransportError`
+  instead, which the C/Python bindings already mapped to the same
+  exception `kind` name. The `*ErrorKind` enumerators and `kind()`
+  match arms are removed alongside. (`tst_tcp::TcpError::Closed` is
+  unaffected — it IS constructed, by the Python binding.) The frozen C
+  `TstError` enumerators these used to map to (`UdpPayloadTooLarge`
+  = -28, `UdpIfaceUnsupported` = -29, `RistPayloadTooLarge` = -40) stay
+  declared, unchanged, for ABI compatibility — their doc comments now
+  read "reserved; not currently produced."
 
 ### Fixed
 

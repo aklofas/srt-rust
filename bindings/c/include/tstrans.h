@@ -528,18 +528,18 @@ enum tst_e
   TST_E_UDP_IO = -26,
   /**
    * (-27) UDP URL/config parse failure or invalid host literal.
-   * Maps from `UdpErrorKind::{Url, HostNotLiteral, InvalidConfig}`.
+   * Maps from `UdpErrorKind::{Url, InvalidConfig}`.
    */
   TST_E_UDP_CONFIG = -27,
   /**
    * (-28) UDP payload too large for the configured MTU / pkt_size.
-   * Maps from `UdpErrorKind::PayloadTooLarge`.
+   * Reserved; not currently produced (no `UdpErrorKind` variant maps here).
    */
   TST_E_UDP_PAYLOAD_TOO_LARGE = -28,
   /**
    * (-29) UDP multicast interface not supported (e.g., requested
    * `?iface=eth0` on a platform where `tst-udp` can't apply it).
-   * Maps from `UdpErrorKind::IfaceUnsupported`.
+   * Reserved; not currently produced (no `UdpErrorKind` variant maps here).
    */
   TST_E_UDP_IFACE_UNSUPPORTED = -29,
   /**
@@ -599,7 +599,7 @@ enum tst_e
   /**
    * (-40) RIST payload too large for the configured pkt_size
    * (default 1316 bytes; STANAG-4609-aligned).
-   * Maps from `RistErrorKind::PayloadTooLarge`.
+   * Reserved; not currently produced (no `RistErrorKind` variant maps here).
    */
   TST_E_RIST_PAYLOAD_TOO_LARGE = -40,
   /**
@@ -610,12 +610,12 @@ enum tst_e
   TST_E_RIST_ENCRYPTION_DISABLED = -41,
   /**
    * (-42) RIST receive timeout exceeded the session_timeout.
-   * Maps from `RistErrorKind::RecvTimeout`.
+   * Reserved; not currently produced (no `RistErrorKind` variant maps here).
    */
   TST_E_RIST_RECV_TIMEOUT = -42,
   /**
    * (-43) RIST socket I/O failure underlying the librist transport.
-   * Maps from `RistErrorKind::Io`.
+   * Reserved; not currently produced (no `RistErrorKind` variant maps here).
    */
   TST_E_RIST_IO = -43,
   /**

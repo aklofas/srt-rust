@@ -1,4 +1,6 @@
-//! Scheme-neutral URL parsing for `srt://`, `rtp://`, `rtsp://`, `rtsps://`.
+//! Scheme-neutral URL parsing shared by every tst-* transport crate:
+//! `srt://`, `rtp://`/`rtsp(s)://`, `udp://`, `tcp(s)://`, `rist://`,
+//! `hls(s)://`.
 //!
 //! See [the module docs](super) for the URL shape we accept.
 

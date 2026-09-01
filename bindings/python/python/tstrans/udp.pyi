@@ -31,9 +31,7 @@ class UdpErrorKind(IntEnum):
     """Discriminator for ``UdpError.kind``. Mirrors ``tst_udp::UdpErrorKind``."""
 
     URL = 0
-    HOST_NOT_LITERAL = 1
     IO = 2
-    IFACE_UNSUPPORTED = 3
     PAYLOAD_TOO_LARGE = 4
     CLOSED = 5
     INVALID_CONFIG = 6

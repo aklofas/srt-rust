@@ -261,9 +261,10 @@ impl RtspClient {
     ///    is read from `pump_state.ctrl_rx` matched by CSeq, since the
     ///    background pump thread owns reads in this mode (reading the
     ///    stream directly here would race with the pump). Responses
-    ///    with CSeq >= 1_000_000 are silently discarded — those are
-    ///    keepalive-thread OPTIONS responses (see
-    ///    `keepalive::spawn`'s `cseq = 1_000_000u32` starting value).
+    ///    with CSeq >= [`KEEPALIVE_CSEQ_BASE`](crate::rtsp::client::keepalive::KEEPALIVE_CSEQ_BASE)
+    ///    never reach `ctrl_rx` — the pump consumes them itself via
+    ///    `keepalive::handle_keepalive_response` (a 401 refreshes the
+    ///    shared auth challenge cache; a 454 marks the session dead).
     pub(crate) fn send_and_read(
         &mut self,
         request_bytes: &[u8],

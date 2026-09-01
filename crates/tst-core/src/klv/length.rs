@@ -233,8 +233,9 @@ pub fn write_ber_oid(value: u32, out: &mut [u8]) -> Result<usize, KlvEncodeError
 }
 
 /// MISB variable-length unsigned int (length-prefixed truncatable form used
-/// by ST 0601 items 110/111/123-126/131/133): plain big-endian bytes, the
-/// TLV length IS the byte count. NOT BER-OID.
+/// by ST 0601 items 110/111/123-126/131/133 and ST 0903.6's VarUint fields
+/// per §9.1): plain big-endian bytes, the TLV length IS the byte count.
+/// NOT BER-OID.
 ///
 /// Hard substrate cap: at most 8 value bytes (the `u64` accumulator width) —
 /// longer inputs are rejected as `InvalidLength` regardless of how permissive
@@ -271,8 +272,19 @@ pub(crate) fn var_uint_min_len(v: u64) -> usize {
 
 /// Shortest-form big-endian emit (>= 1 byte).
 pub(crate) fn write_var_uint_min(v: u64) -> alloc::vec::Vec<u8> {
+    let mut out = alloc::vec::Vec::new();
+    write_var_uint_min_into(v, &mut out);
+    out
+}
+
+/// Extend-style sibling of [`write_var_uint_min`] — appends the
+/// shortest-form bytes to an existing `Vec` (e.g. an st0903 TLV-value
+/// scratch buffer) instead of allocating a fresh one. Returns bytes
+/// written (>= 1).
+pub(crate) fn write_var_uint_min_into(v: u64, out: &mut alloc::vec::Vec<u8>) -> usize {
     let n = var_uint_min_len(v);
-    v.to_be_bytes()[8 - n..].to_vec()
+    out.extend_from_slice(&v.to_be_bytes()[8 - n..]);
+    n
 }
 
 /// Byte count [`write_var_int_min`] would emit for `v` (>= 1). Sizing

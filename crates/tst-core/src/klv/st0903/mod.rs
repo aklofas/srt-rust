@@ -107,7 +107,6 @@ pub(crate) mod encode;
 pub(crate) mod enums;
 pub(crate) mod model;
 pub(crate) mod tags;
-pub(crate) mod var_uint;
 pub(crate) mod vtarget_pack;
 
 #[cfg(test)]

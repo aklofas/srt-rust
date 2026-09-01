@@ -83,7 +83,6 @@ pub(crate) fn read_pack(bytes: &[u8]) -> Result<(VTargetPack, usize), VTargetPac
 fn decode_field(tag: u32, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTargetPackError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
     use crate::klv::pack::OwnedRawField;
-    use crate::klv::st0903::var_uint::{read_var_u32, read_var_u64};
 
     // Forward-compat tags (≥ 128 in BER-OID) — preserve verbatim.
     // The typed table only covers tag IDs ≤ 127 (the §10.2 universe
@@ -132,49 +131,21 @@ fn decode_field(tag: u32, value: &[u8], pack: &mut VTargetPack) -> Result<(), VT
                     got: value.len(),
                 });
             }
+            let read_var = || {
+                crate::klv::length::read_var_uint(value, max_bytes as usize, tag)
+                    .map_err(|_| VTargetPackError::TruncatedField { tag })
+            };
             match tag_u8 {
                 // Pixel fields — V6 (up to 6 bytes, u64 model).
-                1 => {
-                    let v = read_var_u64(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.centroid_pixel = Some(v);
-                }
-                2 => {
-                    let v = read_var_u64(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.bbox_top_left_pixel = Some(v);
-                }
-                3 => {
-                    let v = read_var_u64(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.bbox_bottom_right_pixel = Some(v);
-                }
-                19 => {
-                    let v = read_var_u64(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.centroid_pix_row = Some(v);
-                }
-                20 => {
-                    let v = read_var_u64(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.centroid_pix_col = Some(v);
-                }
+                1 => pack.centroid_pixel = Some(read_var()?),
+                2 => pack.bbox_top_left_pixel = Some(read_var()?),
+                3 => pack.bbox_bottom_right_pixel = Some(read_var()?),
+                19 => pack.centroid_pix_row = Some(read_var()?),
+                20 => pack.centroid_pix_col = Some(read_var()?),
                 // Non-pixel var fields — stay u32.
-                6 => {
-                    let v = read_var_u32(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.history = Some(v as u16); // V2 caps at u16
-                }
-                9 => {
-                    let v = read_var_u32(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.target_intensity = Some(v);
-                }
-                22 => {
-                    let v = read_var_u32(value)
-                        .map_err(|_| VTargetPackError::TruncatedField { tag })?;
-                    pack.algorithm_id = Some(v);
-                }
+                6 => pack.history = Some(read_var()? as u16), // V2 caps at u16
+                9 => pack.target_intensity = Some(read_var()? as u32),
+                22 => pack.algorithm_id = Some(read_var()? as u32),
                 _ => unreachable!("VarUint dispatch missing tag {tag_u8}"),
             }
         }

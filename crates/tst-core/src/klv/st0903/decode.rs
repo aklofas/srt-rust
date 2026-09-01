@@ -5,7 +5,6 @@ use crate::error::{KlvDecodeError, KlvFieldError};
 use crate::klv::pack::OwnedRawField;
 use crate::klv::st0903::model::VmtiLs;
 use crate::klv::st0903::tags::{Encoding, TAGS, lookup};
-use crate::klv::st0903::var_uint;
 use crate::klv::st0903::vtarget_pack;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -133,8 +132,12 @@ pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                     });
                     continue;
                 }
-                let v = match var_uint::read_var_u32(value) {
-                    Ok(v) => v,
+                let v = match crate::klv::length::read_var_uint(
+                    value,
+                    max_bytes as usize,
+                    tag as u32,
+                ) {
+                    Ok(v) => v as u32,
                     Err(_) => {
                         ls.field_errors
                             .push(KlvFieldError::TruncatedField { tag: tag as u32 });
@@ -477,7 +480,9 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                         got: value.len(),
                     }));
                 }
-                let v = var_uint::read_var_u32(value).map_err(KlvDecodeError::FieldError)?;
+                let v = crate::klv::length::read_var_uint(value, max_bytes as usize, tag as u32)
+                    .map(|v| v as u32)
+                    .map_err(KlvDecodeError::FieldError)?;
                 match tag {
                     4 => ls.version_number = Some(v as u16), // V2 caps at u16
                     5 => ls.total_targets_in_frame = Some(v),

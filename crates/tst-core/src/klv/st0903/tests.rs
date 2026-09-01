@@ -119,7 +119,7 @@ fn decode_tag2_pts_well_formed_still_works() {
 fn decode_with_one_target() {
     // Build a VTargetSeries (Tag 101) containing one pack.
     // Pack body: target_id=7, centroid_pixel=12345 (Tag 1 VarUint).
-    // var_u32_len(12345) = 2 (since 12345 = 0x3039 fits in 2 bytes).
+    // var_uint_min_len(12345) = 2 (since 12345 = 0x3039 fits in 2 bytes).
     // Tag 1 TLV inside pack: [0x01, 0x02, 0x30, 0x39].
     let mut pack_body = Vec::new();
     pack_body.push(7); // target_id BER-OID 1-byte

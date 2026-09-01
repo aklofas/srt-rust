@@ -12,7 +12,6 @@ up before caller connects.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Optional
@@ -23,19 +22,7 @@ import tstrans
 import tstrans.srt
 from tstrans.exceptions import SrtError, SrtErrorKind
 
-
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    """Get an ephemeral port via TCP — see test_srt_transport for rationale."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from _builders.ports import free_tcp_port as _free_tcp_port
 
 
 # --------------------------------------------------------------------------- #

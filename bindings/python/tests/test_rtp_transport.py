@@ -18,22 +18,7 @@ import tstrans
 import tstrans.rtp
 from tstrans.exceptions import RtpError, RtpErrorKind
 
-
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-
-
-def _free_udp_port() -> int:
-    """Ask the OS for an ephemeral UDP port, then release it. There is a
-    tiny TOCTOU window before the test reuses it, but UDP doesn't have
-    SO_REUSEADDR conflicts the same way TCP does, and tests run
-    sequentially in pytest's default config."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from _builders.ports import free_udp_port as _free_udp_port
 
 
 # --------------------------------------------------------------------------- #

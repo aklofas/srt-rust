@@ -40,10 +40,13 @@ from tstrans.klv import (
     encode_uas_datalink,
 )
 
+from _builders.klv_tlv import ber_short as _ber_short
+
 # ---------------------------------------------------------------------------
-# Hand-built-wire test helpers (mirrors test_klv_round_trip_unknown.py /
-# test_klv_encode_st0601.py's local helpers — each test file keeps its
-# own small copy rather than importing across test modules).
+# Hand-built-wire test helpers. `_tlv`/`_ber_oid_tag`/`_ber_long` are ST
+# 0601-specific (multi-byte BER-OID tag + BER long-form length) and stay
+# local — a different wire shape from the single-byte-tag + short-form
+# `_tlv` the other KLV test files share via `_builders.klv_tlv`.
 # ---------------------------------------------------------------------------
 
 
@@ -51,12 +54,6 @@ def _hex(s: str) -> bytes:
     """Strip whitespace and parse a hex string — mirrors the identical
     helper in the Rust `st0601::tests` and `st1010::tests` modules."""
     return bytes.fromhex("".join(s.split()))
-
-
-def _ber_short(n: int) -> bytes:
-    if not 0 <= n < 0x80:
-        raise ValueError(f"value {n} out of BER short-form range")
-    return bytes([n])
 
 
 def _ber_long(n: int) -> bytes:

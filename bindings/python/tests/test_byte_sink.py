@@ -14,7 +14,6 @@ throughout (de-flake convention).
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Optional, Tuple
@@ -25,43 +24,11 @@ import tstrans
 import tstrans.rtp
 import tstrans.srt
 from tstrans.exceptions import RtpError, RtpErrorKind, SrtError, SrtErrorKind
-from tstrans.mpegts import (
-    DemuxEvent,
-    Muxer,
-    MuxerConfigBuilder,
-    MuxerProgramConfigBuilder,
-    Pts90khz,
-    VideoCodec,
-)
+from tstrans.mpegts import DemuxEvent, Muxer, MuxerConfigBuilder, Pts90khz
 
-
-# --------------------------------------------------------------------------- #
-# Shared helpers                                                              #
-# --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _free_udp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _video_only_program() -> object:
-    return (
-        MuxerProgramConfigBuilder(1, 0x100)
-        .add_video(0x101, VideoCodec.H264)
-        .build()
-    )
+from _builders.mux_programs import video_only_program as _video_only_program
+from _builders.ports import free_tcp_port as _free_tcp_port
+from _builders.ports import free_udp_port as _free_udp_port
 
 
 NAL_IDR = b"\x00\x00\x00\x01\x65\xBB"

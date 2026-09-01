@@ -13,10 +13,8 @@ from tstrans.klv import (
 )
 from tstrans.exceptions import KlvError, KlvErrorKind
 
-
-def _ber_short(n: int) -> bytes:
-    assert 0 <= n < 0x80
-    return bytes([n])
+from _builders.klv_tlv import ber_short as _ber_short
+from _builders.klv_tlv import tlv as _tlv
 
 
 def _ber_long(n: int) -> bytes:
@@ -26,10 +24,6 @@ def _ber_long(n: int) -> bytes:
         if n < (1 << (8 * nbytes)):
             return bytes([0x80 | nbytes]) + n.to_bytes(nbytes, "big")
     raise ValueError("length too large for BER")
-
-
-def _tlv(tag: int, value: bytes) -> bytes:
-    return bytes([tag]) + _ber_short(len(value)) + value
 
 
 def _wrap_with_ul(ul: bytes, body: bytes) -> bytes:

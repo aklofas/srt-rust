@@ -335,7 +335,7 @@ gets these overrides applied (only if the user hasn't set them):
 | Field | Default | libsrt default | Why |
 | --- | --- | --- | --- |
 | `connect_timeout` | 15 s | 3 s | Radio links: LOS-over-terrain, antenna repointing, radio warm-up |
-| `linger` | 5 s | 180 s | Live frames are useless once late; avoid 3-minute Drop hangs |
+| `linger` | 5 s | off (0 s; drains in background) | Bounds an intentional synchronous drain on close — libsrt's own default returns immediately without waiting for the backlog to flush |
 | `role` | `Role::Sender` | `Role::Receiver` (default) | Sets `SRTO_SENDER=1` for HSv4-peer compatibility |
 
 Pure-Rust users who build a `SrtTransport` via `SocketBuilder` directly

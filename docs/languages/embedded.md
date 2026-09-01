@@ -14,7 +14,7 @@ ts-transformer has three embedded consumption paths:
 
 | Path | What you get | Reference |
 |---|---|---|
-| **no_std Rust** | `tst-core` + `tst-pipeline` sender and receiver shells, `#![no_std]` + `alloc`, compile-gated for two bare-metal targets | [`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) |
+| **no_std Rust** | `tst-core` + `tst-pipeline` sender and receiver shells, `#![no_std]` + `alloc`, runtime-gated under QEMU for two bare-metal targets | [`embedded/baremetal-qemu/`](/embedded/baremetal-qemu/) |
 | **C firmware staticlib** | Offline mux/demux C ABI (the `tst-c-core` crate) bundled as `libtstrans_firmware.a` | [`embedded/baremetal-qemu-c/`](/embedded/baremetal-qemu-c/) |
 | **FreeRTOS reference port** | Full libsrt + the MPEG-TS muxer/demuxer on FreeRTOS + FreeRTOS-Plus-POSIX + lwIP — SRT video egress AND ingress from/to a microcontroller, plain and AES-128 on egress | [`embedded/freertos-srt/`](/embedded/freertos-srt/) |
 

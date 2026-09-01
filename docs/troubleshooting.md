@@ -97,11 +97,11 @@ Caller and listener disagree on whether encryption is in use at all. Most common
 
 Fix: build both sides with the same feature configuration. If you need encryption on the link, neither side may be built `--no-default-features`.
 
-**Sender hangs for ~3 minutes when dropping a `Socket`**
+**Sender hangs when dropping a `Socket`**
 
-`Socket::Drop` blocks the calling thread for up to 180 seconds. Cause: libsrt's default `SRTO_LINGER` is 180 seconds. With no peer ACK on pending sends, `srt_close` (called from `Drop`) blocks until the linger timer expires.
+`Socket::Drop` blocks the calling thread for as long as `SocketConfig::linger` is set to. This is not libsrt's out-of-the-box behavior: its own default is `l_onoff=0` (linger off) — `srt_close` returns immediately and the queued backlog drains in the background. (The commonly-cited 180-second linger default belongs to libsrt's *file*-mode `DEF_LINGER_S`, which this library never reaches — every transport here is message/live mode.) A hang happens only if you (or a builder default) set a non-zero linger and the peer never ACKs the pending sends.
 
-Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where late frames are useless, or use the `SocketBuilder::linger(Duration)` setter. The `tst-c` connect path (`bindings/c/core/src/sender/connect.rs::connect_srt`) defaults to 5 seconds — long enough to drain a small backlog, short enough to never block reconnect noticeably.
+Fix: leave `linger` unset (`None`) for libsrt's immediate-return default, or set `SocketConfig::linger = Some(Duration::ZERO)` explicitly, or use the `SocketBuilder::linger(Duration)` setter to bound the wait. The `tst-c` connect path (`bindings/c/core/src/sender/connect.rs::connect_srt`) defaults to 5 seconds — long enough to drain a small backlog, short enough to never block reconnect noticeably.
 
 ## TCP / TLS (`tcps://`)
 

@@ -132,7 +132,6 @@ path  = "tests/tools/corpus_to_fixture.rs"
 name  = "strip_conformance_parameter_sets"
 required-features = ["std"]
 path  = "tests/tools/strip_conformance_parameter_sets.rs"
-test  = false
 bench = false
 doc   = false
 

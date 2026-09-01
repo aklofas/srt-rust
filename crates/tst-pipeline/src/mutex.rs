@@ -42,11 +42,5 @@ mod no_std_impl {
         pub(crate) fn lock(&self) -> Result<MutexGuard<'_, T>, ()> {
             Ok(self.0.lock())
         }
-
-        /// Non-blocking lock attempt. `None` on contention; spin-backed
-        /// mutexes cannot poison, so that's the only failure mode.
-        pub(crate) fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
-            self.0.try_lock()
-        }
     }
 }

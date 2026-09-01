@@ -1,5 +1,5 @@
-//! Generic KLV pack and unpack — `RawField`, `OwnedRawField`, `Iter`,
-//! `encode_pack`. Knows nothing about ST 0601 specifically.
+//! Generic KLV pack and unpack — `RawField`, `OwnedRawField`, `Iter`.
+//! Knows nothing about ST 0601 specifically.
 //!
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
@@ -9,10 +9,7 @@
 //! cross the FFI boundary — keeping the parsed record `'static`.
 
 use crate::error::{KlvDecodeError, KlvEncodeError};
-use crate::klv::length::{
-    LengthEncoding, ber_len, read_ber, read_ber_oid, write_ber, write_ber_oid,
-};
-use crate::klv::universal_label::UniversalLabel;
+use crate::klv::length::{read_ber, read_ber_oid, write_ber, write_ber_oid};
 use alloc::vec::Vec;
 
 /// A KLV field that borrows its value bytes from a parent buffer.
@@ -131,15 +128,6 @@ impl<'a> Iter<'a> {
     }
 }
 
-/// Encode a KLV pack: 16-byte UL + outer length + concatenated TLVs.
-///
-/// `length_encoding` controls *both* the outer total-length encoding and
-/// the per-field tag-length encoding pattern that follows from it:
-/// - `LengthEncoding::Ber` — outer BER, per-field 16-byte UL + BER length (universal set form).
-/// - `LengthEncoding::BerOid` — outer BER, per-field 1-byte tag + BER-OID length (local set form).
-///
-/// Other variants are not currently supported by `encode_pack`; use
-/// `klv::st0601::encode` for the ST 0601 specifics.
 /// Return `true` if `tag` is a known typed item in `lookup`'s table.
 ///
 /// `lookup` is a per-set function `fn(u8) -> Option<T>` (e.g.
@@ -179,48 +167,6 @@ pub(crate) fn emit_ber_oid_tlv(
     out.extend_from_slice(&len_buf[..m]);
     out.extend_from_slice(value);
     Ok(())
-}
-
-pub fn encode_pack<'a>(
-    label: &UniversalLabel,
-    fields: impl IntoIterator<Item = RawField<'a>>,
-    length_encoding: LengthEncoding,
-    out: &mut [u8],
-) -> Result<usize, KlvEncodeError> {
-    let mut tmp: Vec<u8> = Vec::new();
-    for f in fields {
-        match length_encoding {
-            LengthEncoding::BerOid => {
-                let mut tag_buf = [0u8; 8];
-                let n = write_ber_oid(f.tag, &mut tag_buf)?;
-                tmp.extend_from_slice(&tag_buf[..n]);
-                let mut len_buf = [0u8; 16];
-                let m = write_ber(f.value.len(), &mut len_buf)?;
-                tmp.extend_from_slice(&len_buf[..m]);
-                tmp.extend_from_slice(f.value);
-            }
-            LengthEncoding::Ber => {
-                // For universal-set form, "tag" is a full UL — but RawField only
-                // carries u32. encode_pack with Ber is reserved for use cases that
-                // wrap encode_pack with a UL-keyed table; here we error.
-                return Err(KlvEncodeError::RecordTooLarge);
-            }
-            _ => return Err(KlvEncodeError::RecordTooLarge),
-        }
-    }
-    let total_inner = tmp.len();
-    let outer_len_bytes = ber_len(total_inner);
-    let needed = 16 + outer_len_bytes + total_inner;
-    if out.len() < needed {
-        return Err(KlvEncodeError::BufferTooSmall {
-            needed,
-            got: out.len(),
-        });
-    }
-    out[..16].copy_from_slice(&label.0);
-    let written = write_ber(total_inner, &mut out[16..])?;
-    out[16 + written..16 + written + total_inner].copy_from_slice(&tmp);
-    Ok(16 + written + total_inner)
 }
 
 #[cfg(test)]
@@ -306,41 +252,5 @@ mod tests {
         let f = it.next().unwrap().unwrap();
         assert_eq!(f.tag, 0x80);
         assert_eq!(f.value, &[0x42]);
-    }
-
-    #[test]
-    fn iter_encode_pack_round_trip() {
-        let label = UniversalLabel::ST_0601_LS;
-        let fields = [
-            RawField {
-                tag: 1,
-                value: &[0xAA, 0xBB],
-            },
-            RawField {
-                tag: 5,
-                value: &[0x42],
-            },
-        ];
-        let mut out = vec![0u8; 256];
-        let n = encode_pack(
-            &label,
-            fields.iter().cloned(),
-            LengthEncoding::BerOid,
-            &mut out,
-        )
-        .unwrap();
-        let encoded = &out[..n];
-        // First 16 bytes are the UL
-        assert_eq!(&encoded[..16], &label.0);
-        // Skip UL + outer length, parse the body
-        let (_outer_len, body) = read_ber(&encoded[16..]).unwrap();
-        let mut it = Iter::local_set(body);
-        let f1 = it.next().unwrap().unwrap();
-        assert_eq!(f1.tag, 1);
-        assert_eq!(f1.value, &[0xAA, 0xBB]);
-        let f2 = it.next().unwrap().unwrap();
-        assert_eq!(f2.tag, 5);
-        assert_eq!(f2.value, &[0x42]);
-        assert!(it.next().is_none());
     }
 }

@@ -2500,22 +2500,6 @@ item = "tst_core::klv::imapb::ImapbSpecial::fmt"
 reason = "derive-generated; covered indirectly by encode_imapb_special tests (REF-KLV-01)"
 
 [[exempt]]
-item = "tst_core::klv::length::LengthEncoding"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::length::LengthEncoding::clone"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::length::LengthEncoding::eq"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::length::LengthEncoding::fmt"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::klv::length::ber_len"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -2589,10 +2573,6 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_core::klv::pack::RawField"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::pack::encode_pack"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -3457,10 +3437,6 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_core::klv::universal_label::UniversalLabel::SECURITY_LS_UL"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::universal_label::UniversalLabel::SMPTE_336M_LS_KEY"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

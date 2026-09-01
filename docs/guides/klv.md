@@ -89,7 +89,7 @@ referenced as MISB ST 0107). Each byte has a documented role:
   ST 0601.8-19 forbids non-zero values in new developments.
 
 The `klv::universal_label` module exposes well-known constants —
-`ST_0601_LS`, `SMPTE_336M_LS_KEY`, `PRECISION_TIMESTAMP_PACK_UL` — and a
+`ST_0601_LS`, `PRECISION_TIMESTAMP_PACK_UL` — and a
 family check: `is_st0601_family()` returns true when the label belongs
 to the ST 0601 family. The check validates bytes 0-12 against the
 canonical prefix (universal designator + ST 0601 set kind) and requires

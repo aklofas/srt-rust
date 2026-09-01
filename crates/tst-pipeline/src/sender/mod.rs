@@ -665,12 +665,6 @@ mod tests {
     fn send_ts_mid_multi_bundle_failure_retains_remaining() {
         // 21 packets → 3 bundles. Transport fails on bundle index 1 (the
         // second bundle). After retry, all 3 bundles must be delivered.
-        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        // Fail the 2nd send_bytes call (index 1, 0-based).
-        let transport = FailFirst::new(0, sink.clone()); // fails 0 times = succeeds immediately
-        let sender = Sender::new(transport, SenderConfig::default());
-
-        // Override: we want bundle-1 to fail. Use a custom transport.
         struct FailAt {
             fail_on: usize,
             calls: usize,
@@ -697,8 +691,6 @@ mod tests {
                 true
             }
         }
-        drop(sender); // discard the previous one
-
         let sink2 = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut sender2 = Sender::new(
             FailAt {

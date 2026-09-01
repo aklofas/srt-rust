@@ -225,11 +225,6 @@ impl Default for DemuxerConfig {
 #[derive(Debug)]
 pub(crate) struct ProgramTracker {
     pub program_number: u16,
-    // Redundant with the HashMap key in `Demuxer::programs` (which is keyed
-    // by `pmt_pid`); retained for symmetry with `program_number` and to
-    // make `Debug` output self-describing.
-    #[allow(dead_code)]
-    pub pmt_pid: u16,
     pub pmt_version: Option<u8>,
     pub pcr_pid: Option<u16>,
     pub streams: Vec<StreamInfo>,

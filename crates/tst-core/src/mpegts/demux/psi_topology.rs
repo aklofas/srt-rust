@@ -336,7 +336,6 @@ impl super::demuxer::Demuxer {
                 .entry(entry.pid)
                 .or_insert_with(|| ProgramTracker {
                     program_number: entry.program_number,
-                    pmt_pid: entry.pid,
                     pmt_version: None,
                     pcr_pid: None,
                     streams: Vec::new(),

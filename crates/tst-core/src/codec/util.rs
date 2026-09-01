@@ -90,26 +90,14 @@ fn count_av1_obus(buf: &[u8]) -> u64 {
             i += 1; // skip extension byte
         }
         if has_size_field {
-            // LEB128 size; up to 8 bytes per AV1 spec §4.10.5.
-            let mut size: u64 = 0;
-            let mut shift: u32 = 0;
-            let mut ok = false;
-            for _ in 0..8 {
-                if i >= buf.len() {
-                    return count;
-                }
-                let byte = buf[i];
-                i += 1;
-                size |= ((byte & 0x7F) as u64) << shift;
-                shift += 7;
-                if (byte & 0x80) == 0 {
-                    ok = true;
-                    break;
-                }
-            }
-            if !ok {
-                return count;
-            }
+            // LEB128 size per AV1 spec §4.10.5, shared with the demux/mux
+            // OBU walkers (also rejects sizes > u32::MAX per spec, one byte
+            // earlier than a truncated-body bounds check would).
+            let (size, consumed) = match crate::codec::av1::decode::leb128::read_leb128(buf, i) {
+                Ok(t) => t,
+                Err(_) => return count,
+            };
+            i += consumed;
             // Overflow safety: `size` is decoded from untrusted input as a
             // u64 and cast to usize; `i + size` must not wrap. Treat
             // overflow as "truncated" (same sentinel as the bounds-check
@@ -212,20 +200,21 @@ mod tests {
     #[test]
     fn av1_obu_huge_size_field_does_not_panic() {
         // Robustness: an OBU whose LEB128 size field decodes to the
-        // largest representable AV1 size (8 bytes of 0x7F continuation
-        // payload, last byte without continuation bit clears `ok=true`)
-        // must NOT panic via `i + (size as usize)` overflow. The function
-        // must return the accumulated count (treating the case as
-        // truncated). Encoded max size is (1 << 56) - 1; combined with
-        // any non-zero `i` this would wrap on a 32-bit usize and is
-        // architecturally close to the wrap boundary on 64-bit. The
-        // `checked_add` path treats overflow the same as the
-        // bounds-exceeded sentinel — count the header and stop walking.
+        // largest representable 8-byte LEB128 value must NOT panic via
+        // `i + (size as usize)` overflow — regardless of how the shared
+        // `read_leb128` (AV1 spec §4.10.5) rejects it. Encoded max size is
+        // (1 << 56) - 1, far past the spec's u32::MAX conformance ceiling,
+        // so `read_leb128` now rejects it as invalid LEB128 (a decode
+        // failure, same bucket as a truncated size field) rather than
+        // accepting the huge value and failing the later bounds check —
+        // the header is not counted either way, but the rejection point
+        // moved one step earlier when `count_av1_obus` started sharing
+        // `read_leb128` with the mux/demux OBU walkers.
         //
         // OBU header: type=6 (FRAME), has_size=1 → 0x32.
         // Then 8 LEB128 bytes: 7×0xFF (continuation) + 1×0x7F (terminator).
         let buf = [0x32, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F];
-        assert_eq!(count_nal_units(&buf, VideoCodec::Av1), 1);
+        assert_eq!(count_nal_units(&buf, VideoCodec::Av1), 0);
     }
 
     #[test]

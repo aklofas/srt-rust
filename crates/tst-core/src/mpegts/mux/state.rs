@@ -87,9 +87,6 @@ pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
         return Err(MuxError::InvalidNal);
     };
 
-    // Walk the buffer counting non-empty NAL units (bytes between
-    // consecutive start codes, and between the last start code and EOF).
-    let mut nal_count: usize = 0;
     // Position immediately after the current start code (i.e., start of
     // the current NAL unit's body).
     let mut nal_body_start: usize = leading_len;
@@ -106,7 +103,6 @@ pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
                 // body bytes), e.g., `00 00 01 00 00 01`. Forbidden.
                 return Err(MuxError::InvalidNal);
             }
-            nal_count += 1;
             nal_body_start = i + 3;
             i += 3;
             continue;
@@ -121,7 +117,6 @@ pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
             if i <= nal_body_start {
                 return Err(MuxError::InvalidNal);
             }
-            nal_count += 1;
             nal_body_start = i + 4;
             i += 4;
             continue;
@@ -154,14 +149,6 @@ pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
     // Close out the final NAL (from `nal_body_start` to EOF).
     if nal.len() <= nal_body_start {
         // No bytes after the last start code — final NAL is empty.
-        return Err(MuxError::InvalidNal);
-    }
-    nal_count += 1;
-
-    if nal_count == 0 {
-        // Defensive: leading start code guarantees ≥1 NAL closes above,
-        // so this branch is unreachable in practice. Keep as a safety
-        // net so the function returns Err on any zero-NAL slip.
         return Err(MuxError::InvalidNal);
     }
 

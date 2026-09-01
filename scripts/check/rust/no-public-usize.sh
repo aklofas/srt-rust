@@ -32,7 +32,6 @@ ALLOWLIST_PATTERNS=(
     'pub fn capacity\(&self\) -> usize'                     # collection-style capacity()
     'pub fn payload_limit\(&self\) -> usize'                # Socket::payload_limit — mirrors Transport::max_payload contract
     'pub fn buffered_bytes\(&self\) -> usize'               # PesAssembler gauge (collection-style)
-    'pub fn bit_pos\(&self\) -> usize'                      # Av1BitReader (#[doc(hidden)])
     'pub fn buf_len_bits\(&self\) -> usize'                 # Av1BitReader (#[doc(hidden)])
     'pub type \w+ = usize'                                  # type aliases (rare; documented)
     'pub fn encoded_len(_with|_standalone)?\b'              # encode-helper sizing (Rust-only)

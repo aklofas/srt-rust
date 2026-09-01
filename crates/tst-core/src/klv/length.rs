@@ -109,7 +109,11 @@ pub fn read_ber_oid_strict(buf: &[u8]) -> Result<(u32, &[u8]), KlvDecodeError> {
     read_ber_oid(buf)
 }
 
-/// Add `base` to every offset-carrying [`KlvDecodeError`] variant.
+/// Add `base` to every offset-carrying [`KlvDecodeError`] variant the
+/// strict BER readers can produce. (Other offset-carrying variants exist
+/// on the enum — e.g. `DuplicateTag`, `St0903InvalidVTargetPack` — but
+/// neither `read_ber_oid_strict` nor `read_ber_strict` ever originates
+/// them, so they're deliberately left out of the match below.)
 ///
 /// `read_ber_oid_strict` / `read_ber_strict` report offsets relative to
 /// the slice they were handed, not the caller's original buffer; a
@@ -329,12 +333,10 @@ pub(crate) fn write_var_uint_min(v: u64) -> alloc::vec::Vec<u8> {
 
 /// Extend-style sibling of [`write_var_uint_min`] — appends the
 /// shortest-form bytes to an existing `Vec` (e.g. an st0903 TLV-value
-/// scratch buffer) instead of allocating a fresh one. Returns bytes
-/// written (>= 1).
-pub(crate) fn write_var_uint_min_into(v: u64, out: &mut alloc::vec::Vec<u8>) -> usize {
+/// scratch buffer) instead of allocating a fresh one.
+pub(crate) fn write_var_uint_min_into(v: u64, out: &mut alloc::vec::Vec<u8>) {
     let n = var_uint_min_len(v);
     out.extend_from_slice(&v.to_be_bytes()[8 - n..]);
-    n
 }
 
 /// Byte count [`write_var_int_min`] would emit for `v` (>= 1). Sizing

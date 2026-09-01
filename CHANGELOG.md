@@ -383,6 +383,15 @@ is a separate, JVM-only behavior change from an earlier arc.)
   parameterize it. Callers building a generic KLV pack use
   `UniversalLabel::new` + `klv::length::{write_ber, write_ber_oid}`
   directly.
+- **`tst_srt::socket::Socket::{set_max_bandwidth, set_input_bandwidth,
+  set_overhead_bandwidth_pct}`** — zero callers anywhere in the
+  workspace or docs. The equivalent values remain settable via
+  `SocketConfig`/`ListenerConfig` at construction time.
+- **`tst_srt::error::SrtErrno::Timeout`** — never constructed
+  (`SrtErrno::from_raw`'s major-category mapping has no path to it;
+  redundant with `Async`, which is what `SRT_ETIMEOUT`'s raw code
+  actually maps to). `SrtErrno::Bad` is kept — it's named in C-side
+  error-detail prose as the sentinel for an absent errno.
 
 ### Fixed
 

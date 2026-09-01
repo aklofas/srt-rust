@@ -249,9 +249,9 @@ impl Socket {
         // a non-blocking accepted socket breaks that invariant silently:
         // `srt_recv()` on it returns `SRT_EASYNCRCV` ("no data available
         // for reading") the instant nothing happens to be ready yet,
-        // instead of blocking — `is_timeout`'s message-substring check
-        // doesn't recognize that error (only `SRT_ETIMEOUT`'s "timed out"
-        // wording matches), so it's classified as `RecvError::Other` and
+        // instead of blocking — `is_timeout` matches the exact
+        // `SRT_ETIMEOUT` errno, so it doesn't recognize that error, so it's
+        // classified as `RecvError::Other` and
         // `SrtTransport::recv_bytes`'s catch-all treats that as a fatal
         // `TransportError::Broken`, killing an otherwise-healthy
         // connection the moment its first read has no data ready yet.
@@ -382,27 +382,6 @@ impl Socket {
     pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) -> Result<(), OptionError> {
         let ms = timeout.map(duration_to_ms).unwrap_or(-1);
         set_int(self.handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, ms)
-    }
-
-    pub fn set_max_bandwidth(&mut self, bw: MaxBandwidth) -> Result<(), OptionError> {
-        set_i64(
-            self.handle,
-            srt_sys::SRT_SOCKOPT_SRTO_MAXBW,
-            bw.as_libsrt_i64(),
-        )
-    }
-
-    pub fn set_input_bandwidth(&mut self, bw: u64) -> Result<(), OptionError> {
-        set_i64(self.handle, srt_sys::SRT_SOCKOPT_SRTO_INPUTBW, bw as i64)
-    }
-
-    pub fn set_overhead_bandwidth_pct(&mut self, pct: u8) -> Result<(), OptionError> {
-        if !(5..=100).contains(&pct) {
-            return Err(OptionError::OutOfRange(format!(
-                "overhead_bandwidth_pct must be 5..=100, got {pct}"
-            )));
-        }
-        set_int(self.handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)
     }
 
     /// Explicit close; rare. Drop handles the normal path.
@@ -683,58 +662,96 @@ pub(crate) fn set_passphrase(
     Ok(())
 }
 
-/// Apply every set field of a `SocketConfig` to the handle.
-pub(crate) fn apply_socket_config(
+/// Option values applied identically by `apply_socket_config` and
+/// `apply_listener_config`. Built via `From` on each config type so the
+/// application logic (`apply_common_options`) lives in exactly one place.
+struct CommonOpts<'a> {
+    passphrase: Option<&'a Passphrase>,
+    key_length: crate::options::KeyLength,
+    latency: Option<Duration>,
+    recv_latency: Option<Duration>,
+    mss: Option<u16>,
+    flow_window_packets: Option<u32>,
+    recv_buf_bytes: Option<u32>,
+    max_bandwidth: Option<MaxBandwidth>,
+    overhead_bandwidth_pct: Option<u8>,
+    payload_size: Option<u16>,
+    udp_recv_buffer_bytes: Option<u32>,
+    loss_max_ttl: Option<u32>,
+    too_late_packet_drop: Option<bool>,
+    packet_filter: Option<&'a crate::options::PacketFilter>,
+    congestion: Option<crate::options::Congestion>,
+    recv_timeout: Option<Duration>,
+    linger: Option<Duration>,
+}
+
+impl<'a> From<&'a SocketConfig> for CommonOpts<'a> {
+    fn from(cfg: &'a SocketConfig) -> Self {
+        Self {
+            passphrase: cfg.passphrase.as_ref(),
+            key_length: cfg.key_length,
+            latency: cfg.latency,
+            recv_latency: cfg.recv_latency,
+            mss: cfg.mss,
+            flow_window_packets: cfg.flow_window_packets,
+            recv_buf_bytes: cfg.recv_buf_bytes,
+            max_bandwidth: cfg.max_bandwidth,
+            overhead_bandwidth_pct: cfg.overhead_bandwidth_pct,
+            payload_size: cfg.payload_size,
+            udp_recv_buffer_bytes: cfg.udp_recv_buffer_bytes,
+            loss_max_ttl: cfg.loss_max_ttl,
+            too_late_packet_drop: cfg.too_late_packet_drop,
+            packet_filter: cfg.packet_filter.as_ref(),
+            congestion: cfg.congestion,
+            recv_timeout: cfg.recv_timeout,
+            linger: cfg.linger,
+        }
+    }
+}
+
+impl<'a> From<&'a crate::config::ListenerConfig> for CommonOpts<'a> {
+    fn from(cfg: &'a crate::config::ListenerConfig) -> Self {
+        Self {
+            passphrase: cfg.passphrase.as_ref(),
+            key_length: cfg.key_length,
+            latency: cfg.latency,
+            recv_latency: cfg.recv_latency,
+            mss: cfg.mss,
+            flow_window_packets: cfg.flow_window_packets,
+            recv_buf_bytes: cfg.recv_buf_bytes,
+            max_bandwidth: cfg.max_bandwidth,
+            overhead_bandwidth_pct: cfg.overhead_bandwidth_pct,
+            payload_size: cfg.payload_size,
+            udp_recv_buffer_bytes: cfg.udp_recv_buffer_bytes,
+            loss_max_ttl: cfg.loss_max_ttl,
+            too_late_packet_drop: cfg.too_late_packet_drop,
+            packet_filter: cfg.packet_filter.as_ref(),
+            congestion: cfg.congestion,
+            recv_timeout: cfg.recv_timeout,
+            linger: cfg.linger,
+        }
+    }
+}
+
+/// Apply the option set shared by `apply_socket_config` and
+/// `apply_listener_config`.
+fn apply_common_options(
     handle: srt_sys::SRTSOCKET,
-    cfg: &SocketConfig,
+    opts: &CommonOpts<'_>,
 ) -> Result<(), OptionError> {
-    if let Some(p) = &cfg.passphrase {
+    if let Some(p) = opts.passphrase {
         // Set key length BEFORE passphrase.
         set_int(
             handle,
             srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN,
-            cfg.key_length.as_bytes(),
+            opts.key_length.as_bytes(),
         )?;
         set_passphrase(handle, p)?;
     }
-    if let Some(t) = cfg.send_timeout {
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO,
-            duration_to_ms(t),
-        )?;
-    }
-    if let Some(t) = cfg.recv_timeout {
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
-            duration_to_ms(t),
-        )?;
-    }
-    if let Some(t) = cfg.connect_timeout {
-        // SRTO_CONNTIMEO is a PRE option (set before srt_connect); this
-        // function is called between srt_create_socket and srt_connect, so
-        // ordering is satisfied.
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_CONNTIMEO,
-            duration_to_ms(t),
-        )?;
-    }
-    if let Some(d) = cfg.linger {
-        set_linger(handle, d)?;
-    }
-    if let Some(d) = cfg.latency {
+    if let Some(d) = opts.latency {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
     }
-    if let Some(d) = cfg.peer_latency {
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_PEERLATENCY,
-            duration_to_ms(d),
-        )?;
-    }
-    if let Some(d) = cfg.recv_latency {
+    if let Some(d) = opts.recv_latency {
         set_int(
             handle,
             srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY,
@@ -750,56 +767,96 @@ pub(crate) fn apply_socket_config(
     // `recv_buf_bytes` still had its receive buffer silently clamped to
     // the DEFAULT window (25600 packets ≈ 37.7 MB at default MSS),
     // making the FC raise a no-op for buffer sizing.
-    if let Some(mss) = cfg.mss {
+    if let Some(mss) = opts.mss {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
     }
-    if let Some(n) = cfg.flow_window_packets {
+    if let Some(n) = opts.flow_window_packets {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
     }
-    if let Some(n) = cfg.recv_buf_bytes {
-        set_rcvbuf_checked(handle, n, cfg.mss)?;
+    if let Some(n) = opts.recv_buf_bytes {
+        set_rcvbuf_checked(handle, n, opts.mss)?;
+    }
+    if let Some(bw) = opts.max_bandwidth {
+        set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
+    }
+    if let Some(pct) = opts.overhead_bandwidth_pct {
+        crate::options::validate_overhead_bandwidth_pct(pct as u32)
+            .map_err(OptionError::OutOfRange)?;
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
+    }
+    if let Some(n) = opts.payload_size {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
+    }
+    if let Some(n) = opts.udp_recv_buffer_bytes {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF, n as i32)?;
+    }
+    if let Some(n) = opts.loss_max_ttl {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LOSSMAXTTL, n as i32)?;
+    }
+    if let Some(on) = opts.too_late_packet_drop {
+        set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
+    }
+    if let Some(pf) = opts.packet_filter {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
+    }
+    if let Some(c) = opts.congestion {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
+    }
+    if let Some(t) = opts.recv_timeout {
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
+            duration_to_ms(t),
+        )?;
+    }
+    if let Some(d) = opts.linger {
+        set_linger(handle, d)?;
+    }
+    Ok(())
+}
+
+/// Apply every set field of a `SocketConfig` to the handle.
+pub(crate) fn apply_socket_config(
+    handle: srt_sys::SRTSOCKET,
+    cfg: &SocketConfig,
+) -> Result<(), OptionError> {
+    apply_common_options(handle, &CommonOpts::from(cfg))?;
+    if let Some(t) = cfg.send_timeout {
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO,
+            duration_to_ms(t),
+        )?;
+    }
+    if let Some(t) = cfg.connect_timeout {
+        // SRTO_CONNTIMEO is a PRE option (set before srt_connect); this
+        // function is called between srt_create_socket and srt_connect, so
+        // ordering is satisfied.
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_CONNTIMEO,
+            duration_to_ms(t),
+        )?;
+    }
+    if let Some(d) = cfg.peer_latency {
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_PEERLATENCY,
+            duration_to_ms(d),
+        )?;
     }
     if let Some(n) = cfg.send_buf_bytes {
         let bytes = buf_bytes_to_i32("send_buf_bytes", n)?;
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDBUF, bytes)?;
     }
-    if let Some(bw) = cfg.max_bandwidth {
-        set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
-    }
     if let Some(bw) = cfg.input_bandwidth {
         set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_INPUTBW, bw as i64)?;
-    }
-    if let Some(pct) = cfg.overhead_bandwidth_pct {
-        if !(5..=100).contains(&pct) {
-            return Err(OptionError::OutOfRange(format!(
-                "overhead_bandwidth_pct must be 5..=100, got {pct}"
-            )));
-        }
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
-    }
-    if let Some(n) = cfg.payload_size {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
-    }
-    if let Some(n) = cfg.udp_recv_buffer_bytes {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF, n as i32)?;
     }
     if let Some(n) = cfg.udp_send_buffer_bytes {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_SNDBUF, n as i32)?;
     }
     if let Some(id) = &cfg.stream_id {
         set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_STREAMID, id.as_str())?;
-    }
-    if let Some(n) = cfg.loss_max_ttl {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LOSSMAXTTL, n as i32)?;
-    }
-    if let Some(on) = cfg.too_late_packet_drop {
-        set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
-    }
-    if let Some(pf) = &cfg.packet_filter {
-        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
-    }
-    if let Some(c) = cfg.congestion {
-        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
     }
     if matches!(cfg.role, crate::options::Role::Sender) {
         set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_SENDER, true)?;
@@ -811,76 +868,8 @@ pub(crate) fn apply_listener_config(
     handle: srt_sys::SRTSOCKET,
     cfg: &crate::config::ListenerConfig,
 ) -> Result<(), OptionError> {
-    if let Some(p) = &cfg.passphrase {
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN,
-            cfg.key_length.as_bytes(),
-        )?;
-        set_passphrase(handle, p)?;
-    }
-    if let Some(d) = cfg.latency {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
-    }
-    if let Some(d) = cfg.recv_latency {
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY,
-            duration_to_ms(d),
-        )?;
-    }
-    // Same ordering requirement as apply_socket_config above: MSS and
-    // the flow-control window feed libsrt's SRTO_RCVBUF conversion at
-    // set time, so they must land first.
-    if let Some(mss) = cfg.mss {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
-    }
-    if let Some(n) = cfg.flow_window_packets {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
-    }
-    if let Some(n) = cfg.recv_buf_bytes {
-        set_rcvbuf_checked(handle, n, cfg.mss)?;
-    }
-    if let Some(bw) = cfg.max_bandwidth {
-        set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
-    }
-    if let Some(pct) = cfg.overhead_bandwidth_pct {
-        if !(5..=100).contains(&pct) {
-            return Err(OptionError::OutOfRange(format!(
-                "overhead_bandwidth_pct must be 5..=100, got {pct}"
-            )));
-        }
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
-    }
-    if let Some(n) = cfg.payload_size {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
-    }
-    if let Some(n) = cfg.udp_recv_buffer_bytes {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF, n as i32)?;
-    }
-    if let Some(n) = cfg.loss_max_ttl {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LOSSMAXTTL, n as i32)?;
-    }
-    if let Some(on) = cfg.too_late_packet_drop {
-        set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
-    }
-    if let Some(pf) = &cfg.packet_filter {
-        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
-    }
-    if let Some(c) = cfg.congestion {
-        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
-    }
+    apply_common_options(handle, &CommonOpts::from(cfg))?;
     set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_REUSEADDR, cfg.reuse_addr)?;
-    if let Some(t) = cfg.recv_timeout {
-        set_int(
-            handle,
-            srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
-            duration_to_ms(t),
-        )?;
-    }
-    if let Some(d) = cfg.linger {
-        set_linger(handle, d)?;
-    }
     Ok(())
 }
 
@@ -995,7 +984,7 @@ fn classify_recv_error(raw: crate::error::RawError, buf_len: usize) -> RecvError
 }
 
 /// Build a SrtCancelHandle that closes the SRTSOCKET on first cancel.
-fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::SrtCancelHandle {
+pub(crate) fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::SrtCancelHandle {
     tst_core::SrtCancelHandle::new(handle as i64, |h| {
         // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
         // srt_close from any thread; the atomic-swap in SrtCancelHandle
@@ -1303,9 +1292,9 @@ mod tests {
     // reset it. A non-blocking accepted socket's `recv()` returns
     // `SRT_EASYNCRCV` instead of blocking for `SRTO_RCVTIMEO`, which
     // `tst-interop`'s CI hit as a total-zero-delivery regression: the raw
-    // error message ("no data available for reading") doesn't match
-    // `is_timeout`'s "timed out" substring check, so it gets classified as
-    // a fatal broken connection the instant there's nothing to read yet.
+    // error doesn't match `is_timeout`'s exact `SRT_ETIMEOUT` errno check,
+    // so it gets classified as a fatal broken connection the instant
+    // there's nothing to read yet.
     //
     // Can't reliably force the real race (it's a TOCTOU against libsrt's
     // own internal thread, not something this test can synchronize

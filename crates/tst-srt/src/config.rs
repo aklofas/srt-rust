@@ -266,10 +266,12 @@ pub struct ListenerConfig {
     pub recv_timeout: Option<Duration>,
     pub send_timeout: Option<Duration>,
 
-    /// Time to wait inside `Drop`/`close` for unsent data to flush.
-    /// `None` preserves libsrt's 180-second default. Explicit
-    /// `Some(Duration::ZERO)` closes immediately. Inherited by accepted
-    /// sockets via libsrt's option-inheritance (PRE options).
+    /// SRT linger timeout. `None` preserves libsrt's default — which is
+    /// `l_onoff=0, l_linger=0` (linger off; close returns immediately and
+    /// libsrt's internal queue drains in the background). Note: this differs
+    /// from the kernel SO_LINGER default; libsrt initializes its own
+    /// `struct linger`. See `srtcore/socketconfig.h:333-336`. Inherited by
+    /// accepted sockets via libsrt's option-inheritance (PRE options).
     pub linger: Option<Duration>,
 }
 

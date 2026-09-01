@@ -313,15 +313,11 @@ impl tst_core::transport::RecvTransport for SrtTransport {
     }
 
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
-        self.socket.as_ref().map(|s| {
-            Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>
-        })
+        <Self as tst_core::transport::Transport>::cancel_handle(self)
     }
 
     fn socket_stats(&self) -> Option<SocketStats> {
-        let socket = self.socket.as_ref()?;
-        let s = socket.stats().ok()?;
-        Some(map_stats(&s))
+        <Self as tst_core::transport::Transport>::socket_stats(self)
     }
 }
 

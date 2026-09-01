@@ -491,7 +491,6 @@ pub tst_srt::error::SrtErrno::Notsup
 pub tst_srt::error::SrtErrno::PeerError
 pub tst_srt::error::SrtErrno::Setup
 pub tst_srt::error::SrtErrno::SystemRes
-pub tst_srt::error::SrtErrno::Timeout
 pub tst_srt::error::SrtErrno::Unknown(i32)
 impl tst_srt::error::SrtErrno
 pub fn tst_srt::error::SrtErrno::raw_code(&self) -> i32
@@ -756,9 +755,6 @@ pub fn tst_srt::socket::Socket::payload_limit(&self) -> usize
 pub fn tst_srt::socket::Socket::peer_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::recv(&mut self, &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
 pub fn tst_srt::socket::Socket::send(&mut self, &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
-pub fn tst_srt::socket::Socket::set_input_bandwidth(&mut self, u64) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_overhead_bandwidth_pct(&mut self, u8) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::set_send_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::stats(&self) -> core::result::Result<tst_srt::socket::Stats, tst_srt::error::IoError>
@@ -1408,9 +1404,6 @@ pub fn tst_srt::socket::Socket::payload_limit(&self) -> usize
 pub fn tst_srt::socket::Socket::peer_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::recv(&mut self, &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
 pub fn tst_srt::socket::Socket::send(&mut self, &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
-pub fn tst_srt::socket::Socket::set_input_bandwidth(&mut self, u64) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_overhead_bandwidth_pct(&mut self, u8) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::set_send_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::stats(&self) -> core::result::Result<tst_srt::socket::Stats, tst_srt::error::IoError>

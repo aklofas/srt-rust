@@ -268,6 +268,20 @@ impl PacketFilter {
 }
 
 // ============================================================================
+// Shared validation
+// ============================================================================
+
+/// `SRTO_OHEADBW`'s libsrt-mandated range. Shared by every site that would
+/// otherwise duplicate this check: socket/listener option application and
+/// the `oheadbw` URL key parser.
+pub(crate) fn validate_overhead_bandwidth_pct(pct: u32) -> Result<(), String> {
+    if !(5..=100).contains(&pct) {
+        return Err(format!("overhead_bandwidth_pct must be 5..=100, got {pct}"));
+    }
+    Ok(())
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -335,6 +349,14 @@ mod tests {
         assert_eq!(MaxBandwidth::Unlimited.as_libsrt_i64(), 0);
         assert_eq!(MaxBandwidth::Auto.as_libsrt_i64(), -1);
         assert_eq!(MaxBandwidth::Limited(1_000_000).as_libsrt_i64(), 1_000_000);
+    }
+
+    #[test]
+    fn overhead_bandwidth_pct_range() {
+        assert!(validate_overhead_bandwidth_pct(4).is_err());
+        assert!(validate_overhead_bandwidth_pct(5).is_ok());
+        assert!(validate_overhead_bandwidth_pct(100).is_ok());
+        assert!(validate_overhead_bandwidth_pct(101).is_err());
     }
 
     #[test]

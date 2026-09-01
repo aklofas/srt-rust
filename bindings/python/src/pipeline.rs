@@ -100,7 +100,7 @@ impl PyPairer {
         // is safe to wrap in `allow_threads`.
         let outputs = if let Ok(slice) = data.extract::<&[u8]>() {
             py.allow_threads(|| self.inner.feed(slice))
-                .map_err(|e| demux_error_to_pyerr(py, e))?
+                .map_err(|e| demux_error_to_pyerr(py, &e))?
         } else {
             // Fallback: coerce via the Python `bytes()` builtin. Accepts
             // `bytearray`, `memoryview`, and any object exposing the
@@ -116,7 +116,7 @@ impl PyPairer {
             // alive on the stack across the GIL drop.
             let slice: &[u8] = coerced.as_bytes();
             py.allow_threads(|| self.inner.feed(slice))
-                .map_err(|e| demux_error_to_pyerr(py, e))?
+                .map_err(|e| demux_error_to_pyerr(py, &e))?
         };
         convert_outputs(py, &outputs)
     }

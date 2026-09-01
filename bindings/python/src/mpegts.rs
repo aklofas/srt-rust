@@ -91,7 +91,7 @@ impl PyDemuxer {
         // construction inside), so it is safe to wrap in `allow_threads`.
         if let Ok(slice) = bytes.extract::<&[u8]>() {
             let res = py.allow_threads(|| self.inner.feed(slice));
-            return res.map_err(|e| demux_error_to_pyerr(py, e));
+            return res.map_err(|e| demux_error_to_pyerr(py, &e));
         }
         // Fallback: coerce via the Python `bytes()` builtin. Accepts
         // `bytearray`, `memoryview`, and any object exposing the
@@ -108,7 +108,7 @@ impl PyDemuxer {
         // a referenced object.
         let slice: &[u8] = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.feed(slice));
-        res.map_err(|e| demux_error_to_pyerr(py, e))
+        res.map_err(|e| demux_error_to_pyerr(py, &e))
     }
 
     /// Flush any in-flight PES reassembly. Call once at EOF before
@@ -949,9 +949,9 @@ fn non_conformant_kind_name(issue: &NonConformantIssue) -> &'static str {
 // DemuxError → PyErr
 // ---------------------------------------------------------------------------
 
-pub(crate) fn demux_error_to_pyerr(py: Python<'_>, e: DemuxError) -> PyErr {
+pub(crate) fn demux_error_to_pyerr(py: Python<'_>, e: &DemuxError) -> PyErr {
     // Map Rust DemuxError variants to Python DemuxErrorKind.
-    let kind = match &e {
+    let kind = match e {
         DemuxError::Unrecoverable { .. } => "INTERNAL",
         // Audit-2 #8: StrictRejection is a distinct policy-level outcome,
         // not an internal bug. Map to STRICT_REJECTION so callers can

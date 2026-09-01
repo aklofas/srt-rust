@@ -149,21 +149,7 @@ impl<R: RecvTransport> core::fmt::Debug for DemuxReceiver<R> {
 impl<R: RecvTransport> DemuxReceiver<R> {
     /// Wrap a transport with default demuxer options (lenient mode).
     pub fn new(transport: R) -> Self {
-        let span = info_span!(
-            target: "tst_pipeline::demux_receiver",
-            "demux_receiver",
-            transport_kind = core::any::type_name::<R>(),
-        );
-        let _enter = span.enter();
-        tracing::info!("DemuxReceiver opened");
-        drop(_enter);
-        Self {
-            ts: Receiver::new(transport, ReceiverConfig::default()),
-            demux: Demuxer::new(),
-            byte_sinks: Vec::new(),
-            terminal_error: None,
-            _span: core::panic::AssertUnwindSafe(span),
-        }
+        Self::with_demux_options(transport, DemuxerConfig::default())
     }
 
     /// Wrap a transport with custom demuxer options (e.g. strict mode).
@@ -522,8 +508,6 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         }
     }
 
-    /// Reset all counters to zero. Delegates to both the inner `Receiver`
-    /// and the inner `Demuxer`.
     /// Wire-level transport stats (RTT, packet loss, bandwidth, queue
     /// depths) sourced from the underlying
     /// [`RecvTransport::socket_stats`] implementation. Delegates to the
@@ -564,6 +548,8 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         self.demux.stream_codec_stats(pid)
     }
 
+    /// Reset all counters to zero. Delegates to both the inner `Receiver`
+    /// and the inner `Demuxer`.
     pub fn reset_stats(&mut self) {
         self.ts.reset_stats();
         self.demux.reset_stats();

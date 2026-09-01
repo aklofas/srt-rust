@@ -362,7 +362,9 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
 
         // Duplicate-tag check on the BER-OID-decoded u32 — covers both
         // the typed u8 universe (tags 1..=103) and future multi-byte
-        // BER-OID extensions per ST 0107.5 §6.
+        // BER-OID extensions per ST 0107.5 §6. Runs after the framing
+        // read (matching the ST 0601 walker) — a duplicate tag whose
+        // length field is also malformed surfaces the framing error.
         let is_dup = if let Ok(tag_u8) = u8::try_from(tag) {
             let was = seen_u8[tag_u8 as usize];
             seen_u8[tag_u8 as usize] = true;

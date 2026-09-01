@@ -1089,9 +1089,9 @@ the trigger that would unblock it.
 - **Why deferred:** No driving consumer. The two "private" concepts are
   distinct layers (transport private-data PID vs. KLV registered-private
   UL); the shipped private-data arc correctly makes no RP 225 claim. The
-  generic KLV substrate (`UniversalLabel::new`, `klv::length::write_ber`,
-  `klv::pack::emit_ber_oid_tlv`) is already sufficient to build RP 225
-  records.
+  generic KLV substrate (`UniversalLabel::new`,
+  `klv::length::{write_ber, write_ber_oid}`) is already sufficient to
+  build RP 225 records.
 - **Trigger to revisit:** A consumer asks to carry self-identifying
   vendor-private metadata records *inside* the existing KLV elementary
   stream (alongside ST 0601) rather than on a side-channel private-data

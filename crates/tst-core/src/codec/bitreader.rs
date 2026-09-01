@@ -10,7 +10,7 @@
 //! and `codec::h266::{vps,sps,pps,vui,profile_tier_level}`. AV1 has its own
 //! separate bit-reading primitives in `codec::av1::decode::bitreader` —
 //! different semantics (no emulation prevention bytes; AV1's `f(n)` /
-//! `uvlc()` / `byte_align()` per spec §4.7 + §4.10).
+//! `uvlc()` per spec §4.7 + §4.10).
 //!
 //! Reference: H.265 §7.2 (raw byte sequence payload), §9.2 (parsing process);
 //! H.266 reuses the same bit-reading semantics.

@@ -367,8 +367,8 @@ is a separate, JVM-only behavior change from an earlier arc.)
   reachable (`Ber` errored immediately, `BerShort`/`BerLong`/`Fixed`
   were never constructed), and `LengthEncoding` existed solely to
   parameterize it. Callers building a generic KLV pack use
-  `UniversalLabel::new` + `klv::length::{write_ber, write_ber_oid}` +
-  `klv::pack::emit_ber_oid_tlv` directly.
+  `UniversalLabel::new` + `klv::length::{write_ber, write_ber_oid}`
+  directly.
 
 ### Fixed
 

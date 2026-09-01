@@ -66,11 +66,6 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     init_tracing_bridge();
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(errors::raise_mux_error_for_test, m)?)?;
-    #[cfg(feature = "rtp")]
-    {
-        m.add_function(wrap_pyfunction!(errors::raise_rtsp_error_for_test, m)?)?;
-        m.add_function(wrap_pyfunction!(errors::raise_rtp_error_for_test, m)?)?;
-    }
     #[cfg(feature = "srt")]
     {
         m.add_function(wrap_pyfunction!(errors::raise_srt_error_for_test, m)?)?;

@@ -1,6 +1,6 @@
 //! Stats accounting + nonconformant event queueing.
 //!
-//! Hosts 6 helper methods on `Demuxer`:
+//! Hosts 4 helper methods on `Demuxer`, all `pub(super)`:
 //!
 //! - `queue_nonconformant(stream, issue)` — pushes a `NonConformant`
 //!   event onto the queue and captures the first strict-rejected issue
@@ -11,13 +11,17 @@
 //! - `record_discontinuity(stream, kind)` — bumps `discontinuities_count`,
 //!   increments the per-PID `StreamStats::discontinuities` counter via
 //!   `stream_stats_entry`, and pushes a `Discontinuity` event.
-//! - `bump_video_counters(pid, nals_or_obus_delta, ra_delta)` — lazily
-//!   creates a video `StreamCodecCounters` entry for a PID on first
-//!   event, accumulates delta counters.
-//! - `bump_klv_counters(pid, records_delta)` — same shape, KLV-keyed.
-//! - `bump_audio_counters(pid, frames_delta)` — same shape, audio-keyed.
+//! - `record_item(stream, program_number, bytes)` — the shared body of
+//!   `pes_emit.rs`'s per-arm item accounting: bumps `items`, stamps
+//!   `touch_last_seen`, adds `bytes`, and returns the entry for arms
+//!   that do one thing more with it (subtitle label, KLV counter bump).
 //!
-//! All `pub(super)`. The 3 public stats accessors (`stats`, `reset_stats`,
+//! The per-PID codec counter bumps (`bump_video_counters` /
+//! `bump_klv_counters` / `bump_audio_counters`) are shared free functions
+//! in `mpegts::stats` (also used by the muxer's stats accounting) — call
+//! sites pass `&mut self.stream_codec_counters` directly.
+//!
+//! The 3 public stats accessors (`stats`, `reset_stats`,
 //! `stream_codec_stats`) stay in `demuxer.rs` (the coordinator) since
 //! they're part of the `Demuxer` public surface.
 //!
@@ -74,28 +78,24 @@ impl super::demuxer::Demuxer {
             .push_back(DemuxEvent::NonConformant { stream, issue });
     }
 
-    pub(super) fn bump_video_counters(&mut self, pid: u16, nals_or_obus_delta: u64, ra_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_video);
-        c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
-        c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
-    }
-
-    pub(super) fn bump_klv_counters(&mut self, pid: u16, records_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_klv);
-        c.records = c.records.saturating_add(records_delta);
-    }
-
-    pub(super) fn bump_audio_counters(&mut self, pid: u16, frames_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_audio);
-        c.frames = c.frames.saturating_add(frames_delta);
+    /// Lazily creates (or fetches) the stats entry for `stream`, bumps
+    /// `items` by 1, stamps `touch_last_seen`, and adds `bytes`. Returns
+    /// the entry so a couple of `pes_emit.rs` arms can do one thing more
+    /// with it (subtitle label, KLV counter bump).
+    pub(super) fn record_item(
+        &mut self,
+        stream: &StreamId,
+        program_number: u16,
+        bytes: usize,
+    ) -> &mut crate::mpegts::stats::StreamStats {
+        let entry = self.stream_stats_entry(
+            stream.pid,
+            super::pmt_classify::stream_type_from_kind(&stream.kind),
+            program_number,
+        );
+        entry.items += 1;
+        entry.touch_last_seen();
+        entry.bytes += bytes as u64;
+        entry
     }
 }

@@ -165,7 +165,11 @@ impl Muxer {
             crate::mpegts::mux::AudioCodec::AacLatm | crate::mpegts::mux::AudioCodec::Ac3 => 0,
         };
         if frames_delta > 0 {
-            self.bump_audio_counters(audio_pid, frames_delta);
+            crate::mpegts::stats::bump_audio_counters(
+                &mut self.stream_codec_counters,
+                audio_pid,
+                frames_delta,
+            );
         }
 
         Ok(())

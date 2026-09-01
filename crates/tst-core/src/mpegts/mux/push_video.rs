@@ -527,7 +527,12 @@ impl Muxer {
         // regardless of carriage mode.
         let nals_count = crate::codec::util::count_nal_units(nal, codec);
         let ra_count = u64::from(key_frame);
-        self.bump_video_counters(video_pid, nals_count, ra_count);
+        crate::mpegts::stats::bump_video_counters(
+            &mut self.stream_codec_counters,
+            video_pid,
+            nals_count,
+            ra_count,
+        );
 
         Ok(())
     }

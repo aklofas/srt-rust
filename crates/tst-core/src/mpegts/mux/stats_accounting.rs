@@ -1,9 +1,10 @@
 //! Muxer per-stream counter accounting + public stats accessor surface.
 //!
-//! Owns `MuxerStats` (the public snapshot struct), the per-PID
-//! counter-bump helpers (`bump_video_counters` / `bump_klv_counters` /
-//! `bump_audio_counters`), and the three public accessor methods
-//! (`stats`, `reset_stats`, `stream_codec_stats`).
+//! Owns `MuxerStats` (the public snapshot struct) and the three public
+//! accessor methods (`stats`, `reset_stats`, `stream_codec_stats`). The
+//! per-PID counter-bump helpers (`bump_video_counters` /
+//! `bump_klv_counters` / `bump_audio_counters`) are shared free functions
+//! in `mpegts::stats` (also used by the demuxer's stats accounting).
 //!
 //! The `Muxer` struct's `ts_packets_emitted` / `ts_bytes_emitted` /
 //! `per_stream` / `stream_codec_counters` fields back this module's
@@ -99,30 +100,5 @@ impl Muxer {
             s.discontinuities = 0;
         }
         self.stream_codec_counters.clear();
-    }
-
-    pub(super) fn bump_video_counters(&mut self, pid: u16, nals_or_obus_delta: u64, ra_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_video);
-        c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
-        c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
-    }
-
-    pub(super) fn bump_klv_counters(&mut self, pid: u16, records_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_klv);
-        c.records = c.records.saturating_add(records_delta);
-    }
-
-    pub(super) fn bump_audio_counters(&mut self, pid: u16, frames_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_audio);
-        c.frames = c.frames.saturating_add(frames_delta);
     }
 }

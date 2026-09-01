@@ -52,11 +52,12 @@
 //!
 //! # Cross-language wrappers
 //!
-//! C ABI / JNI / UniFFI exposure is deferred to the future
-//! receiver-surface plan. The Rust types in this module are designed
-//! to translate cleanly when that plan lands; [`PairingDemuxer`] is the
-//! byte-feeding surface those bindings consume (no `DemuxEvent` crosses
-//! the FFI boundary).
+//! Shipped in Python (`tstrans.pipeline`) and JVM (`org.tstrans.pipeline.Pairer`).
+//! C ABI / UniFFI exposure is deferred to the future receiver-surface
+//! plan. The Rust types in this module are designed to translate
+//! cleanly when that plan lands; [`PairingDemuxer`] is the byte-feeding
+//! surface those bindings consume (no `DemuxEvent` crosses the FFI
+//! boundary).
 //!
 //! # Cookbook
 //!

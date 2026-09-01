@@ -1698,13 +1698,14 @@ the trigger that would unblock it.
 - **Status:** Deferred. No C-ABI `H264Receiver` / `H264DepayConfig` /
   `H264Au` family exists; the H.264 ingest path is only available from
   Rust, Python, and JVM.
-- **Why deferred:** The C ABI is frozen at minor 17; adding an
-  H.264-specific receive family would bump to 18 and requires cbindgen-
-  friendly struct definitions (no opaque Rust types passed by value).
-  The existing Python + JVM mirrors cover all current consumers.
+- **Why deferred:** The C ABI grows additively (currently minor 20);
+  adding an H.264-specific receive family would bump it further and
+  requires cbindgen-friendly struct definitions (no opaque Rust types
+  passed by value). The existing Python + JVM mirrors cover all current
+  consumers.
 - **Trigger to revisit:** A C or embedded consumer asks for first-party
   H.264 ingest (e.g. a bare-metal pipeline receiving from a STANAG 4609
-  RTSP camera). Would be ABI minor 17 → 18.
+  RTSP camera). Would be ABI minor 20 → 21.
 
 ## H.264-over-RTP payloader (RFC 6184 send side)
 

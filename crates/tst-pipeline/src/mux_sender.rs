@@ -141,7 +141,7 @@ pub struct MuxSenderStats {
 /// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
 /// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
-/// | C | `tst_mux_sender_close(sender)` (explicit; mirrors `Drop`) |
+/// | C | `tst_mux_sender_close(sender)` (explicit; mirrors [`Self::close`] — prompt, abandons the retained tail; no C mirror of [`Self::finish`] yet) |
 ///
 /// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 ///

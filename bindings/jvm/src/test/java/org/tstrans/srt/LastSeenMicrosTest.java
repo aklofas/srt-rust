@@ -2,6 +2,9 @@ package org.tstrans.srt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
+import static org.tstrans.TestSupport.roundtripConfig;
+import static org.tstrans.TestSupport.syntheticH264Idr;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -11,8 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.tstrans.SrtException;
 import org.tstrans.mpegts.DemuxEvent;
-import org.tstrans.mpegts.MuxerConfig;
-import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Live-socket tests for {@code lastSeenMicros(int pid)} (task D7) on the two
@@ -43,27 +44,6 @@ class LastSeenMicrosTest {
 
     /** Timeout in seconds for inter-thread signalling in the managed-shell test. */
     private static final int TIMEOUT_SEC = 15;
-
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
-
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) {
-            buf[5 + i] = (byte) (0xA5 ^ i);
-        }
-        return buf;
-    }
-
-    private static MuxerConfig roundtripConfig() {
-        return MuxerConfig.builder()
-            .programNumber(1).pmtPid(0x1000)
-            .addVideo(0x1011, VideoCodec.H264)
-            .build();
-    }
 
     private static boolean isCleanEndOfStream(RuntimeException re) {
         Throwable cause = re.getCause();

@@ -1,6 +1,7 @@
 package org.tstrans.mpegts;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -38,14 +39,6 @@ class Av1CarriageTest {
             buf[5 + i] = (byte) (0xA5 ^ i);
         }
         return buf;
-    }
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
     }
 
     /** Mux one video AU and drain all TS bytes. */

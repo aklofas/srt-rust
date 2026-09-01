@@ -2,26 +2,24 @@ package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.freeUdpPort;
+import static org.tstrans.TestSupport.isLinux;
+import static org.tstrans.TestSupport.sha256Units;
+import static org.tstrans.TestSupport.syntheticH264Idr;
 
 import java.io.ByteArrayOutputStream;
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.tstrans.RtpException;
-import org.tstrans.codec.NalUnit;
-import org.tstrans.codec.VideoUnit;
+import org.tstrans.TestSupport;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
 import org.tstrans.mpegts.Muxer;
 import org.tstrans.mpegts.MuxerConfig;
-import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Live cross-binding loopback parity test for the RTP convenience shells
@@ -60,18 +58,6 @@ class RtpMuxDemuxLoopbackTest {
     private static final int TIMEOUT_SEC = 15;
     private static final int PUSH_COUNT = 24;
 
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
-
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) buf[5 + i] = (byte) (0xA5 ^ i);
-        return buf;
-    }
-
     /**
      * Distinctive private-data record pushed every iteration alongside the video
      * stream (identical records — the UDP loss margin; see the sender loop).
@@ -79,18 +65,9 @@ class RtpMuxDemuxLoopbackTest {
     private static final byte[] DATA_PAYLOAD =
         {(byte) 0xD1, 'D', 'A', 'T', 'A', (byte) 0xCA, (byte) 0xFE, 0x02};
 
+    /** Video + one private-data stream — see {@link TestSupport#roundtripConfigWithData()}. */
     private static MuxerConfig roundtripConfig() {
-        return MuxerConfig.builder()
-            .programNumber(1).pmtPid(0x1000)
-            .addVideo(0x1011, VideoCodec.H264)
-            .addData(0x0100, 0xF0, true)
-            .build();
-    }
-
-    private static int freeUdpPort() throws Exception {
-        try (DatagramSocket s = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
-            return s.getLocalPort();
-        }
+        return TestSupport.roundtripConfigWithData();
     }
 
     @Test
@@ -283,23 +260,5 @@ class RtpMuxDemuxLoopbackTest {
             }
         }
         throw new AssertionError("offline path produced no typed Video event");
-    }
-
-    private static String sha256Units(List<VideoUnit> units) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        for (VideoUnit u : units) {
-            NalUnit n = (NalUnit) u;
-            ByteBuffer view = n.payload().duplicate();
-            byte[] bytes = new byte[view.remaining()];
-            view.get(bytes);
-            md.update(bytes);
-        }
-        byte[] digest = md.digest();
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
     }
 }

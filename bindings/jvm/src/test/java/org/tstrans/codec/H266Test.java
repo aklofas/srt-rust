@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -31,14 +32,6 @@ class H266Test {
     // Synthetic IDR slice RBSP — picture_header_in_slice_header_flag=1
     // (0x80 = 0b1000_0000). The light parser reads only this first bit.
     private static final byte[] IDR_SLICE = unsigned(0x80);
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
-    }
 
     @Test
     void parseSps320x240Dimensions() throws CodecParseException {

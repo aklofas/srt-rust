@@ -1,6 +1,7 @@
 package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.freeUdpPort;
 
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
@@ -42,18 +43,6 @@ class RtpConvenienceTest {
         return new DatagramSocket(new InetSocketAddress("127.0.0.1", 0));
     }
 
-    /**
-     * Discover a free UDP port by binding a throwaway socket to :0 and releasing
-     * it. Avoids fixed-port flakiness on shared CI runners. (A receiver binds the
-     * port, and the rtp transport auto-binds an RTCP companion on {@code port+1},
-     * so a literal {@code :0} URL is unusable here — the OS would put RTCP on the
-     * privileged port 1; this yields a concrete high ephemeral port instead.)
-     */
-    private static int freeUdpPort() throws Exception {
-        try (DatagramSocket s = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
-            return s.getLocalPort();
-        }
-    }
 
     @Test
     void muxSenderConstructsPushesAndReportsStats() throws Exception {

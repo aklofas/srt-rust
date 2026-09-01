@@ -2,6 +2,7 @@ package org.tstrans.srt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -30,10 +31,6 @@ import org.tstrans.mpegts.VideoCodec;
 final class DemuxReceiverCloseRaceTest {
 
     private static final int LATENCY_MS = 120;
-
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
 
     private static byte[] idr() {
         byte[] buf = new byte[20];

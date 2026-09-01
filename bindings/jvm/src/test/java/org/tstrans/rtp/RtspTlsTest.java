@@ -2,6 +2,7 @@ package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,10 +32,6 @@ import org.tstrans.mpegts.VideoCodec;
 class RtspTlsTest {
 
     private static final int TIMEOUT_SEC = 25;
-
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
 
     private static Path fixtureDir() {
         return Path.of("..", "python", "tests", "fixtures", "tls")

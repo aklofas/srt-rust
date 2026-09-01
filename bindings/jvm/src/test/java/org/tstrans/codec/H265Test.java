@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -43,14 +44,6 @@ class H265Test {
     // first_slice_segment_in_pic_flag=1, no_output_of_prior_pics_flag=0 (IRAP),
     // slice_pic_parameter_set_id=0, slice_type=2 (I).
     private static final byte[] IDR_SLICE_NO_SPS = unsigned(0xAC, 0x80);
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
-    }
 
     @Test
     void parseSps1080pMain40Dimensions() throws CodecParseException {

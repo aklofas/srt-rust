@@ -1,6 +1,7 @@
 package org.tstrans.mpegts;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.syntheticH264Idr;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,21 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class MuxerFileSinkTest {
-
-    /**
-     * Minimal H.264 IDR access unit in Annex-B framing, copied verbatim from
-     * {@code MuxRoundtripScenarioTest.syntheticH264Idr()} — the same shape used
-     * across all cross-binding mux tests.
-     */
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) {
-            buf[5 + i] = (byte) (0xA5 ^ i);
-        }
-        return buf;
-    }
 
     private static final byte[] IDR = syntheticH264Idr();
 

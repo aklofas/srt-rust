@@ -2,17 +2,15 @@ package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.freeUdpPort;
+import static org.tstrans.TestSupport.isLinux;
+import static org.tstrans.TestSupport.sha256Units;
 
 import java.io.ByteArrayOutputStream;
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -58,23 +56,12 @@ class RtpLoopbackScenarioTest {
     private static final String SCENARIO_ID = "h264-st0601-mp";
     private static final int TIMEOUT_SEC = 15;
 
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
-
     /** Workspace-relative shared scenario dir; resolved from Gradle's user.dir (bindings/jvm). */
     private static Path scenarioDir() {
         return Path.of(
                 System.getProperty("user.dir"), "..", "..",
                 "crates/tst-integration/tests/fixtures/scenarios", SCENARIO_ID)
             .normalize();
-    }
-
-    /** Bind a throwaway UDP socket to :0, read the kernel-picked port, release it. */
-    private static int freeUdpPort() throws Exception {
-        try (DatagramSocket s = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
-            return s.getLocalPort();
-        }
     }
 
     @Test
@@ -221,29 +208,6 @@ class RtpLoopbackScenarioTest {
             }
         }
         throw new AssertionError("no typed Video event found in the demuxed bytes");
-    }
-
-    /**
-     * SHA-256 of the concatenated typed-unit payload bytes. Mirrors the Rust /
-     * Python golden builders: concatenate every {@link NalUnit#payload()} (RBSP,
-     * Annex-B start codes already stripped by the demuxer).
-     */
-    private static String sha256Units(List<VideoUnit> units) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        for (VideoUnit u : units) {
-            NalUnit n = (NalUnit) u;
-            ByteBuffer view = n.payload().duplicate();
-            byte[] bytes = new byte[view.remaining()];
-            view.get(bytes);
-            md.update(bytes);
-        }
-        byte[] digest = md.digest();
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
     }
 
     /**

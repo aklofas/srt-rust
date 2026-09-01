@@ -2,6 +2,7 @@ package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -386,10 +387,6 @@ class H264ReceiverTest {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
-
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
 
     /** Minimal single-program H.264 MP2T mount config for the RTSP fixture. */
     private static MuxerConfig mp2tCfg() {

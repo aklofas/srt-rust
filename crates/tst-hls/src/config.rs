@@ -85,6 +85,13 @@ pub struct HlsConfig {
     /// [`Self::validate`] rejects `tls: true` without both
     /// [`Self::tls_cert`] and [`Self::tls_key`] set, instead of silently
     /// falling back to a plaintext bind.
+    ///
+    /// Unlike [`Self::tls_cert`] / [`Self::tls_key`] / [`Self::basic_auth`]
+    /// / [`Self::bind`], this field is read **unconditionally** —
+    /// `validate()` is not gated behind the `serve` feature, so setting
+    /// `tls: true` by hand (with `serve` off, where `merge_from_url` isn't
+    /// even compiled) still requires `tls_cert`/`tls_key` to pass
+    /// validation.
     pub tls: bool,
 }
 

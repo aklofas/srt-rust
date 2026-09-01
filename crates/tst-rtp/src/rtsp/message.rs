@@ -767,9 +767,11 @@ mod tests {
         assert!(matches!(e, RtspError::BadResponse { .. }));
     }
 
-    // The interleaved framing pumps (server + client) and the synchronous
-    // interleaved reader all share `content_length_from_header_text`. Lock its
-    // behavior across every branch here.
+    // The client interleaved pump's cap-check (`pump_accumulation_exceeded`
+    // -> `rtsp_frame_decision`) and its boundary scanner
+    // (`scan_rtsp_message_boundary` in `rtsp::client::interleaved_pump`)
+    // both share `content_length_from_header_text`. Lock its behavior
+    // across every branch here.
     #[test]
     fn content_length_from_header_text_strict() {
         assert_eq!(content_length_from_header_text("CSeq: 1").unwrap(), 0);

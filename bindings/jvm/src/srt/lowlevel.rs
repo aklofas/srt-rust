@@ -35,7 +35,7 @@ use tst_srt::{
 use super::JniCancel;
 use super::errors::{accept_error, bind_error, connect_error, io_error, throw_srt, url_error};
 use crate::handle::HandleRegistry;
-use crate::jutil::checked_u16;
+use crate::jutil::{checked_u16, join_host_port};
 
 /// Per-type leased-handle registry for `org.tstrans.srt.Socket` (an `SrtSocket`).
 /// `nConnect`/`nAccept` insert; per-call methods lease; `nClose` and the
@@ -128,18 +128,6 @@ fn unbox_nullable_long(env: &mut JNIEnv, obj: &JObject) -> jni::errors::Result<O
     }
     let v = env.call_method(obj, "longValue", "()J", &[])?.j()?;
     Ok(Some(v))
-}
-
-// ---------------------------------------------------------------------------
-// Helper: join host:port, bracketing bare IPv6 literals
-// ---------------------------------------------------------------------------
-
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
 }
 
 // ---------------------------------------------------------------------------

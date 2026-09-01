@@ -35,7 +35,7 @@ use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSou
 use tst_srt::{Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::{checked_u8, decode_stream_handle};
+use crate::jutil::{checked_u8, decode_stream_handle, join_host_port};
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
 
 use super::errors::{connect_error, throw_srt, transport_error};
@@ -56,16 +56,6 @@ fn throw_mux_sender_error(env: &mut JNIEnv, e: &MuxSenderError) {
         // `MuxSenderErrorSource` may gain variants; route any future one to a
         // generic SrtException(IO) with the Display message preserved.
         _ => throw_srt(env, "IO", &e.to_string()),
-    }
-}
-
-/// Join `host:port`, bracketing bare IPv6 literals. Mirror of the
-/// low-level helper in `srt/lowlevel.rs`.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
     }
 }
 

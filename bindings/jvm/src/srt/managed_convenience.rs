@@ -59,7 +59,7 @@ use tst_pipeline::{
 use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::checked_u8;
+use crate::jutil::{checked_u8, join_host_port};
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
 use crate::mpegts::{build_demux_config_from_args, convert_event};
 
@@ -74,15 +74,6 @@ use super::stats::{build_managed_transport_stats, build_socket_stats};
 // reconnect loop treats it as recoverable; the initial-connect path re-maps it
 // to CONNECT_FAILED at the JNI boundary, divergence #6).
 // ---------------------------------------------------------------------------
-
-/// Join `host:port`, bracketing bare IPv6 literals.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
 
 /// Build a fresh `SrtTransport` connected as a caller. `cfg.merge_sender_defaults()`
 /// applies the sender-side socket defaults before connecting.

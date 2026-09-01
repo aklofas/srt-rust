@@ -28,7 +28,9 @@ __all__: list[str]
 
 
 class TcpErrorKind(IntEnum):
-    """Discriminator for ``TcpError.kind``. Mirrors ``tst_tcp::TcpErrorKind``."""
+    """Discriminator for ``TcpError.kind``. Combines ``tst_tcp::TcpErrorKind``
+    construction/config-time variants with select ``TransportError``
+    conditions mapped onto the same kinds at the send/recv boundary."""
 
     URL = 0
     IO = 1

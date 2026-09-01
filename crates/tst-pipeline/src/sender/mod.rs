@@ -29,16 +29,17 @@ pub struct SenderConfig {
     ///
     /// When scanning for sync consumes more than this many bytes without
     /// acquiring it, `send_ts` returns
-    /// [`TsFramingError::NoSyncAfterLimit`]. The counter resets after the
-    /// error is raised, so RECOVER mode keeps scanning afterward — the
-    /// watchdog fires again only after another full `max_unsynced_bytes`
-    /// of unrecovered garbage. The count is cumulative across `send_ts`
-    /// calls until sync is acquired, so whether a given amount of garbage
-    /// trips the watchdog can depend on how it's chunked (e.g. it clears on
-    /// the call where sync is finally found, even if that call alone pushed
-    /// more unsynced bytes than the limit, because the limit is only
-    /// checked while still scanning). Set to `usize::MAX` to effectively
-    /// disable the watchdog.
+    /// [`TsFramingError::NoSyncAfterLimit`]. The count accumulates across
+    /// `send_ts` calls until sync is acquired OR the watchdog fires —
+    /// whichever comes first — and resets to zero either way, so RECOVER
+    /// mode keeps scanning afterward and a persistently non-TS source trips
+    /// the watchdog again every `max_unsynced_bytes`, not just once. Because
+    /// the counter also resets on genuine sync acquisition, whether a given
+    /// amount of garbage trips the watchdog can depend on how it's chunked
+    /// (e.g. it clears on the call where sync is finally found, even if
+    /// that call alone pushed more unsynced bytes than the limit, because
+    /// the limit is only checked while still scanning). Set to
+    /// `usize::MAX` to effectively disable the watchdog.
     pub max_unsynced_bytes: usize,
 }
 

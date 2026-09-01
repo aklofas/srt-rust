@@ -35,7 +35,6 @@
 use pyo3::Py;
 use pyo3::prelude::*;
 
-use tst_core::transport::TransportError;
 use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSource};
 use tst_rtp::{RtpSocketBuilder, RtpTransport};
 
@@ -44,13 +43,12 @@ use crate::mux::{
     PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
     PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
 };
-use crate::rtp::transport::PySocketStats;
+use crate::rtp::transport::{PySocketStats, transport_error_to_pyerr};
 
 // ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
 
-/// Coerce a Python bytes-like argument (`bytes`, `bytearray`,
 /// Map a `MuxSenderError` raised by any of `send_*` to a Python
 /// exception. `Mux(...)` variants surface as `MuxError`; `Transport(...)`
 /// variants surface as `RtpError(TRANSPORT)` (or `CANCELLED` /
@@ -63,21 +61,6 @@ fn mux_sender_error_to_pyerr(py: Python<'_>, e: MuxSenderError) -> PyErr {
         // future variant to a generic RtpError(TRANSPORT) with the
         // free-text Display message preserved.
         _ => make_rtp_error(py, "TRANSPORT", &format!("{:?}", e.kind)),
-    }
-}
-
-/// Mirror of the `transport.rs` helper used by `PySender::send`. Kept
-/// inline so `mux_sender.rs` doesn't need a `pub(crate)` re-export.
-fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
-    match e {
-        TransportError::ExplicitClose => {
-            make_rtp_error(py, "CANCELLED", "transport cancelled by caller")
-        }
-        TransportError::TooLarge { len, max } => {
-            let msg = format!("payload too large: {len} bytes exceeds {max}-byte cap");
-            make_rtp_error(py, "MALFORMED_PACKET", &msg)
-        }
-        other => make_rtp_error(py, "TRANSPORT", &other.to_string()),
     }
 }
 

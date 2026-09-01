@@ -59,7 +59,7 @@ use crate::errors::make_rtp_error;
 /// Each of the four `RtpErrorKind` variants gets a literal call site
 /// below so the consolidated `scripts/check/python/error-mapping-coverage.sh`
 /// ratchet stays green.
-fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
+pub(crate) fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
     match e {
         TransportError::ExplicitClose => {
             make_rtp_error(py, "CANCELLED", "transport cancelled by caller")

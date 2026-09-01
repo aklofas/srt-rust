@@ -8,9 +8,9 @@
 //!    half-assembled sample is dropped, not corrupted into the next
 //!    sample.
 //!
-//! Uses [`MockRecvTransport`] from `tst-test-helpers` for deterministic
-//! reconnect injection — no SRT loopback, no temp files, no sleep
-//! beyond the policy backoff (zero in tests).
+//! Uses a local `ScriptedInner` (below) for deterministic reconnect
+//! injection — no SRT loopback, no temp files, no sleep beyond the
+//! policy backoff (zero in tests).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};

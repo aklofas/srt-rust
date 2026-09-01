@@ -14,20 +14,8 @@ pub enum UdpError {
     #[error("URL parse failed: {0}")]
     Url(#[from] crate::url::UdpUrlError),
 
-    #[error("host '{host}' must be a literal IPv4/IPv6 address: {detail}")]
-    HostNotLiteral { host: String, detail: String },
-
     #[error("UDP socket I/O error: {0}")]
     Io(#[from] io::Error),
-
-    #[error("multicast iface '{iface}' unsupported: {detail}")]
-    IfaceUnsupported { iface: String, detail: String },
-
-    #[error("payload {len} exceeds max {max} bytes per datagram")]
-    PayloadTooLarge { len: usize, max: usize },
-
-    #[error("transport closed by caller")]
-    Closed,
 
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
@@ -40,11 +28,7 @@ pub enum UdpError {
 #[repr(u32)]
 pub enum UdpErrorKind {
     Url = 1,
-    HostNotLiteral = 2,
     Io = 3,
-    IfaceUnsupported = 4,
-    PayloadTooLarge = 5,
-    Closed = 6,
     InvalidConfig = 7,
 }
 
@@ -53,11 +37,7 @@ impl UdpError {
     pub fn kind(&self) -> UdpErrorKind {
         match self {
             Self::Url(_) => UdpErrorKind::Url,
-            Self::HostNotLiteral { .. } => UdpErrorKind::HostNotLiteral,
             Self::Io(_) => UdpErrorKind::Io,
-            Self::IfaceUnsupported { .. } => UdpErrorKind::IfaceUnsupported,
-            Self::PayloadTooLarge { .. } => UdpErrorKind::PayloadTooLarge,
-            Self::Closed => UdpErrorKind::Closed,
             Self::InvalidConfig(_) => UdpErrorKind::InvalidConfig,
         }
     }
@@ -72,7 +52,7 @@ mod tests {
         // If anyone reorders the enum, this catches the numeric drift before
         // the bindings ratchet flags it.
         assert_eq!(UdpErrorKind::Url as u32, 1);
-        assert_eq!(UdpErrorKind::Closed as u32, 6);
+        assert_eq!(UdpErrorKind::InvalidConfig as u32, 7);
     }
 
     #[test]

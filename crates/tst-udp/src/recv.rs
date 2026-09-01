@@ -6,19 +6,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::net::udp_socket::{
     CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket, bind_udp_socket_multicast,
+    set_socket_buffers,
 };
 use tst_core::transport::{RecvTransport, SocketStats, TransportError};
 
 use crate::config::SocketConfig;
 use crate::error::UdpError;
 use crate::stats::UdpStats;
-use crate::transport_recv_knobs;
 use crate::url::UdpUrl;
 
 /// UDP receiver.
 ///
 /// Construct via [`UdpRecvTransport::listen`] for the URL fast-path, or via
-/// [`crate::builder::UdpRecvTransportBuilder`] (added in a later phase).
+/// [`crate::builder::UdpRecvTransportBuilder`].
 ///
 /// # Cross-thread cancellation
 ///
@@ -91,7 +91,7 @@ impl UdpRecvTransport {
                 .map_err(UdpError::Io)?;
         }
 
-        transport_recv_knobs::apply_recv_knobs(&socket, cfg).map_err(UdpError::Io)?;
+        set_socket_buffers(&socket, cfg.rcvbuf, None).map_err(UdpError::Io)?;
 
         let local = socket.local_addr().map_err(UdpError::Io)?;
 

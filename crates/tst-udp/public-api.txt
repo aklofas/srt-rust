@@ -66,18 +66,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::config::SocketConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::config::SocketConfig
 pub mod tst_udp::error
 #[non_exhaustive] pub enum tst_udp::error::UdpError
-pub tst_udp::error::UdpError::Closed
-pub tst_udp::error::UdpError::HostNotLiteral
-pub tst_udp::error::UdpError::HostNotLiteral::detail: alloc::string::String
-pub tst_udp::error::UdpError::HostNotLiteral::host: alloc::string::String
-pub tst_udp::error::UdpError::IfaceUnsupported
-pub tst_udp::error::UdpError::IfaceUnsupported::detail: alloc::string::String
-pub tst_udp::error::UdpError::IfaceUnsupported::iface: alloc::string::String
 pub tst_udp::error::UdpError::InvalidConfig(alloc::string::String)
 pub tst_udp::error::UdpError::Io(core::io::error::Error)
-pub tst_udp::error::UdpError::PayloadTooLarge
-pub tst_udp::error::UdpError::PayloadTooLarge::len: usize
-pub tst_udp::error::UdpError::PayloadTooLarge::max: usize
 pub tst_udp::error::UdpError::Url(tst_udp::url::UdpUrlError)
 impl tst_udp::error::UdpError
 pub fn tst_udp::error::UdpError::kind(&self) -> tst_udp::error::UdpErrorKind
@@ -99,12 +89,8 @@ impl core::marker::UnsafeUnpin for tst_udp::error::UdpError
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_udp::error::UdpError
 impl !core::panic::unwind_safe::UnwindSafe for tst_udp::error::UdpError
 #[non_exhaustive] #[repr(u32)] pub enum tst_udp::error::UdpErrorKind
-pub tst_udp::error::UdpErrorKind::Closed = 6
-pub tst_udp::error::UdpErrorKind::HostNotLiteral = 2
-pub tst_udp::error::UdpErrorKind::IfaceUnsupported = 4
 pub tst_udp::error::UdpErrorKind::InvalidConfig = 7
 pub tst_udp::error::UdpErrorKind::Io = 3
-pub tst_udp::error::UdpErrorKind::PayloadTooLarge = 5
 pub tst_udp::error::UdpErrorKind::Url = 1
 impl core::clone::Clone for tst_udp::error::UdpErrorKind
 pub fn tst_udp::error::UdpErrorKind::clone(&self) -> tst_udp::error::UdpErrorKind
@@ -191,7 +177,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::transport::UdpTranspor
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::transport::UdpTransport
 pub mod tst_udp::url
 #[non_exhaustive] pub enum tst_udp::url::UdpUrlError
-pub tst_udp::url::UdpUrlError::BadHost(alloc::string::String)
 pub tst_udp::url::UdpUrlError::BadQueryValue
 pub tst_udp::url::UdpUrlError::BadQueryValue::detail: alloc::string::String
 pub tst_udp::url::UdpUrlError::BadQueryValue::key: alloc::string::String
@@ -250,18 +235,8 @@ impl core::marker::UnsafeUnpin for tst_udp::url::UdpUrl
 impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::url::UdpUrl
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::url::UdpUrl
 #[non_exhaustive] pub enum tst_udp::UdpError
-pub tst_udp::UdpError::Closed
-pub tst_udp::UdpError::HostNotLiteral
-pub tst_udp::UdpError::HostNotLiteral::detail: alloc::string::String
-pub tst_udp::UdpError::HostNotLiteral::host: alloc::string::String
-pub tst_udp::UdpError::IfaceUnsupported
-pub tst_udp::UdpError::IfaceUnsupported::detail: alloc::string::String
-pub tst_udp::UdpError::IfaceUnsupported::iface: alloc::string::String
 pub tst_udp::UdpError::InvalidConfig(alloc::string::String)
 pub tst_udp::UdpError::Io(core::io::error::Error)
-pub tst_udp::UdpError::PayloadTooLarge
-pub tst_udp::UdpError::PayloadTooLarge::len: usize
-pub tst_udp::UdpError::PayloadTooLarge::max: usize
 pub tst_udp::UdpError::Url(tst_udp::url::UdpUrlError)
 impl tst_udp::error::UdpError
 pub fn tst_udp::error::UdpError::kind(&self) -> tst_udp::error::UdpErrorKind
@@ -283,12 +258,8 @@ impl core::marker::UnsafeUnpin for tst_udp::error::UdpError
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_udp::error::UdpError
 impl !core::panic::unwind_safe::UnwindSafe for tst_udp::error::UdpError
 #[non_exhaustive] #[repr(u32)] pub enum tst_udp::UdpErrorKind
-pub tst_udp::UdpErrorKind::Closed = 6
-pub tst_udp::UdpErrorKind::HostNotLiteral = 2
-pub tst_udp::UdpErrorKind::IfaceUnsupported = 4
 pub tst_udp::UdpErrorKind::InvalidConfig = 7
 pub tst_udp::UdpErrorKind::Io = 3
-pub tst_udp::UdpErrorKind::PayloadTooLarge = 5
 pub tst_udp::UdpErrorKind::Url = 1
 impl core::clone::Clone for tst_udp::error::UdpErrorKind
 pub fn tst_udp::error::UdpErrorKind::clone(&self) -> tst_udp::error::UdpErrorKind
@@ -309,7 +280,6 @@ impl core::marker::UnsafeUnpin for tst_udp::error::UdpErrorKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_udp::error::UdpErrorKind
 impl core::panic::unwind_safe::UnwindSafe for tst_udp::error::UdpErrorKind
 #[non_exhaustive] pub enum tst_udp::UdpUrlError
-pub tst_udp::UdpUrlError::BadHost(alloc::string::String)
 pub tst_udp::UdpUrlError::BadQueryValue
 pub tst_udp::UdpUrlError::BadQueryValue::detail: alloc::string::String
 pub tst_udp::UdpUrlError::BadQueryValue::key: alloc::string::String

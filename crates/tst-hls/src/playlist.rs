@@ -3,93 +3,41 @@
 use crate::config::HlsMode;
 use crate::segmenter::Segmenter;
 
-/// One segment entry in a [`PlaylistModel`].
-pub(crate) struct SegmentRef {
-    pub duration: std::time::Duration,
-    pub uri: String,
-}
-
-/// Structured representation of an m3u8 playlist.
-///
-/// Built from a [`Segmenter`] via [`PlaylistModel::from_segmenter`] and
-/// serialised to m3u8 text via [`PlaylistModel::render`].  This indirection
-/// is the "LL-ready bone": EXT-X-PART / SERVER-CONTROL tags can be added to
-/// the model and rendered in one place without touching any call sites.
-pub(crate) struct PlaylistModel {
-    pub version: u8,
-    pub target_duration_secs: u64,
-    pub media_sequence: u64,
-    /// `EXT-X-PLAYLIST-TYPE` tag value.  `None` for Live (tag omitted).
-    pub playlist_type: Option<HlsMode>,
-    pub segments: Vec<SegmentRef>,
-    /// Whether to append `#EXT-X-ENDLIST`.
-    pub end_list: bool,
-}
-
-impl PlaylistModel {
-    /// Lift all playlist-relevant state out of `segmenter`.
-    pub(crate) fn from_segmenter(segmenter: &Segmenter, is_final: bool) -> Self {
-        let mode = segmenter.mode();
-        let playlist_type = match mode {
-            HlsMode::Live => None,
-            other => Some(other),
-        };
-        let segments = segmenter
-            .visible_segments()
-            .into_iter()
-            .map(|s| SegmentRef {
-                duration: s.duration,
-                uri: s.filename,
-            })
-            .collect();
-        PlaylistModel {
-            version: 6,
-            target_duration_secs: segmenter.target_duration_secs(),
-            media_sequence: segmenter.media_sequence(),
-            playlist_type,
-            segments,
-            end_list: is_final && !matches!(mode, HlsMode::Live),
-        }
-    }
-
-    /// Serialise the model to m3u8 text, byte-for-byte identical to the
-    /// previous free function.
-    pub(crate) fn render(&self) -> String {
-        let mut out = String::with_capacity(512);
-
-        out.push_str("#EXTM3U\n");
-        out.push_str(&format!("#EXT-X-VERSION:{}\n", self.version));
-        out.push_str(&format!(
-            "#EXT-X-TARGETDURATION:{}\n",
-            self.target_duration_secs
-        ));
-        out.push_str(&format!("#EXT-X-MEDIA-SEQUENCE:{}\n", self.media_sequence));
-
-        match self.playlist_type {
-            Some(HlsMode::Event) => out.push_str("#EXT-X-PLAYLIST-TYPE:EVENT\n"),
-            Some(HlsMode::Vod) => out.push_str("#EXT-X-PLAYLIST-TYPE:VOD\n"),
-            _ => {}
-        }
-
-        for seg in &self.segments {
-            out.push_str(&format!("#EXTINF:{:.3},\n", seg.duration.as_secs_f64()));
-            out.push_str(&format!("{}\n", seg.uri));
-        }
-
-        if self.end_list {
-            out.push_str("#EXT-X-ENDLIST\n");
-        }
-
-        out
-    }
-}
-
 /// Render the current playlist as m3u8 text.
 ///
 /// `is_final` is true when called from `finish()` — appends `#EXT-X-ENDLIST`
 /// for Event/Vod modes.
 pub(crate) fn render(segmenter: &Segmenter, is_final: bool) -> String {
-    PlaylistModel::from_segmenter(segmenter, is_final).render()
+    let mode = segmenter.mode();
+    let mut out = String::with_capacity(512);
+
+    out.push_str("#EXTM3U\n");
+    out.push_str("#EXT-X-VERSION:6\n");
+    out.push_str(&format!(
+        "#EXT-X-TARGETDURATION:{}\n",
+        segmenter.target_duration_secs()
+    ));
+    out.push_str(&format!(
+        "#EXT-X-MEDIA-SEQUENCE:{}\n",
+        segmenter.media_sequence()
+    ));
+
+    match mode {
+        HlsMode::Event => out.push_str("#EXT-X-PLAYLIST-TYPE:EVENT\n"),
+        HlsMode::Vod => out.push_str("#EXT-X-PLAYLIST-TYPE:VOD\n"),
+        HlsMode::Live => {}
+    }
+
+    for seg in segmenter.visible_segments() {
+        out.push_str(&format!("#EXTINF:{:.3},\n", seg.duration.as_secs_f64()));
+        out.push_str(&format!("{}\n", seg.filename));
+    }
+
+    if is_final && !matches!(mode, HlsMode::Live) {
+        out.push_str("#EXT-X-ENDLIST\n");
+    }
+
+    out
 }
 
 #[cfg(test)]

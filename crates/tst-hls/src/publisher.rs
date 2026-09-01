@@ -137,15 +137,7 @@ impl Publisher for HlsPublisher {
         if self.finished {
             return Err(HlsError::Finished);
         }
-        self.finished = true;
-        let (output_dir, final_pl) = {
-            let mut s = self.state.lock().expect("HlsPublisher poisoned");
-            s.segmenter.finalize()?;
-            s.finished = true;
-            let pl = playlist::render(&s.segmenter, true);
-            (s.segmenter.output_dir().to_path_buf(), pl)
-        };
-        std::fs::write(output_dir.join("playlist.m3u8"), &final_pl).map_err(HlsError::Io)?;
+        self.finalize_and_write()?;
         #[cfg(feature = "serve")]
         if let Some(server) = self.server.take() {
             server.shutdown();
@@ -165,6 +157,22 @@ impl Publisher for HlsPublisher {
 }
 
 impl HlsPublisher {
+    /// Shared terminal-state work for [`Publisher::finish`] and
+    /// [`Self::finish_serving`]: marks the segmenter finished, renders the
+    /// terminal playlist (with `#EXT-X-ENDLIST`), and writes it to disk.
+    /// Callers still own taking/shutting down the HTTP server.
+    fn finalize_and_write(&mut self) -> Result<(), HlsError> {
+        self.finished = true;
+        let (output_dir, final_pl) = {
+            let mut s = self.state.lock().expect("HlsPublisher poisoned");
+            s.segmenter.finalize()?;
+            s.finished = true;
+            let pl = playlist::render(&s.segmenter, true);
+            (s.segmenter.output_dir().to_path_buf(), pl)
+        };
+        std::fs::write(output_dir.join("playlist.m3u8"), &final_pl).map_err(HlsError::Io)
+    }
+
     /// Like [`Publisher::finish`], but keeps the built-in HTTP server serving
     /// the completed (terminal) playlist and segments until the returned
     /// [`HlsServerHandle`] is dropped or [`HlsServerHandle::shutdown`] is
@@ -181,15 +189,7 @@ impl HlsPublisher {
         if self.finished {
             return Err(HlsError::Finished);
         }
-        self.finished = true;
-        let (output_dir, final_pl) = {
-            let mut s = self.state.lock().expect("HlsPublisher poisoned");
-            s.segmenter.finalize()?;
-            s.finished = true;
-            let pl = playlist::render(&s.segmenter, true);
-            (s.segmenter.output_dir().to_path_buf(), pl)
-        };
-        std::fs::write(output_dir.join("playlist.m3u8"), &final_pl).map_err(HlsError::Io)?;
+        self.finalize_and_write()?;
         let server = self
             .server
             .take()

@@ -61,42 +61,10 @@
 //!   `DemuxReceiver`, whose `close()` must wake a parked `recv_event` before taking
 //!   the lock) supplies one, and a type WITHOUT a cancel (e.g. a plain `Sender`)
 //!   passes `None`. `close` fires the hook, then hands the taken resource back so the
-//!   caller runs whatever type-specific teardown it needs. This covers every shape in
-//!   the inventory below without hardcoding a cancel type.
+//!   caller runs whatever type-specific teardown it needs. This covers every shape a
+//!   handle type needs without hardcoding a cancel type.
 //!
-//! # Inventory for the A2 migration
-//!
-//! Every `Jni*` handle type that must move onto this primitive, with its current
-//! backing and its teardown shape (so A2 knows what `cancel` hook + post-`close`
-//! teardown each one needs):
-//!
-//! | Module / Java class | Current backing | Cancel hook | Post-close teardown |
-//! |---|---|---|---|
-//! | `srt::lowlevel` `Socket` | `Box<Socket>` | none | consumed by `intoSender`/`intoReceiver`, or dropped |
-//! | `srt::lowlevel` `Listener` (`JniListener`) | `Box<JniListener>` | accept-cancel (close races a parked `accept`) | `drop` (the `Box::from_raw` aborts a parked accept today) |
-//! | `srt::transport` `Sender` | `Box<PlSender<SrtTransport>>` | none | `inner.close()` then drop |
-//! | `srt::transport` `Receiver` | `Box<PlReceiver<SrtTransport>>` | none | `inner.close()` then drop |
-//! | `srt::mux_sender` `MuxSender` | `Box<MuxSender<SrtTransport>>` (`Inner`) | none | drop |
-//! | `srt::demux_receiver` `DemuxReceiver` (`JniDemuxReceiver`) | `Box<JniDemuxReceiver>` | none (srt model: public cancel handle + connection-close end iteration) | `inner.close()` then drop |
-//! | `srt::mod` `CancelHandle` (`JniCancel`) | `Box<JniCancel>` | n/a (IS a cancel target) | drop |
-//! | `srt::managed_basic` `ManagedSender` (`ManagedSenderInner`) | `Box<ManagedSenderInner>` | none | `inner.close()` then drop |
-//! | `srt::managed_basic` `ManagedReceiver` (`JniManagedReceiver`) | `Box<JniManagedReceiver>` | none | `inner.close()` then drop |
-//! | `srt::managed_convenience` `ManagedMuxSender` (`JniManagedMuxSender`) | `Box<JniManagedMuxSender>` | none | `inner.close()` then drop |
-//! | `srt::managed_convenience` `ManagedDemuxReceiver` (`JniManagedDemuxReceiver`) | `Box<JniManagedDemuxReceiver>` | none | `inner.close()` then drop |
-//! | `rtp::transport` `Sender` (`JniRtpSender`) | `Box<JniRtpSender>` | `cancel` (wakes a parked `send`) | `inner.close()` then drop |
-//! | `rtp::transport` `Receiver` (`JniRtpReceiver`) | `Box<JniRtpReceiver>` | `cancel` (wakes a parked `recv`) | `inner.close()` then drop |
-//! | `rtp::mux_sender` `MuxSender` (`Inner`) | `Box<Inner>` | none | drop |
-//! | `rtp::demux_receiver` `DemuxReceiver` (`JniRtpDemuxReceiver`) | `Box<JniRtpDemuxReceiver>` | `cancel` (wakes a parked `recv_event` — the headline rtp divergence) | `inner.close()` then drop |
-//! | `rtp::client` `RtspSession` (`JniRtspSession`) | `Box<JniRtspSession>` | none (teardown is the session's own `torn_down` flag) | session-specific teardown then drop |
-//! | `rtp::client` `RtspCancelHandle` (`JniRtspCancel`) | `Box<JniRtspCancel>` | n/a (IS a cancel target) | drop |
-//! | `rtp::server` `RtspServer` (`ServerInner`) | `Box<ServerInner>` | server stop | `stop()` then drop |
-//! | `rtp::server` `MountHandle` (`MountInner`) | `Box<MountInner>` | none | drop (mount persists in server until `stop()`) |
-//! | `rtp::server` `RtspServerCancelHandle` (`JniRtspServerCancel`) | `Box<JniRtspServerCancel>` | n/a (IS a cancel target) | drop |
-//! | `mpegts::muxer` `Muxer` | `Box<Muxer>` | none | drop |
-//! | `mpegts::mod` `Demuxer` | `Box<Demuxer>` | none | drop |
-//! | `pipeline` `PairingDemuxer` (`org.tstrans.pipeline.Pairer`) | `Box<PairingDemuxer>` | none | drop |
-//!
-//! Note: the cancel-handle classes (`JniCancel`, `JniRtpCancel`, `JniRtspCancel`,
+//! The cancel-handle classes (`JniCancel`, `JniRtpCancel`, `JniRtspCancel`,
 //! `JniRtspServerCancel`) are themselves cancel *targets* — they hold an
 //! `Arc<dyn TransportCancel>` and a flag, not a resource that needs waking. They
 //! still benefit from the registry (it kills their own UAF/double-free on `close`),

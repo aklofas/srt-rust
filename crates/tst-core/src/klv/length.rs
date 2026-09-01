@@ -9,21 +9,6 @@
 
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 
-/// Which length encoding a generic pack uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LengthEncoding {
-    /// BER short form only (≤ 127). Errors on values that don't fit.
-    BerShort,
-    /// BER long form only.
-    BerLong,
-    /// BER (auto-selects short or long).
-    Ber,
-    /// BER-OID variable-length form.
-    BerOid,
-    /// Fixed length, no encoding bytes.
-    Fixed(usize),
-}
-
 /// Read a BER length (short or long) from `buf`. Returns `(length, &buf[consumed..])`.
 pub fn read_ber(buf: &[u8]) -> Result<(usize, &[u8]), KlvDecodeError> {
     let first = buf.first().ok_or(KlvDecodeError::Truncated {

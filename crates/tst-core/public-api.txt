@@ -1702,28 +1702,6 @@ pub fn tst_core::klv::imapb::decode_imapb(&tst_core::klv::imapb::ImapbParams, &[
 pub fn tst_core::klv::imapb::encode_imapb(&tst_core::klv::imapb::ImapbParams, f64, &mut [u8]) -> core::result::Result<(), tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::imapb::encode_imapb_special(tst_core::klv::imapb::ImapbSpecial, usize, &mut [u8]) -> core::result::Result<(), tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::length
-pub enum tst_core::klv::length::LengthEncoding
-pub tst_core::klv::length::LengthEncoding::Ber
-pub tst_core::klv::length::LengthEncoding::BerLong
-pub tst_core::klv::length::LengthEncoding::BerOid
-pub tst_core::klv::length::LengthEncoding::BerShort
-pub tst_core::klv::length::LengthEncoding::Fixed(usize)
-impl core::clone::Clone for tst_core::klv::length::LengthEncoding
-pub fn tst_core::klv::length::LengthEncoding::clone(&self) -> tst_core::klv::length::LengthEncoding
-impl core::cmp::Eq for tst_core::klv::length::LengthEncoding
-impl core::cmp::PartialEq for tst_core::klv::length::LengthEncoding
-pub fn tst_core::klv::length::LengthEncoding::eq(&self, &tst_core::klv::length::LengthEncoding) -> bool
-impl core::fmt::Debug for tst_core::klv::length::LengthEncoding
-pub fn tst_core::klv::length::LengthEncoding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_core::klv::length::LengthEncoding
-impl core::marker::StructuralPartialEq for tst_core::klv::length::LengthEncoding
-impl core::marker::Freeze for tst_core::klv::length::LengthEncoding
-impl core::marker::Send for tst_core::klv::length::LengthEncoding
-impl core::marker::Sync for tst_core::klv::length::LengthEncoding
-impl core::marker::Unpin for tst_core::klv::length::LengthEncoding
-impl core::marker::UnsafeUnpin for tst_core::klv::length::LengthEncoding
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::length::LengthEncoding
-impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::length::LengthEncoding
 pub fn tst_core::klv::length::ber_len(usize) -> usize
 pub fn tst_core::klv::length::ber_oid_len(u32) -> usize
 pub fn tst_core::klv::length::ber_oid_len_u64(u64) -> usize
@@ -1784,7 +1762,6 @@ impl<'a> core::marker::Unpin for tst_core::klv::pack::RawField<'a>
 impl<'a> core::marker::UnsafeUnpin for tst_core::klv::pack::RawField<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::pack::RawField<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::klv::pack::RawField<'a>
-pub fn tst_core::klv::pack::encode_pack<'a>(&tst_core::klv::universal_label::UniversalLabel, impl core::iter::traits::collect::IntoIterator<Item = tst_core::klv::pack::RawField<'a>>, tst_core::klv::length::LengthEncoding, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::st0102
 pub enum tst_core::klv::st0102::ClassifyingCountryCodingMethod
 pub tst_core::klv::st0102::ClassifyingCountryCodingMethod::Fips104FourLetter
@@ -3241,7 +3218,6 @@ pub struct tst_core::klv::universal_label::UniversalLabel(pub [u8; 16])
 impl tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::PRECISION_TIMESTAMP_PACK_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::SECURITY_LS_UL: tst_core::klv::universal_label::UniversalLabel
-pub const tst_core::klv::universal_label::UniversalLabel::SMPTE_336M_LS_KEY: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::ST_0601_LS: tst_core::klv::universal_label::UniversalLabel
 pub const fn tst_core::klv::universal_label::UniversalLabel::category(&self) -> u8
 pub const fn tst_core::klv::universal_label::UniversalLabel::is_st0601_family(&self) -> bool
@@ -3803,7 +3779,6 @@ pub struct tst_core::klv::UniversalLabel(pub [u8; 16])
 impl tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::PRECISION_TIMESTAMP_PACK_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::SECURITY_LS_UL: tst_core::klv::universal_label::UniversalLabel
-pub const tst_core::klv::universal_label::UniversalLabel::SMPTE_336M_LS_KEY: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::ST_0601_LS: tst_core::klv::universal_label::UniversalLabel
 pub const fn tst_core::klv::universal_label::UniversalLabel::category(&self) -> u8
 pub const fn tst_core::klv::universal_label::UniversalLabel::is_st0601_family(&self) -> bool

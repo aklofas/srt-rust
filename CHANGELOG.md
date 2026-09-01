@@ -344,6 +344,32 @@ JVM; see the corresponding entries in
 for the full history. (The JVM null-argument fix under **Fixed** below
 is a separate, JVM-only behavior change from an earlier arc.)
 
+### Deprecated
+
+- **`tst_core::io_file::DemuxFromFile`** — silently coerces read and
+  demux-feed failures to early EOF, making a truncated read
+  indistinguishable from a clean end of stream. Use
+  `TryDemuxFromFile` instead, which surfaces the same failures via
+  `Iterator<Item = io::Result<DemuxEvent>>`. Not removed — Stable-tier
+  deprecation cycle per `docs/reference/api-stability.md`; removal no
+  earlier than 1.0.
+
+### Removed
+
+- **`tst_core::klv::universal_label::UniversalLabel::SMPTE_336M_LS_KEY`**
+  — byte-identical duplicate of `ST_0601_LS`, kept under a documented
+  naming error ("SMPTE 336M generic local set key prefix" was
+  inaccurate — all 16 bytes are the ST 0601 canonical UL) with zero
+  in-tree consumers. Use `ST_0601_LS`.
+- **`tst_core::klv::pack::encode_pack` and `tst_core::klv::length::LengthEncoding`**
+  — `encode_pack` had zero callers (every typed KLV encoder builds its
+  own TLV stream via `emit_ber_oid_tlv`); only its `BerOid` branch was
+  reachable (`Ber` errored immediately, `BerShort`/`BerLong`/`Fixed`
+  were never constructed), and `LengthEncoding` existed solely to
+  parameterize it. Callers building a generic KLV pack use
+  `UniversalLabel::new` + `klv::length::{write_ber, write_ber_oid}` +
+  `klv::pack::emit_ber_oid_tlv` directly.
+
 ### Fixed
 
 - **JVM: MISB natives now throw `NullPointerException` on null

@@ -53,7 +53,7 @@ impl RistTransport {
 
     /// Build a sender from a parsed URL + config.
     pub fn connect_with_config(url: &RistUrl, cfg: &RistConfig) -> Result<Self, RistError> {
-        let _version = ensure_init()?;
+        ensure_init();
 
         #[cfg(not(feature = "mbedtls"))]
         if cfg.encryption.is_some() {

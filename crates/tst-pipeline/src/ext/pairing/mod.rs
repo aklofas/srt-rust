@@ -352,14 +352,7 @@ impl Pairer {
             PairerState::Nearest(s) => s.feed(event),
             PairerState::LastBefore(s) => s.feed(event),
         };
-        for o in &outputs {
-            match o {
-                PairerOutput::Paired { .. } => self.stats.paired += 1,
-                PairerOutput::UnpairedVideo(_) => self.stats.unpaired_video += 1,
-                PairerOutput::UnpairedKlv(_) => self.stats.unpaired_klv += 1,
-                PairerOutput::PassThrough(_) => self.stats.pass_through += 1,
-            }
-        }
+        self.tally(&outputs);
         outputs
     }
 
@@ -370,7 +363,13 @@ impl Pairer {
             PairerState::Nearest(s) => s.flush(),
             PairerState::LastBefore(s) => s.flush(),
         };
-        for o in &outputs {
+        self.tally(&outputs);
+        outputs
+    }
+
+    /// Increment the per-variant counter for each output.
+    fn tally(&mut self, outputs: &[PairerOutput]) {
+        for o in outputs {
             match o {
                 PairerOutput::Paired { .. } => self.stats.paired += 1,
                 PairerOutput::UnpairedVideo(_) => self.stats.unpaired_video += 1,
@@ -378,7 +377,6 @@ impl Pairer {
                 PairerOutput::PassThrough(_) => self.stats.pass_through += 1,
             }
         }
-        outputs
     }
 
     /// Snapshot the current counters.

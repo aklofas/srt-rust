@@ -23,8 +23,8 @@ use tst_rtp::{RtpRecvTransport, RtpSocketBuilder, RtpTransport, StreamEndReasonH
 
 use super::JniRtpCancel;
 use super::errors::{connect_error_to_rtp, throw_rtp, transport_error_to_rtp};
-use super::stats::build_socket_stats;
 use crate::handle::HandleRegistry;
+use crate::jutil::build_socket_stats;
 
 struct JniRtpSender {
     inner: RtpTransport,
@@ -169,7 +169,8 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSocketStats<'local>(
         }) else {
             return JObject::null();
         };
-        build_socket_stats(env, &stats).unwrap_or_else(|_| JObject::null())
+        build_socket_stats(env, "org/tstrans/rtp/SocketStats", &stats)
+            .unwrap_or_else(|_| JObject::null())
     })
 }
 
@@ -369,7 +370,8 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nSocketStats<'local>(
         }) else {
             return JObject::null();
         };
-        build_socket_stats(env, &stats).unwrap_or_else(|_| JObject::null())
+        build_socket_stats(env, "org/tstrans/rtp/SocketStats", &stats)
+            .unwrap_or_else(|_| JObject::null())
     })
 }
 

@@ -59,14 +59,14 @@ use tst_pipeline::{
 use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::{checked_u8, join_host_port};
+use crate::jutil::{build_socket_stats, checked_u8, join_host_port, read_bytes};
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
-use crate::mpegts::{build_demux_config_from_args, convert_event};
+use crate::mpegts::{build_demux_config_from_args, build_muxer_stats, convert_event};
 
 use super::JniCancel;
 use super::errors::{throw_srt, transport_error};
-use super::mux_sender::{build_muxer_stats, build_transport_stats};
-use super::stats::{build_managed_transport_stats, build_socket_stats};
+use super::mux_sender::build_transport_stats;
+use super::stats::build_managed_transport_stats;
 
 // ---------------------------------------------------------------------------
 // Port helpers — rebuild a fresh SrtTransport. Copied verbatim from tst-py's
@@ -171,17 +171,6 @@ fn mux_first_handle(
         None => {
             crate::error::throw_closed(env, "ManagedMuxSender");
             -1
-        }
-    }
-}
-
-/// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
-fn read_bytes(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
-    match env.convert_byte_array(arr) {
-        Ok(b) => Some(b),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            None
         }
     }
 }
@@ -670,7 +659,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nStats<'local>(
             return JObject::null();
         };
 
-        let sock_obj = match build_socket_stats(env, &sock) {
+        let sock_obj = match build_socket_stats(env, "org/tstrans/srt/SocketStats", &sock) {
             Ok(o) => o,
             Err(_) => return JObject::null(),
         };
@@ -1074,7 +1063,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSocketStats<'l
             crate::error::throw_closed(env, "ManagedDemuxReceiver");
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }
@@ -1097,7 +1086,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSrtStats<'loca
             crate::error::throw_closed(env, "ManagedDemuxReceiver");
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }

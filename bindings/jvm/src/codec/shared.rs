@@ -14,19 +14,7 @@ use tst_core::codec::{
 };
 use tst_core::mpegts::demux::event::{NalUnit, Obu};
 
-/// Look up a static enum constant `org.tstrans.codec.<class>.<name>`.
-fn enum_const<'local>(
-    env: &mut JNIEnv<'local>,
-    class: &str,
-    name: &str,
-) -> Result<JObject<'local>, ()> {
-    let class_path = format!("org/tstrans/codec/{class}");
-    let descriptor = format!("Lorg/tstrans/codec/{class};");
-    env.get_static_field(&class_path, name, &descriptor)
-        .map_err(|_| ())?
-        .l()
-        .map_err(|_| ())
-}
+use crate::jutil::enum_const;
 
 /// Map `ChromaFormat` → `org.tstrans.codec.ChromaFormat`. The Rust enum has no
 /// reserved/catch-all arm, so the mapping is exhaustive; the Java `INVALID`
@@ -42,7 +30,7 @@ pub(crate) fn build_chroma_format<'local>(
         ChromaFormat::Yuv422 => "YUV422",
         ChromaFormat::Yuv444 => "YUV444",
     };
-    enum_const(env, "ChromaFormat", name)
+    enum_const(env, "codec", "ChromaFormat", name)
 }
 
 /// Map `ColourPrimaries` → `org.tstrans.codec.ColourPrimaries`. Wildcard → `RESERVED`.
@@ -65,7 +53,7 @@ pub(crate) fn build_colour_primaries<'local>(
         ColourPrimaries::Ebu3213E => "EBU3213E",
         _ => "RESERVED",
     };
-    enum_const(env, "ColourPrimaries", name)
+    enum_const(env, "codec", "ColourPrimaries", name)
 }
 
 /// Map `TransferCharacteristics` → Java. Wildcard → `RESERVED`.
@@ -93,7 +81,7 @@ pub(crate) fn build_transfer<'local>(
         TransferCharacteristics::AribStdB67 => "ARIB_STD_B67",
         _ => "RESERVED",
     };
-    enum_const(env, "TransferCharacteristics", name)
+    enum_const(env, "codec", "TransferCharacteristics", name)
 }
 
 /// Map `MatrixCoefficients` → Java. Wildcard → `RESERVED`.
@@ -121,7 +109,7 @@ pub(crate) fn build_matrix<'local>(
         MatrixCoefficients::YCgCoRo => "YCGCO_RO",
         _ => "RESERVED",
     };
-    enum_const(env, "MatrixCoefficients", name)
+    enum_const(env, "codec", "MatrixCoefficients", name)
 }
 
 /// Build `org.tstrans.codec.Rational(long, long)` from a `Rational`.

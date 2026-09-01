@@ -49,6 +49,7 @@ use crate::codec::mpegaudio::build_mpeg2_audio_frame;
 use crate::codec::shared::{build_nal_unit, build_obu};
 use crate::error::{map_codec_parse_error, throw_demux};
 use crate::handle::HandleRegistry;
+use crate::jutil::enum_const;
 
 /// Per-type leased-handle registry for `org.tstrans.mpegts.Demuxer`.
 static REGISTRY: LazyLock<HandleRegistry<Demuxer>> = LazyLock::new(HandleRegistry::new);
@@ -536,11 +537,14 @@ pub(crate) fn convert_event<'local>(
                     // NAL/OBU unit splitting is deferred to Video.parse() (opt-in),
                     // mirroring tst-py's model. JDK < 22 forbids direct buffers over
                     // Rust memory, so we copy.
-                    let codec_obj = enum_const(env, "VideoCodec", video_codec_name(*codec))?;
+                    let codec_obj =
+                        enum_const(env, "mpegts", "VideoCodec", video_codec_name(*codec))?;
                     let raw_buf = wrap_heap_byte_buffer(env, raw.as_slice())?;
                     // av1Carriage: Some(mode) → enum constant; None → null (non-AV1).
                     let av1_carriage_obj = match av1_carriage {
-                        Some(mode) => enum_const(env, "Av1CarriageMode", av1_carriage_name(*mode))?,
+                        Some(mode) => {
+                            enum_const(env, "mpegts", "Av1CarriageMode", av1_carriage_name(*mode))?
+                        }
                         None => JObject::null(),
                     };
                     env.new_object(
@@ -563,7 +567,8 @@ pub(crate) fn convert_event<'local>(
                     // ByteBuffer; typed-frame parsing is deferred to Audio.parse()
                     // (opt-in), mirroring tst-py's model and the WP16 Video shape.
                     // JDK < 22 forbids direct buffers over Rust memory, so we copy.
-                    let codec_obj = enum_const(env, "AudioCodec", audio_codec_name(*codec))?;
+                    let codec_obj =
+                        enum_const(env, "mpegts", "AudioCodec", audio_codec_name(*codec))?;
                     let raw_buf = wrap_heap_byte_buffer(env, frames.as_slice())?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Audio",
@@ -580,7 +585,8 @@ pub(crate) fn convert_event<'local>(
                 }
                 SamplePayload::Subtitle { codec, payload } => {
                     let buf = wrap_heap_byte_buffer(env, payload.as_slice())?;
-                    let codec_obj = enum_const(env, "SubtitleCodec", subtitle_codec_name(*codec))?;
+                    let codec_obj =
+                        enum_const(env, "mpegts", "SubtitleCodec", subtitle_codec_name(*codec))?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Subtitle",
                         "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/SubtitleCodec;Ljava/nio/ByteBuffer;)V",
@@ -703,7 +709,7 @@ fn discontinuity_kind<'local>(
         DiscontinuityKind::PesTotalOversize => "PES_TOTAL_OVERSIZE",
         DiscontinuityKind::AdaptationFieldFlag => "ADAPTATION_FIELD_FLAG",
     };
-    enum_const(env, "DiscontinuityKind", name)
+    enum_const(env, "mpegts", "DiscontinuityKind", name)
 }
 
 /// Resolve the `org.tstrans.mpegts.NonConformantKind` enum constant for a
@@ -758,7 +764,7 @@ fn nonconformant_kind<'local>(
         PsiSyntax { .. } => "PSI_SYNTAX",
         Other(_) => "OTHER",
     };
-    enum_const(env, "NonConformantKind", name)
+    enum_const(env, "mpegts", "NonConformantKind", name)
 }
 
 /// The `org.tstrans.mpegts.MultiCellAuReason` constant for a `MultiCellAu` issue,
@@ -781,7 +787,7 @@ fn nonconformant_reason<'local>(
                 // like tst-py for any future variant.
                 _ => "ORPHAN",
             };
-            enum_const(env, "MultiCellAuReason", name)
+            enum_const(env, "mpegts", "MultiCellAuReason", name)
         }
         _ => Ok(JObject::null()),
     }
@@ -817,22 +823,7 @@ fn cfi_const<'local>(
         CellFragmentIndication::First => "FIRST",
         CellFragmentIndication::Complete => "COMPLETE",
     };
-    enum_const(env, "CellFragmentIndication", name)
-}
-
-/// Fetch an `org.tstrans.mpegts.{class}.{name}` enum constant via
-/// `get_static_field`. Also used by `pipeline` for mpegts-package codec enums.
-pub(crate) fn enum_const<'local>(
-    env: &mut JNIEnv<'local>,
-    class: &str,
-    name: &str,
-) -> Result<JObject<'local>, ()> {
-    let class_path = format!("org/tstrans/mpegts/{class}");
-    let descriptor = format!("Lorg/tstrans/mpegts/{class};");
-    env.get_static_field(&class_path, name, &descriptor)
-        .map_err(|_| ())?
-        .l()
-        .map_err(|_| ())
+    enum_const(env, "mpegts", "CellFragmentIndication", name)
 }
 
 /// Resolve a `tst_core` [`MetadataKind`] to its Java `org.tstrans.mpegts.MetadataKind`
@@ -1072,7 +1063,7 @@ fn build_stream_kind<'local>(
 ) -> Result<JObject<'local>, ()> {
     match kind {
         StreamKind::Video(c) => {
-            let codec = enum_const(env, "VideoCodec", video_codec_name(*c))?;
+            let codec = enum_const(env, "mpegts", "VideoCodec", video_codec_name(*c))?;
             env.new_object(
                 "org/tstrans/mpegts/StreamKind$Video",
                 "(Lorg/tstrans/mpegts/VideoCodec;)V",
@@ -1081,7 +1072,7 @@ fn build_stream_kind<'local>(
             .map_err(|_| ())
         }
         StreamKind::Audio(c) => {
-            let codec = enum_const(env, "AudioCodec", audio_codec_name(*c))?;
+            let codec = enum_const(env, "mpegts", "AudioCodec", audio_codec_name(*c))?;
             env.new_object(
                 "org/tstrans/mpegts/StreamKind$Audio",
                 "(Lorg/tstrans/mpegts/AudioCodec;)V",
@@ -1090,7 +1081,7 @@ fn build_stream_kind<'local>(
             .map_err(|_| ())
         }
         StreamKind::Subtitle(c) => {
-            let codec = enum_const(env, "SubtitleCodec", subtitle_codec_name(*c))?;
+            let codec = enum_const(env, "mpegts", "SubtitleCodec", subtitle_codec_name(*c))?;
             env.new_object(
                 "org/tstrans/mpegts/StreamKind$Subtitle",
                 "(Lorg/tstrans/mpegts/SubtitleCodec;)V",
@@ -1181,4 +1172,27 @@ fn av1_carriage_name(mode: Av1CarriageMode) -> &'static str {
         Av1CarriageMode::InteropRawObu => "INTEROP_RAW_OBU",
         _ => "MPEG2_TS_BINDING",
     }
+}
+
+/// Build an `org.tstrans.mpegts.MuxerStats` record from the projected pipeline
+/// counters. Ctor sig `(JJJJ)V`. `subtitle_streams_configured` is not tracked by
+/// the pipeline shell — default it to 0 (mirrors tst-py). Shared by both the
+/// srt and rtp `MuxSender`/`DemuxReceiver`/managed-convenience JNI surfaces.
+pub(crate) fn build_muxer_stats<'local>(
+    env: &mut JNIEnv<'local>,
+    ts_packets_emitted: i64,
+    ts_bytes_emitted: i64,
+    programs_configured: i64,
+) -> jni::errors::Result<JObject<'local>> {
+    env.ensure_local_capacity(4)?;
+    env.new_object(
+        "org/tstrans/mpegts/MuxerStats",
+        "(JJJJ)V",
+        &[
+            JValue::Long(ts_packets_emitted),
+            JValue::Long(ts_bytes_emitted),
+            JValue::Long(programs_configured),
+            JValue::Long(0),
+        ],
+    )
 }

@@ -36,9 +36,9 @@ use tst_rtp::rtsp::client::RtspClient as RustRtspClient;
 use tst_rtp::{H264Au, H264DepayConfig, H264Receiver, ParameterSetInjection};
 
 use crate::handle::HandleRegistry;
+use crate::jutil::build_socket_stats;
 
 use super::errors::{connect_error_to_rtp, transport_error_to_rtp};
-use super::stats::build_socket_stats;
 
 /// RTSP control plane retained by receivers created via
 /// `RtspSession.intoH264Receiver()`. The Java session wrapper is CONSUMED at
@@ -430,7 +430,7 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nSocketStats<'local>(
             crate::error::throw_closed(env, "H264Receiver");
             return JObject::null().into_raw();
         };
-        match build_socket_stats(env, &s) {
+        match build_socket_stats(env, "org/tstrans/rtp/SocketStats", &s) {
             Ok(o) => o.into_raw(),
             Err(e) => {
                 let _ = env.throw_new("java/lang/RuntimeException", e.to_string());

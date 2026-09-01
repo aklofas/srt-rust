@@ -35,11 +35,13 @@ use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSou
 use tst_srt::{Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::{checked_u8, decode_stream_handle, join_host_port};
+use crate::jutil::{
+    build_socket_stats, checked_u8, decode_stream_handle, join_host_port, read_bytes,
+};
+use crate::mpegts::build_muxer_stats;
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
 
 use super::errors::{connect_error, throw_srt, transport_error};
-use super::stats::build_socket_stats;
 
 type Inner = RustMuxSender<SrtTransport>;
 
@@ -172,13 +174,14 @@ fn with_push(
     handle: jlong,
     op: impl FnOnce(&Inner) -> Result<(), MuxSenderError>,
 ) {
-    match REGISTRY.with_poisoning(handle as u64, |inner| op(inner)) {
-        Some(Ok(())) => {}
-        Some(Err(e)) => throw_mux_sender_error(env, &e),
-        None => {
-            crate::error::throw_closed(env, "MuxSender");
-        }
-    }
+    crate::handle::with_push(
+        env,
+        &REGISTRY,
+        handle,
+        "MuxSender",
+        op,
+        throw_mux_sender_error,
+    );
 }
 
 /// Lease the sender and return the first handle-of-kind (`-1` if none). A closed
@@ -188,25 +191,7 @@ fn first_handle(
     handle: jlong,
     pick: impl FnOnce(&Inner) -> Option<u32>,
 ) -> jlong {
-    match REGISTRY.with(handle as u64, |inner| pick(inner)) {
-        Some(Some(raw)) => i64::from(raw),
-        Some(None) => -1,
-        None => {
-            crate::error::throw_closed(env, "MuxSender");
-            -1
-        }
-    }
-}
-
-/// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
-fn read_bytes(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
-    match env.convert_byte_array(arr) {
-        Ok(b) => Some(b),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            None
-        }
-    }
+    crate::handle::first_handle(env, &REGISTRY, handle, "MuxSender", pick)
 }
 
 // ── Send family — single-stream variants ───────────────────────────────────
@@ -531,28 +516,6 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nDataHandle(
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 
-/// Build an `org.tstrans.mpegts.MuxerStats` record from the projected
-/// pipeline counters. Ctor sig `(JJJJ)V`. `subtitle_streams_configured` is not
-/// tracked by the pipeline shell — default it to 0 (mirrors tst-py).
-pub(crate) fn build_muxer_stats<'local>(
-    env: &mut JNIEnv<'local>,
-    ts_packets_emitted: i64,
-    ts_bytes_emitted: i64,
-    programs_configured: i64,
-) -> jni::errors::Result<JObject<'local>> {
-    env.ensure_local_capacity(4)?;
-    env.new_object(
-        "org/tstrans/mpegts/MuxerStats",
-        "(JJJJ)V",
-        &[
-            JValue::Long(ts_packets_emitted),
-            JValue::Long(ts_bytes_emitted),
-            JValue::Long(programs_configured),
-            JValue::Long(0),
-        ],
-    )
-}
-
 /// Build an `org.tstrans.srt.TransportStats` record from a `SocketStats` +
 /// `MuxerStats` pair.
 pub(crate) fn build_transport_stats<'local>(
@@ -585,7 +548,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nStats<'local>(
             return JObject::null();
         };
 
-        let sock_obj = match build_socket_stats(env, &sock) {
+        let sock_obj = match build_socket_stats(env, "org/tstrans/srt/SocketStats", &sock) {
             Ok(o) => o,
             Err(_) => return JObject::null(),
         };

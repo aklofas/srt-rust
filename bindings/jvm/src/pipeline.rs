@@ -31,9 +31,10 @@ use tst_pipeline::ext::pairing::{
 
 use crate::error::throw_demux;
 use crate::handle::HandleRegistry;
+use crate::jutil::enum_const;
 use crate::mpegts::{
-    build_demux_config_from_args, build_stream_id, build_video_units, convert_event, enum_const,
-    metadata_kind, opt_long, throw_demux_error, video_codec_name, wrap_heap_byte_buffer,
+    build_demux_config_from_args, build_stream_id, build_video_units, convert_event, metadata_kind,
+    opt_long, throw_demux_error, video_codec_name, wrap_heap_byte_buffer,
 };
 
 /// Per-type leased-handle registry for `org.tstrans.pipeline.Pairer`.
@@ -292,7 +293,7 @@ fn convert_video_sample<'local>(
 ) -> Result<JObject<'local>, ()> {
     let stream = build_stream_id(env, &vs.stream)?;
     let dts = opt_long(env, vs.dts)?;
-    let codec = enum_const(env, "VideoCodec", video_codec_name(vs.codec))?;
+    let codec = enum_const(env, "mpegts", "VideoCodec", video_codec_name(vs.codec))?;
     let (payload, _issues) = vs.split_units();
     let payload_list = build_video_units(env, &payload)?;
     env.new_object(

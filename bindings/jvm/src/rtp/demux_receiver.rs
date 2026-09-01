@@ -42,11 +42,13 @@ use tst_rtp::builder::RtpRecvSocketBuilder;
 use tst_rtp::{RtpRecvTransport, StreamEndReasonHandle};
 
 use crate::handle::HandleRegistry;
-use crate::mpegts::{build_demux_config_from_args, convert_event, throw_demux_error};
+use crate::jutil::build_socket_stats;
+use crate::mpegts::{
+    build_demux_config_from_args, build_muxer_stats, convert_event, throw_demux_error,
+};
 
 use super::errors::{connect_error_to_rtp, throw_rtp, transport_error_to_rtp};
-use super::mux_sender::{build_muxer_stats, build_rtp_transport_stats};
-use super::stats::build_socket_stats;
+use super::mux_sender::build_rtp_transport_stats;
 
 /// Native backing for `org.tstrans.rtp.DemuxReceiver`. The registry's
 /// `Mutex<Option<Self>>` holds `inner` (replacing the round-1 bespoke
@@ -350,7 +352,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nStats<'local>(
         sock.bytes_received = combined.bytes_received;
         sock.packets_received = combined.packets_received;
 
-        let sock_obj = match build_socket_stats(env, &sock) {
+        let sock_obj = match build_socket_stats(env, "org/tstrans/rtp/SocketStats", &sock) {
             Ok(o) => o,
             Err(_) => return JObject::null(),
         };

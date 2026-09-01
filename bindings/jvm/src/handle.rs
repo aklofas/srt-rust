@@ -74,6 +74,9 @@ use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::{Arc, Mutex};
 
+use jni::JNIEnv;
+use jni::sys::jlong;
+
 /// An optional cross-thread cancel hook fired by [`HandleRegistry::close`] *before*
 /// the resource is taken, so a parked native op (a blocked `recv`/`accept`) wakes
 /// and releases its lease. Types with no parked op pass `None`.
@@ -335,6 +338,46 @@ impl<T> HandleRegistry<T> {
         }
         let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.table.contains_key(&id)
+    }
+}
+
+/// Lease `handle` on `registry` and run a push op under the resource lock. A
+/// closed/absent handle throws `IllegalStateException` naming `what`; any error
+/// from `op` is mapped by `throw_err`. Shared by every `MuxSender`-shaped push
+/// surface (srt + rtp): `send_*` methods take `&self`, so the shared `&mut T`
+/// lease coerces fine.
+pub(crate) fn with_push<T, E>(
+    env: &mut JNIEnv,
+    registry: &HandleRegistry<T>,
+    handle: jlong,
+    what: &str,
+    op: impl FnOnce(&T) -> Result<(), E>,
+    throw_err: impl FnOnce(&mut JNIEnv, &E),
+) {
+    match registry.with_poisoning(handle as u64, |inner| op(inner)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_err(env, &e),
+        None => crate::error::throw_closed(env, what),
+    }
+}
+
+/// Lease `handle` on `registry` and return the first handle-of-kind picked out
+/// by `pick` (`-1` if none). A closed/absent handle throws
+/// `IllegalStateException` naming `what` and returns `-1`.
+pub(crate) fn first_handle<T>(
+    env: &mut JNIEnv,
+    registry: &HandleRegistry<T>,
+    handle: jlong,
+    what: &str,
+    pick: impl FnOnce(&T) -> Option<u32>,
+) -> jlong {
+    match registry.with(handle as u64, |inner| pick(inner)) {
+        Some(Some(raw)) => i64::from(raw),
+        Some(None) => -1,
+        None => {
+            crate::error::throw_closed(env, what);
+            -1
+        }
     }
 }
 

@@ -12,8 +12,9 @@
 //! - **vendored mode**: forced via `RIST_FORCE_VENDORED=1` (or when pkg-config
 //!   fails) → compile `vendor/librist` via meson + ninja, link statically.
 //! - **encryption**: enabled via the `mbedtls` cargo feature (default-on) —
-//!   builds librist with `builtin_mbedtls=true`, which bundles librist's own
-//!   contrib/mbedtls into the static archive.
+//!   builds librist with `builtin_mbedtls=false`, linking the shared vendored
+//!   mbedTLS 3.6.x from `tstrans-mbedtls-src` instead of librist's own bundled
+//!   (older) contrib/mbedtls copy.
 //!
 //! ## Build prerequisites (vendored mode)
 //!
@@ -25,7 +26,6 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-#![allow(deref_nullptr)] // bindgen 1.85 emits null-deref tests inside layout_tests
 #![allow(rustdoc::broken_intra_doc_links)] // bindgen-emitted doc comments contain C function refs
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

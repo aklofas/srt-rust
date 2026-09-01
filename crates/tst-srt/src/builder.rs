@@ -371,8 +371,8 @@ impl ListenerBuilder {
         self
     }
     /// Set `SRTO_LINGER` — drop/close grace period for unsent data.
-    /// `Duration::ZERO` closes immediately; libsrt default is 180s.
-    /// Inherited by accepted sockets.
+    /// `Duration::ZERO` closes immediately; libsrt's default is linger off
+    /// (`l_onoff=0, l_linger=0`). Inherited by accepted sockets.
     pub fn linger(&mut self, d: Duration) -> &mut Self {
         self.config.linger = Some(d);
         self

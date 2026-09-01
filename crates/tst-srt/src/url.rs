@@ -7,9 +7,8 @@
 //! Plus two `tst-c`-flavor extensions: `x-recvtimeout` / `x-sendtimeout`
 //! (no libsrt-URL precedent; `SRTO_RCVTIMEO` / `SRTO_SNDTIMEO`).
 //!
-//! Spec: parent-level `docs/specs/` URL query parameters design note
-//! (2026-05-02; pre-rename — filename predates the workspace rename to
-//! `tst-c`).
+//! See `/docs/guides/srt.md`'s URL keys section for the full user-facing key
+//! reference.
 
 use crate::config::{ListenerConfig, SocketConfig};
 use crate::error::OptionError;
@@ -298,12 +297,12 @@ fn parse_i32_nonneg(key: &str, value: &str) -> Result<i32, UrlError> {
 
 fn parse_oheadbw(value: &str) -> Result<u8, UrlError> {
     let n: u32 = parse_int_nonneg("oheadbw", value)?;
-    if !(5..=100).contains(&n) {
-        return Err(UrlError::InvalidValue {
+    crate::options::validate_overhead_bandwidth_pct(n).map_err(|detail| {
+        UrlError::InvalidValue {
             key: "oheadbw".into(),
-            detail: format!("must be in 5..=100, got {n}"),
-        });
-    }
+            detail,
+        }
+    })?;
     Ok(n as u8)
 }
 
@@ -322,13 +321,32 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
     match key {
         "congestion" | "smoother" => apply_congestion(overlay, value),
         "conntimeo" | "connect_timeout" => apply_connect_timeout(overlay, value),
-        "fc" | "ffs" => apply_flow_window(overlay, value),
-        "inputbw" => apply_inputbw(overlay, value),
+        // libsrt-URL canonical key is `fc` (flow control window); `ffs` is
+        // the ffmpeg-style alias (flight flag size).
+        "fc" | "ffs" => {
+            overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
+            Ok(())
+        }
+        "inputbw" => {
+            overlay.input_bandwidth = Some(parse_int_nonneg("inputbw", value)?);
+            Ok(())
+        }
         "latency" | "tsbpddelay" => apply_latency(overlay, "latency", value),
-        "linger" => apply_linger(overlay, value),
-        "lossmaxttl" => apply_lossmaxttl(overlay, value),
+        "linger" => {
+            // SRTO_LINGER value is in seconds (matches ffmpeg's URL).
+            let n = parse_i32_nonneg("linger", value)?;
+            overlay.linger = Some(Duration::from_secs(n as u64));
+            Ok(())
+        }
+        "lossmaxttl" => {
+            overlay.loss_max_ttl = Some(parse_int_nonneg("lossmaxttl", value)?);
+            Ok(())
+        }
         "maxbw" => apply_maxbw(overlay, value),
-        "mss" => apply_mss(overlay, value),
+        "mss" => {
+            overlay.mss = Some(parse_int_nonneg::<u16>("mss", value)?);
+            Ok(())
+        }
         "oheadbw" => apply_oheadbw(overlay, value),
         "packetfilter" => apply_packetfilter(overlay, value),
         "passphrase" => apply_passphrase(overlay, value),
@@ -338,10 +356,26 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
         "rcvlatency" => apply_latency(overlay, "rcvlatency", value),
         "streamid" | "srt_streamid" => apply_streamid(overlay, value),
         "tlpktdrop" => apply_tlpktdrop(overlay, value),
-        "udprcvbuf" | "recv_buffer_size" => apply_udprcvbuf(overlay, value),
-        "udpsndbuf" | "send_buffer_size" => apply_udpsndbuf(overlay, value),
-        "x-recvtimeout" => apply_recv_timeout(overlay, value),
-        "x-sendtimeout" => apply_send_timeout(overlay, value),
+        // libsrt-URL canonical key is `udprcvbuf`; `recv_buffer_size` /
+        // `send_buffer_size` are ffmpeg-style aliases.
+        "udprcvbuf" | "recv_buffer_size" => {
+            overlay.udp_recv_buffer_bytes = Some(parse_int_nonneg("udprcvbuf", value)?);
+            Ok(())
+        }
+        "udpsndbuf" | "send_buffer_size" => {
+            overlay.udp_send_buffer_bytes = Some(parse_int_nonneg("udpsndbuf", value)?);
+            Ok(())
+        }
+        "x-recvtimeout" => {
+            let n = parse_i32_nonneg("x-recvtimeout", value)?;
+            overlay.recv_timeout = Some(Duration::from_millis(n as u64));
+            Ok(())
+        }
+        "x-sendtimeout" => {
+            let n = parse_i32_nonneg("x-sendtimeout", value)?;
+            overlay.send_timeout = Some(Duration::from_millis(n as u64));
+            Ok(())
+        }
         "timeout" | "listen_timeout" | "tsbpd" => Err(ffmpeg_alias_not_exposed(key)),
         other => fallback_unknown(other),
     }
@@ -370,18 +404,6 @@ fn apply_connect_timeout(overlay: &mut UrlOverlay, value: &str) -> Result<(), Ur
     Ok(())
 }
 
-fn apply_flow_window(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    // libsrt-URL canonical key is `fc` (flow control window);
-    // `ffs` is the ffmpeg-style alias (flight flag size).
-    overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
-    Ok(())
-}
-
-fn apply_inputbw(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    overlay.input_bandwidth = Some(parse_int_nonneg("inputbw", value)?);
-    Ok(())
-}
-
 fn apply_latency(overlay: &mut UrlOverlay, key: &'static str, value: &str) -> Result<(), UrlError> {
     // libsrt-URL canonical key is `latency`; `tsbpddelay` is the
     // ffmpeg-style alias (the `SRTO_*` constant for SRT's TSBPD
@@ -399,29 +421,12 @@ fn apply_latency(overlay: &mut UrlOverlay, key: &'static str, value: &str) -> Re
     Ok(())
 }
 
-fn apply_linger(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    // SRTO_LINGER value is in seconds (matches ffmpeg's URL).
-    let n = parse_i32_nonneg("linger", value)?;
-    overlay.linger = Some(Duration::from_secs(n as u64));
-    Ok(())
-}
-
-fn apply_lossmaxttl(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    overlay.loss_max_ttl = Some(parse_int_nonneg("lossmaxttl", value)?);
-    Ok(())
-}
-
 fn apply_maxbw(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
     // SRTO_MAXBW is i64; we expose non-negative as Limited(u64).
     // Negative-sentinel forms (Auto/Infinite) are not URL-settable
     // under strict-A.
     let n = parse_int_nonneg::<u64>("maxbw", value)?;
     overlay.max_bandwidth = Some(MaxBandwidth::Limited(n));
-    Ok(())
-}
-
-fn apply_mss(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    overlay.mss = Some(parse_int_nonneg::<u16>("mss", value)?);
     Ok(())
 }
 
@@ -500,28 +505,6 @@ fn apply_streamid(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError>
 
 fn apply_tlpktdrop(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
     overlay.too_late_packet_drop = Some(parse_bool_strict("tlpktdrop", value)?);
-    Ok(())
-}
-
-fn apply_udprcvbuf(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    overlay.udp_recv_buffer_bytes = Some(parse_int_nonneg("udprcvbuf", value)?);
-    Ok(())
-}
-
-fn apply_udpsndbuf(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    overlay.udp_send_buffer_bytes = Some(parse_int_nonneg("udpsndbuf", value)?);
-    Ok(())
-}
-
-fn apply_recv_timeout(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    let n = parse_i32_nonneg("x-recvtimeout", value)?;
-    overlay.recv_timeout = Some(Duration::from_millis(n as u64));
-    Ok(())
-}
-
-fn apply_send_timeout(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
-    let n = parse_i32_nonneg("x-sendtimeout", value)?;
-    overlay.send_timeout = Some(Duration::from_millis(n as u64));
     Ok(())
 }
 

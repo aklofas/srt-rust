@@ -4,7 +4,9 @@ use crate::addr::{from_sockaddr, to_sockaddr};
 use crate::config::ListenerConfig;
 use crate::error::{AcceptError, BindError, IoError, OptionError, last_error};
 use crate::init::ensure_initialized;
-use crate::socket::{Socket, apply_listener_config, duration_to_ms, read_bool, set_bool, set_int};
+use crate::socket::{
+    Socket, apply_listener_config, duration_to_ms, make_cancel_handle, read_bool, set_bool, set_int,
+};
 use os_socketaddr::OsSocketAddr;
 use std::ffi::c_int;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -403,14 +405,4 @@ impl Drop for Listener {
         // No-op if explicit close() / cancel() already fired.
         self.cancel.cancel();
     }
-}
-
-/// Build a SrtCancelHandle that closes the SRTSOCKET on first cancel.
-fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::SrtCancelHandle {
-    tst_core::SrtCancelHandle::new(handle as i64, |h| {
-        // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
-        // srt_close from any thread; the atomic-swap in SrtCancelHandle
-        // guarantees this runs at most once.
-        let _ = unsafe { srt_sys::srt_close(h as srt_sys::SRTSOCKET) };
-    })
 }

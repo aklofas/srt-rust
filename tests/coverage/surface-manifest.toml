@@ -10142,18 +10142,6 @@ item = "tst_srt::socket::Socket::send"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::socket::Socket::set_input_bandwidth"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_srt::socket::Socket::set_max_bandwidth"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_srt::socket::Socket::set_overhead_bandwidth_pct"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_srt::socket::Socket::set_recv_timeout"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

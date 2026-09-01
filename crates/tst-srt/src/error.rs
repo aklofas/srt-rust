@@ -71,7 +71,6 @@ pub enum SrtErrno {
     Notsup,
     Async,
     PeerError,
-    Timeout,
     Bad,
     Unknown(i32),
 }
@@ -312,9 +311,10 @@ pub enum RecvError {
 }
 
 // ============================================================================
-// Pipeline transport errors (re-exported for convenience; defined in
-// tst-core because they describe a behavioral contract that's
-// part of the transport module's public surface)
+// Umbrella error type
+//
+// SrtError exists for callers who want one type to propagate across
+// categories (per-call-category enums above are the Rust-idiomatic surface).
 // ============================================================================
 
 #[derive(Debug, Error)]
@@ -472,7 +472,7 @@ impl SrtErrno {
     ///
     /// Always returns the libsrt MJ_* major category (`1..=7`) for known
     /// variants — `Setup`→1, `Connection`→2, `SystemRes`→3, `FileSystem`→4,
-    /// `Notsup`→5, `Async`→6, `PeerError`→7, `Timeout`→6, `Bad`→0. For
+    /// `Notsup`→5, `Async`→6, `PeerError`→7, `Bad`→0. For
     /// [`Self::Unknown`] the preserved raw libsrt errno is folded back to
     /// its major category via integer division (libsrt encodes errnos as
     /// `major * 1000 + minor`, so `raw / 1000` recovers the major).
@@ -487,10 +487,9 @@ impl SrtErrno {
     /// Bindings can match on `code <= 7` without worrying about an
     /// `Unknown(6002)` slipping through as the full encoded errno.
     ///
-    /// Note: `Timeout` and `Bad` aren't produced by the internal
-    /// `from_raw` constructor today (no major-category mapping); they're
-    /// listed for future-proofing if the typed enum is ever populated
-    /// through another path.
+    /// Note: `Bad` isn't produced by the internal `from_raw` constructor
+    /// today (no major-category mapping); it's listed for future-proofing
+    /// if the typed enum is ever populated through another path.
     #[must_use]
     pub fn raw_code(&self) -> i32 {
         match self {
@@ -501,7 +500,6 @@ impl SrtErrno {
             SrtErrno::Notsup => 5,
             SrtErrno::Async => 6,
             SrtErrno::PeerError => 7,
-            SrtErrno::Timeout => 6,
             SrtErrno::Bad => 0,
             // libsrt errnos are `major * 1000 + minor`; fold back to the
             // major category so the return value range matches the typed

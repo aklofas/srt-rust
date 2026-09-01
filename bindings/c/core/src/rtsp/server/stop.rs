@@ -1,7 +1,7 @@
 //! Server-level lifecycle: stats, cancel, stop, free.
 //!
 //! Five entry points covering the back half of the `TstRtspServer` lifecycle
-//! (T8 opened + started; T10 queries, cancels, stops, and frees):
+//! (opened + started earlier; these query, cancel, stop, and free it):
 //!
 //! ```text
 //! tst_rtsp_server_get_stats(server, *out)   — snapshot aggregate counters

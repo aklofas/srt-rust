@@ -1,6 +1,6 @@
 //! `tst_rtsp_server_builder_start` — consume a builder and start the server.
 //!
-//! The builder is allocated by `tst_rtsp_server_builder_new` (Task 7) and
+//! The builder is allocated by `tst_rtsp_server_builder_new` and
 //! configured via the `tst_rtsp_server_builder_*` setter chain. This entry
 //! point consumes the builder, calls `RtspServerBuilder::build()` to create
 //! the internal tokio Runtime, then calls `RtspServer::start()` to spawn the
@@ -15,20 +15,20 @@
 //! ```text
 //! tst_rtsp_server_builder_new(url)
 //!     │
-//!     ├─ tst_rtsp_server_builder_auth_basic(…)     ← optional (Task 7)
-//!     ├─ tst_rtsp_server_builder_max_sessions(…)   ← optional (Task 7)
-//!     └─ tst_rtsp_server_builder_fanout_cap(…)     ← optional (Task 7)
+//!     ├─ tst_rtsp_server_builder_auth_basic(…)     ← optional
+//!     ├─ tst_rtsp_server_builder_max_sessions(…)   ← optional
+//!     └─ tst_rtsp_server_builder_fanout_cap(…)     ← optional
 //!
 //! tst_rtsp_server_builder_start(builder)
 //!     │ ← consumes builder; spawns tokio Runtime + listener
 //!     ▼
 //! TstRtspServer*  ← opaque handle
 //!     │
-//!     ├─ tst_rtsp_server_add_unicast_mount(…)    → TstRtspMountHandle* (T8)
-//!     ├─ tst_rtsp_server_add_multicast_mount(…)  → TstRtspMountHandle* (T8)
-//!     ├─ tst_rtsp_mount_handle push_*(…)         → (T9)
-//!     ├─ tst_rtsp_server_stats(…)                → (T10)
-//!     └─ tst_rtsp_server_stop(…) / tst_rtsp_server_free(…)  → (T10)
+//!     ├─ tst_rtsp_server_add_unicast_mount(…)    → TstRtspMountHandle*
+//!     ├─ tst_rtsp_server_add_multicast_mount(…)  → TstRtspMountHandle*
+//!     ├─ tst_rtsp_mount_handle push_*(…)
+//!     ├─ tst_rtsp_server_stats(…)
+//!     └─ tst_rtsp_server_stop(…) / tst_rtsp_server_free(…)
 //! ```
 //!
 //! # Error mapping
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_start(
         }
 
         // Wrap in the opaque handle. cancel_handle() is cloned before the
-        // Box is moved into the Mutex so Task 10's _cancel entry point can
+        // Box is moved into the Mutex so tst_rtsp_server_cancel_handle can
         // fire it without acquiring the inner Mutex.
         Box::into_raw(Box::new(TstRtspServer::new(server)))
     })
@@ -125,8 +125,8 @@ mod tests {
 
     #[test]
     fn null_builder_returns_null() {
-        // T8 entry point: null builder → null return, last-error is
-        // TST_E_INVALID_CONFIG. Does not require the server to actually start.
+        // null builder → null return, last-error is TST_E_INVALID_CONFIG.
+        // Does not require the server to actually start.
         let p = unsafe { tst_rtsp_server_builder_start(std::ptr::null_mut()) };
         assert!(p.is_null());
         let code = unsafe { crate::error::tst_get_last_error() };
@@ -137,8 +137,9 @@ mod tests {
     /// helpers and verify _start returns a non-null handle.
     #[test]
     fn valid_builder_starts_server_and_returns_handle() {
-        // Construct the builder directly (T7's entry points land later;
-        // here we exercise the Rust path that _start delegates to).
+        // Construct the builder directly via the Rust path (rather than the
+        // C setter-chain entry points) — exercises what _start delegates to
+        // without depending on the builder module's own coverage.
         let b = TstRtspServerBuilder::from_url("rtsp://127.0.0.1:0").expect("test url parses");
         let raw = TstRtspServerBuilder::into_raw(Box::new(b));
 
@@ -148,11 +149,7 @@ mod tests {
             s.to_str().unwrap_or("<invalid utf8>")
         });
 
-        // Clean up: drop the opaque Box directly (hard-cancel on Drop).
-        // Task 10 adds tst_rtsp_server_free; for now raw-drop is safe in test.
-        unsafe {
-            let _ = Box::from_raw(handle);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(handle) };
     }
 
     /// TLS PEM bytes on a builder must fail `_start` rather than silently

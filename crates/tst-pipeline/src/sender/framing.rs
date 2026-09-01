@@ -36,16 +36,12 @@ pub enum TsFramingMode {
 pub enum TsFramingError {
     #[error("TS sync byte not found at expected boundary (offset {offset})")]
     SyncLost { offset: u64 },
-    /// Reserved for the case where RECOVER mode has consumed more than
-    /// [`super::SenderConfig::max_unsynced_bytes`] without acquiring sync.
-    ///
-    /// The current sender implementation does NOT emit this variant —
-    /// RECOVER mode keeps scanning indefinitely and the
-    /// `max_unsynced_bytes` knob is tracked for diagnostic accounting
-    /// only. The variant is preserved on the public surface for forward
-    /// compatibility and so that downstream code can still classify it
-    /// (it routes to [`crate::shell_error::ShellErrorKind::InputMalformed`])
-    /// if a future revision starts emitting it.
+    /// RECOVER mode has consumed more than
+    /// [`super::SenderConfig::max_unsynced_bytes`] without acquiring sync
+    /// (it routes to [`crate::shell_error::ShellErrorKind::InputMalformed`]).
+    /// The unsynced-byte counter resets after the error is raised, so the
+    /// watchdog fires again only after another full `max_unsynced_bytes`
+    /// of garbage.
     #[error(
         "exceeded max_unsynced_bytes ({max}) without acquiring sync; \
          input does not look like a TS stream"
@@ -109,14 +105,19 @@ impl TsFraming {
     /// Push bytes (RECOVER mode): returns any complete 7-packet bundles
     /// emitted. Sync is acquired silently; loss-of-sync is silently
     /// recovered. Stats reflect events.
-    pub fn push(&mut self, bytes: &[u8]) -> (Vec<Vec<u8>>, &SenderStats) {
+    ///
+    /// # Errors
+    /// [`TsFramingError::NoSyncAfterLimit`] if scanning for sync consumes
+    /// more than `max_unsynced_bytes` (see [`Self::new`]) without
+    /// acquiring it.
+    pub fn push(&mut self, bytes: &[u8]) -> Result<(Vec<Vec<u8>>, &SenderStats), TsFramingError> {
         self.stats.bytes_pushed += bytes.len() as u64;
         self.buffer.extend(bytes.iter().copied());
         let mut bundles = Vec::new();
         loop {
             match self.state {
                 State::Unsynced => {
-                    if !self.try_acquire() {
+                    if !self.try_acquire()? {
                         break;
                     }
                 }
@@ -127,7 +128,7 @@ impl TsFraming {
                 }
             }
         }
-        (bundles, &self.stats)
+        Ok((bundles, &self.stats))
     }
 
     /// Push bytes (STRICT mode): returns any bundles emitted. Errors on
@@ -186,10 +187,11 @@ impl TsFraming {
         Ok(bundles)
     }
 
-    /// In UNSYNCED: try to acquire sync via 3-byte verify. Returns true
-    /// if state changed (so the caller's outer loop re-evaluates). False
-    /// means we don't yet have enough bytes to verify.
-    fn try_acquire(&mut self) -> bool {
+    /// In UNSYNCED: try to acquire sync via 3-byte verify. Returns
+    /// `Ok(true)` if state changed (so the caller's outer loop
+    /// re-evaluates), `Ok(false)` if we don't yet have enough bytes to
+    /// verify, `Err` if `max_unsynced_bytes` was exceeded first.
+    fn try_acquire(&mut self) -> Result<bool, TsFramingError> {
         // Scan from current buffer head for a candidate position. Need at
         // least 2*188+1 = 377 bytes after the candidate to verify P, P+188, P+376.
         const NEEDED: usize = 2 * TS_PACKET_SIZE + 1;
@@ -203,8 +205,8 @@ impl TsFraming {
                     self.buffer.clear();
                     self.unsynced_consumed += n;
                     self.stats.bytes_skipped_for_sync += n as u64;
-                    self.check_unsynced_limit_recover();
-                    return false;
+                    self.check_unsynced_limit()?;
+                    return Ok(false);
                 }
             };
             // Discard everything before the candidate.
@@ -217,23 +219,23 @@ impl TsFraming {
             }
             // Now buffer[0] == 0x47. Need 377 bytes to verify.
             if self.buffer.len() < NEEDED {
-                self.check_unsynced_limit_recover();
-                return false;
+                self.check_unsynced_limit()?;
+                return Ok(false);
             }
             if self.buffer[TS_PACKET_SIZE] == SYNC_BYTE
                 && self.buffer[2 * TS_PACKET_SIZE] == SYNC_BYTE
             {
                 self.state = State::Synced;
                 self.unsynced_consumed = 0;
-                return true;
+                return Ok(true);
             }
             // False candidate. Discard just the leading 0x47 and rescan.
             self.buffer.pop_front();
             self.unsynced_consumed += 1;
             self.stats.bytes_skipped_for_sync += 1;
-            self.check_unsynced_limit_recover();
+            self.check_unsynced_limit()?;
         }
-        false
+        Ok(false)
     }
 
     /// In SYNCED: try to emit one bundle. Returns true if a bundle was
@@ -259,18 +261,17 @@ impl TsFraming {
         true
     }
 
-    fn check_unsynced_limit_recover(&mut self) {
+    /// Errors once `unsynced_consumed` exceeds `max_unsynced_bytes`, then
+    /// resets the counter so the watchdog can fire again after another
+    /// full `max_unsynced_bytes` of unrecovered garbage.
+    fn check_unsynced_limit(&mut self) -> Result<(), TsFramingError> {
         if self.unsynced_consumed > self.max_unsynced_bytes {
-            // Saturate the limit; subsequent push_strict calls will error,
-            // but in RECOVER mode we just keep skipping bytes until sync
-            // is found OR the caller gives up. The C ABI surface (Plan 2)
-            // can choose to error after the limit; for the framing
-            // primitive we just track and surface via stats.
-            //
-            // No-op here intentionally — RECOVER mode keeps trying. The
-            // caller should monitor stats.bytes_skipped_for_sync against
-            // their own threshold if they want fail-fast.
+            self.unsynced_consumed = 0;
+            return Err(TsFramingError::NoSyncAfterLimit {
+                max: self.max_unsynced_bytes as u64,
+            });
         }
+        Ok(())
     }
 
     /// Emit any pending bytes as a partial bundle (1-6 packets).
@@ -312,7 +313,7 @@ mod tests {
     fn unsynced_acquires_after_three_sync_bytes() {
         let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(3);
-        let (out, stats) = framing.push(&ts);
+        let (out, stats) = framing.push(&ts).unwrap();
         // 3 packets ≠ 7, so no bundle emitted; framing acquired sync.
         assert!(out.is_empty());
         let bytes_pushed = stats.bytes_pushed;
@@ -330,7 +331,7 @@ mod tests {
         let ts = synthetic_ts_stream(3);
         let mut input = prefix.clone();
         input.extend_from_slice(&ts);
-        let (out, stats) = framing.push(&input);
+        let (out, stats) = framing.push(&input).unwrap();
         assert!(out.is_empty());
         // Copy needed values before stats borrow ends (stats borrows framing).
         let bytes_skipped = stats.bytes_skipped_for_sync;
@@ -345,7 +346,7 @@ mod tests {
     fn emits_one_bundle_per_seven_packets() {
         let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(7);
-        let (out, _stats) = framing.push(&ts);
+        let (out, _stats) = framing.push(&ts).unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].len(), 1316);
     }
@@ -354,7 +355,7 @@ mod tests {
     fn emits_two_bundles_per_fourteen_packets() {
         let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(14);
-        let (out, _stats) = framing.push(&ts);
+        let (out, _stats) = framing.push(&ts).unwrap();
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].len(), 1316);
         assert_eq!(out[1].len(), 1316);
@@ -366,7 +367,7 @@ mod tests {
         let ts = synthetic_ts_stream(7);
         let mut accumulated_out = Vec::new();
         for &b in &ts {
-            let (mut out, _stats) = framing.push(&[b]);
+            let (mut out, _stats) = framing.push(&[b]).unwrap();
             accumulated_out.append(&mut out);
         }
         assert_eq!(
@@ -388,7 +389,7 @@ mod tests {
         let mut input = ts1.clone();
         input.extend_from_slice(&garbage);
         input.extend_from_slice(&ts2);
-        let (out, stats) = framing.push(&input);
+        let (out, stats) = framing.push(&input).unwrap();
         // 7 + 7 = 14 packets, but the garbage breaks alignment; after
         // resync the second 7 packets get bundled.
         assert!(!out.is_empty(), "first bundle must emit");
@@ -428,10 +429,37 @@ mod tests {
     fn flush_emits_pending_partial_bundle() {
         let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(3);
-        let (out, _stats) = framing.push(&ts);
+        let (out, _stats) = framing.push(&ts).unwrap();
         assert!(out.is_empty(), "3 < 7 → no bundle yet");
         let flushed = framing.flush();
         assert_eq!(flushed.len(), 1);
         assert_eq!(flushed[0].len(), 188 * 3);
+    }
+
+    #[test]
+    fn recover_mode_errors_after_exceeding_max_unsynced_bytes() {
+        let mut framing = TsFraming::new(500);
+        // 501 bytes, never 0x47 — one past the limit.
+        let garbage = vec![0x00u8; 501];
+        let result = framing.push(&garbage);
+        match result {
+            Err(TsFramingError::NoSyncAfterLimit { max }) => assert_eq!(max, 500),
+            other => panic!("expected NoSyncAfterLimit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn recover_mode_does_not_error_when_sync_found_under_limit() {
+        let mut framing = TsFraming::new(500);
+        // 490 bytes of garbage (under the 500 limit), then a valid stream.
+        let prefix = vec![0x00u8; 490];
+        let ts = synthetic_ts_stream(3);
+        let mut input = prefix;
+        input.extend_from_slice(&ts);
+        let (out, _stats) = framing
+            .push(&input)
+            .expect("must not error when sync is found under the limit");
+        assert!(out.is_empty());
+        assert!(framing.is_synced());
     }
 }

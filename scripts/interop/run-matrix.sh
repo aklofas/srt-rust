@@ -548,56 +548,26 @@ run_analyze_ffprobe() {
   fi
 }
 
-# run_analyze_tsanalyze <profile>
+# run_analyze_counter_probe <tool> <id-suffix> <verdict-fn> -- <cmd...>
 #
-# `tsanalyze --normalized` on $GEN_FILE, asserting the `ts:` summary
-# line's invalidsyncs/transporterrors/suspectignored counters are all
-# zero (see lib.sh's tsanalyze_ts_line_counters_zero).
-run_analyze_tsanalyze() {
-  local profile=$1
-  local id="analyze/tsanalyze/$profile"
-  cell_selected "$id" || return 0
-  echo "run-matrix: cell $id" >&2
-  if ! have tsanalyze; then
-    emit_skipped "$id" tsanalyze n/a n/a "tsanalyze not installed on this box"
-    return 0
-  fi
-
-  local log="$LOGS_DIR/$(slug "$id").log"
-  : >"$log"
-  local budget
-  budget=$(cell_timeout "$SECONDS_ARG")
-  local rc=0 out
-  out=$(timeout --kill-after=5 "${budget}s" tsanalyze --normalized "$GEN_FILE" 2>>"$log") || rc=$?
-  {
-    echo "=== cell: $id (analyze-probe, no transport, profile=$profile) ==="
-    echo "$out"
-  } >>"$log"
-
-  local verdict
-  verdict=$(tsanalyze_ts_line_counters_zero "$out") || verdict="tsanalyze_ts_line_counters_zero itself failed — see log"
-  if [[ $rc -ne 0 ]]; then
-    emit_fail "$id" tsanalyze n/a n/a "$log" - "tsanalyze exited $rc — see log"
-  elif [[ "$verdict" == "0" ]]; then
-    emit_pass "$id" tsanalyze n/a n/a "$log" -
-  else
-    emit_fail "$id" tsanalyze n/a n/a "$log" - "$verdict"
-  fi
-}
-
-# run_analyze_tsp <profile>
-#
-# `tsp -P analyze` on $GEN_FILE, asserting the header block's three
-# global counters are zero (see lib.sh's tsp_analyze_counters_zero doc
-# comment for why this can't reuse the generic error-marker grep — the
+# Shared body for the counter-based analyze/* cells (tsanalyze --normalized,
+# tsp -P analyze): run <cmd...> under the per-cell timeout, capture combined
+# stdout+stderr, then call <verdict-fn> with the captured text. <verdict-fn>
+# must echo "0" for a clean run or a human-readable non-"0" reason otherwise
+# — see lib.sh's tsanalyze_ts_line_counters_zero / tsp_analyze_counters_zero
+# doc comments for the two verdict fns this currently drives (the latter
+# explains why these cells can't reuse the generic error-marker grep: the
 # report's own field LABELS contain the bare word "error").
-run_analyze_tsp() {
-  local profile=$1
-  local id="analyze/tsp-analyze/$profile"
+run_analyze_counter_probe() {
+  local tool=$1 id_suffix=$2 verdict_fn=$3
+  shift 3
+  [[ "${1:-}" == "--" ]] && shift
+  local -a cmd=("$@")
+  local id="analyze/$id_suffix"
   cell_selected "$id" || return 0
   echo "run-matrix: cell $id" >&2
-  if ! have tsp; then
-    emit_skipped "$id" tsp n/a n/a "tsp not installed on this box"
+  if ! have "$tool"; then
+    emit_skipped "$id" "$tool" n/a n/a "$tool not installed on this box"
     return 0
   fi
 
@@ -606,20 +576,20 @@ run_analyze_tsp() {
   local budget
   budget=$(cell_timeout "$SECONDS_ARG")
   local rc=0 out
-  out=$(timeout --kill-after=5 "${budget}s" tsp -I file "$GEN_FILE" -P analyze -O drop 2>&1) || rc=$?
+  out=$(timeout --kill-after=5 "${budget}s" "${cmd[@]}" 2>&1) || rc=$?
   {
-    echo "=== cell: $id (analyze-probe, no transport, profile=$profile) ==="
+    echo "=== cell: $id (analyze-probe, no transport) ==="
     echo "$out"
   } >>"$log"
 
   local verdict
-  verdict=$(tsp_analyze_counters_zero "$out") || verdict="tsp_analyze_counters_zero itself failed — see log"
+  verdict=$("$verdict_fn" "$out") || verdict="$verdict_fn itself failed — see log"
   if [[ $rc -ne 0 ]]; then
-    emit_fail "$id" tsp n/a n/a "$log" - "tsp -P analyze exited $rc — see log"
+    emit_fail "$id" "$tool" n/a n/a "$log" - "$tool exited $rc — see log"
   elif [[ "$verdict" == "0" ]]; then
-    emit_pass "$id" tsp n/a n/a "$log" -
+    emit_pass "$id" "$tool" n/a n/a "$log" -
   else
-    emit_fail "$id" tsp n/a n/a "$log" - "$verdict"
+    emit_fail "$id" "$tool" n/a n/a "$log" - "$verdict"
   fi
 }
 
@@ -966,8 +936,10 @@ rtsp_cells() {
 analyze_cells_for_profile() {
   local profile=$1
   run_analyze_ffprobe "$profile"
-  run_analyze_tsanalyze "$profile"
-  run_analyze_tsp "$profile"
+  run_analyze_counter_probe tsanalyze "tsanalyze/$profile" tsanalyze_ts_line_counters_zero -- \
+    tsanalyze --normalized "$GEN_FILE"
+  run_analyze_counter_probe tsp "tsp-analyze/$profile" tsp_analyze_counters_zero -- \
+    tsp -I file "$GEN_FILE" -P analyze -O drop
 }
 
 # decode_cells_for_profile <profile>

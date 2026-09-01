@@ -159,32 +159,6 @@ pub enum UrlError {
     UnknownQueryKey { key: String },
 }
 
-impl UrlError {
-    /// Map a [`tst_core::url::common::UrlError`] into the tst-rtp
-    /// `UrlError` shape. Used by both [`RtpUrl::parse`] (via `#[from]`)
-    /// and by [`RtspUrl::parse`] (explicitly, so the latter can attach
-    /// RTSP-specific context to a small number of variants).
-    pub(crate) fn from_core(e: CoreUrlError) -> Self {
-        // `CoreUrlError` is `#[non_exhaustive]`, so the `match` requires
-        // a wildcard arm by Rust rules. Every variant known at the time
-        // of writing is listed explicitly so a reviewer can audit the
-        // mapping; new variants added to `tst_core` fall through the
-        // wildcard to `UrlError::Syntax`, which preserves the original
-        // error verbatim via `#[error(transparent)]`.
-        match e {
-            CoreUrlError::MissingSchemeSeparator
-            | CoreUrlError::EmptyScheme
-            | CoreUrlError::UnclosedIpv6Bracket
-            | CoreUrlError::MalformedIpv6Literal { .. }
-            | CoreUrlError::BadPercentEncoding { .. }
-            | CoreUrlError::MissingHost
-            | CoreUrlError::MissingPort
-            | CoreUrlError::InvalidPort { .. } => UrlError::Syntax(e),
-            _ => UrlError::Syntax(e),
-        }
-    }
-}
-
 impl RtpUrl {
     /// Parse `rtp://host:port?key=value&...`.
     ///
@@ -453,7 +427,7 @@ impl RtspUrl {
     /// scheme is not `rtsp` / `rtsps`, when a query value is invalid, or
     /// when an unknown query key is present.
     pub fn parse(s: &str) -> Result<Self, UrlError> {
-        let parsed = parse_url(s).map_err(UrlError::from_core)?;
+        let parsed = parse_url(s).map_err(UrlError::Syntax)?;
         let scheme = match parsed.scheme {
             "rtsp" => RtspScheme::Rtsp,
             "rtsps" => RtspScheme::Rtsps,
@@ -510,20 +484,16 @@ impl RtspUrl {
                     tcp_keepalive = Some(Duration::from_secs(secs));
                 }
                 "recv_timeout" => {
-                    let ms: u64 =
-                        tst_core::url::common::parse_int_query(v.as_ref()).map_err(|_| {
-                            UrlError::BadQuery {
-                                key: "recv_timeout".to_string(),
-                                value: v.to_string(),
-                            }
-                        })?;
-                    if ms == 0 {
-                        return Err(UrlError::BadQuery {
+                    recv_timeout = Some(parse_recv_timeout(v.as_ref()).map_err(|e| {
+                        let detail = match &e {
+                            UrlError::BadRecvTimeout { detail, .. } => detail.clone(),
+                            _ => e.to_string(),
+                        };
+                        UrlError::BadQuery {
                             key: "recv_timeout".to_string(),
-                            value: format!("{v} (must be nonzero)"),
-                        });
-                    }
-                    recv_timeout = Some(Duration::from_millis(ms));
+                            value: format!("{v} ({detail})"),
+                        }
+                    })?);
                 }
                 other => {
                     return Err(UrlError::UnknownQueryKey {
@@ -573,26 +543,6 @@ impl RtspUrl {
             self.host.clone()
         };
         format!("{}://{}:{}{}", scheme, host_str, self.port, self.path)
-    }
-
-    /// True if the host parses as an IP literal — a wildcard bind
-    /// (`0.0.0.0` or `::`), a loopback (`127.x.x.x` or `::1`), or any
-    /// concrete interface address — i.e. anything bindable by
-    /// `RtspServer::bind`. Hostnames return false. Server-only callers
-    /// should use [`Self::validate_for_server_bind`], which reports a
-    /// typed error instead of a bool.
-    ///
-    /// Hosts are stored bracket-stripped, so only the bare forms (`::`,
-    /// `::1`) appear here; the bracketed forms (`[::]`, `[::1]`) are never
-    /// stored and are not matched.
-    #[must_use]
-    pub fn is_server_bind(&self) -> bool {
-        let h = self.host.as_str();
-        h == "0.0.0.0"
-            || h == "::"
-            || h.starts_with("127.")
-            || h == "::1"
-            || h.parse::<std::net::IpAddr>().is_ok()
     }
 
     /// Validate the URL is appropriate for `RtspServer::bind(url)`.
@@ -977,14 +927,12 @@ mod phase3_url_tests {
     #[test]
     fn server_bind_url_wildcard_ok() {
         let u = RtspUrl::parse("rtsp://0.0.0.0:8554").unwrap();
-        assert!(u.is_server_bind());
         u.validate_for_server_bind().unwrap();
     }
 
     #[test]
     fn server_bind_url_loopback_ok() {
         let u = RtspUrl::parse("rtsp://127.0.0.1:0").unwrap();
-        assert!(u.is_server_bind());
         u.validate_for_server_bind().unwrap();
     }
 

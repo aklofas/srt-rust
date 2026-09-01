@@ -55,7 +55,8 @@ use tst_pipeline::{
 };
 use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport, StreamEndReasonHandle};
 
-use crate::errors::{make_demux_error, make_rtp_error};
+use crate::errors::make_rtp_error;
+use crate::mpegts::demux_error_to_pyerr;
 use crate::mux::PyMuxerStats;
 use crate::rtp::transport::PySocketStats;
 
@@ -80,23 +81,6 @@ fn transport_error_to_rtp_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
         TransportError::Backpressure { msg, .. } => make_rtp_error(py, "TIMEOUT", &msg),
         other => make_rtp_error(py, "TRANSPORT", &other.to_string()),
     }
-}
-
-/// Map a tst-core `DemuxError` to a Python `DemuxError` via the same
-/// kind-mapping the `tstrans.mpegts.Demuxer` wrapper uses. Forwards
-/// the discriminant + free-text message.
-fn demux_error_to_pyerr(py: Python<'_>, e: &tst_core::error::DemuxError) -> PyErr {
-    use tst_core::error::DemuxError;
-    let kind = match e {
-        DemuxError::Unrecoverable { .. } => "INTERNAL",
-        DemuxError::StrictRejection(_) => "STRICT_REJECTION",
-        DemuxError::MalformedPsi { .. } => "BAD_PMT",
-        DemuxError::MalformedPes { .. } => "BAD_PES",
-        DemuxError::SyncBufExhausted { .. } => "SYNC_LOSS",
-        _ => "INTERNAL",
-    };
-    let msg = format!("{e}");
-    make_demux_error(py, kind, &msg)
 }
 
 /// Map a `DemuxReceiverError` raised by `recv_event` onto the right

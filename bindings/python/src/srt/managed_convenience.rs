@@ -49,7 +49,8 @@ use tst_pipeline::{
 };
 use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
-use crate::errors::{make_demux_error, make_srt_error, mux_error_to_pyerr};
+use crate::errors::{make_srt_error, mux_error_to_pyerr};
+use crate::mpegts::demux_error_to_pyerr;
 use crate::mux::{
     PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
     PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
@@ -85,19 +86,6 @@ fn demux_recv_error_to_pyerr(py: Python<'_>, e: tst_pipeline::DemuxReceiverError
         DemuxReceiverErrorSource::Demux(d) => demux_error_to_pyerr(py, &d),
         _ => make_srt_error(py, "IO", &format!("{:?}", e.kind)),
     }
-}
-
-fn demux_error_to_pyerr(py: Python<'_>, e: &tst_core::error::DemuxError) -> PyErr {
-    use tst_core::error::DemuxError;
-    let kind = match e {
-        DemuxError::Unrecoverable { .. } => "INTERNAL",
-        DemuxError::StrictRejection(_) => "STRICT_REJECTION",
-        DemuxError::MalformedPsi { .. } => "BAD_PMT",
-        DemuxError::MalformedPes { .. } => "BAD_PES",
-        DemuxError::SyncBufExhausted { .. } => "SYNC_LOSS",
-        _ => "INTERNAL",
-    };
-    make_demux_error(py, kind, &format!("{e}"))
 }
 
 /// Build a fresh `SrtTransport` connected as a caller. Mirror of

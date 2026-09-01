@@ -1,18 +1,18 @@
-//! ST 0601 pack & list substrate (WP-C) — parse/emit for the tags whose
+//! ST 0601 pack & list substrate — parse/emit for the tags whose
 //! wire value is a small positional structure (a "Defined-Length Pack" /
 //! "Variable-Length Pack", ST 0107 terminology) or a flat list, rather
 //! than one scalar. Dispatch lives in `decode.rs`/`encode.rs` via the
 //! `Encoding::Pack` marker (`tags.rs`); this module owns the per-tag wire
 //! shape only.
 //!
-//! Tags covered here: Task C2's simple DLP packs — 81 (Image Horizon
+//! Tags covered here: the simple DLP packs — 81 (Image Horizon
 //! Pixels), 115 (Control Command, MULTI-INSTANCE), 116 (Control Command
 //! Verification List), 121 (Active Wavelength List), 127 (Sensor Frame
-//! Rate Pack), 143 (Metadata Substream Id) — plus Task C3's VLP series
+//! Rate Pack), 143 (Metadata Substream Id) — plus the VLP series
 //! packs: 122 (Country Codes), 128 (Wavelengths List), 130 (Airbase
 //! Locations), 138 (Payload List), 140 (Weapons Stores), 141 (Waypoint
-//! List), 142 (View Domain). Tag 102 (SDCC-FLP, `UasDatalinkLs::sdcc_flps`,
-//! Task C4) is NOT here: its wire-format parser lives in `klv::st1010`
+//! List), 142 (View Domain). Tag 102 (SDCC-FLP, `UasDatalinkLs::sdcc_flps`)
+//! is NOT here: its wire-format parser lives in `klv::st1010`
 //! instead (a general-purpose MISB construct, not ST 0601-specific), and
 //! its multi-instance positional-capture dispatch lives directly in
 //! `decode.rs`/`encode.rs` rather than a `packs::parse_*`/`emit_*` pair.

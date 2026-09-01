@@ -36,8 +36,8 @@ pub(crate) enum Encoding {
         max_len: usize,
         default_len: usize,
     },
-    /// MISB variable-length unsigned int (ST 0601 WP-B Table B2 items):
-    /// length-prefixed truncatable big-endian encoding — the TLV length
+    /// MISB variable-length unsigned int: length-prefixed truncatable
+    /// big-endian encoding — the TLV length
     /// IS the byte count, NOT BER-OID (see `crate::klv::length::read_var_uint`).
     /// Decode accepts any wire length in `1..=max_len`; encode always emits
     /// [`crate::klv::length::write_var_uint_min`]'s shortest form, which may
@@ -51,8 +51,8 @@ pub(crate) enum Encoding {
     VarInt {
         max_len: usize,
     },
-    /// Marker for a MISB pack/list item (WP-C Appendix Table C1) — a
-    /// small positional structure or flat list rather than one scalar.
+    /// Marker for a MISB pack/list item — a small positional structure
+    /// or flat list rather than one scalar.
     /// Carries no length/range metadata of its own; decode/encode
     /// dispatch on `spec.id` to the dedicated parse/emit fns in
     /// `packs.rs`.

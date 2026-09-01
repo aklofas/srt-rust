@@ -187,8 +187,11 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, CodecParseError> {
 /// `sps_vui_parameters_present_flag` (§7.3.2.4), then call the VUI parser if
 /// the flag is set.
 ///
-/// Returns `(color_info, frame_rate)`. Both stay `None` until Task 4.3 wires
-/// the VUI walker; this function just lands the bit cursor correctly.
+/// Returns `(color_info, frame_rate)`: `color_info` comes from the VUI walk
+/// (`None` when `sps_vui_parameters_present_flag` is unset); `frame_rate` is
+/// recovered from `general_timing_hrd_parameters()` (§7.3.5.1) — H.266 moved
+/// timing out of VUI, unlike H.265 — and is `None` when timing/HRD params
+/// aren't present.
 fn walk_sps_body(
     br: &mut BitReader<'_>,
     ptl_dpb_hrd_present: bool,

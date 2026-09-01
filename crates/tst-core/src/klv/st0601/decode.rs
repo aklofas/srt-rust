@@ -672,8 +672,8 @@ fn apply_typed_tag(
 }
 
 /// Per-tag accessor for the 83 uniform `Option<f64>` ranged fields — the
-/// 69 LinearRange fields from WP-A plus the 14 ST 1201.5 IMAPB extended
-/// items from WP-B (Table B1).
+/// 69 fixed-width LinearRange fields plus the 14 ST 1201.5 IMAPB
+/// extended-range items.
 ///
 /// Drives `assign_ranged` (decode) and the ranged arms of
 /// `encode_tag_value` / `each_typed_field` (encode) from one place,
@@ -687,7 +687,7 @@ pub(super) struct RangedEntry {
 
 /// All 83 ST 0601 ranged `Option<f64>` fields in tag-ascending order —
 /// 69 fixed-width LinearRange fields (tags 5-93) plus 14 ST 1201.5 IMAPB
-/// extended-range fields (tags 96-134, WP-B Table B1). The encode path
+/// extended-range fields (tags 96-134). The encode path
 /// derives value_len from `tags::TAGS[id].range.byte_length` for the
 /// LinearRange rows, or `Encoding::Imapb.default_len` for the IMAPB rows;
 /// the decode path calls `set`; the encode path calls `get`.

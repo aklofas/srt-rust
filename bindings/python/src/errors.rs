@@ -135,30 +135,13 @@ pub fn raise_mux_error_for_test(py: Python<'_>, message: &str) -> PyResult<()> {
     Err(make_mux_error(py, "INTERNAL", message))
 }
 
-/// Test helper: forces an `RtspError` raise from Rust, exposed as
-/// `_native._raise_rtsp_error_for_test` so the
-/// `check-py-rtsp-error-mapping-coverage.sh` ratchet sees at least
-/// one call site for `make_rtsp_error` per kind variant during Wave A.
-#[cfg(feature = "rtp")]
-#[pyfunction]
-#[pyo3(name = "_raise_rtsp_error_for_test")]
-pub fn raise_rtsp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
-    Err(make_rtsp_error(py, kind, message))
-}
-
-/// Test helper: forces an `RtpError` raise from Rust, exposed as
-/// `_native._raise_rtp_error_for_test`.
-#[cfg(feature = "rtp")]
-#[pyfunction]
-#[pyo3(name = "_raise_rtp_error_for_test")]
-pub fn raise_rtp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
-    Err(make_rtp_error(py, kind, message))
-}
-
 /// Test helper: forces an `SrtError` raise from Rust, exposed as
-/// `_native._raise_srt_error_for_test` so the
-/// `check-py-srt-error-mapping-coverage.sh` ratchet sees at least
-/// one call site for `make_srt_error` per kind variant during Wave A.
+/// `_native._raise_srt_error_for_test` so `test_error_wiring.py` can
+/// confirm end-to-end wiring for a caller-supplied kind. (The kind
+/// argument is a runtime `&str`, so this call site is invisible to
+/// the literal-kind grep in `scripts/check/python/error-mapping-coverage.sh`
+/// — that ratchet is covered by the mapper functions' own literal
+/// call sites, not by this helper.)
 #[cfg(feature = "srt")]
 #[pyfunction]
 #[pyo3(name = "_raise_srt_error_for_test")]
@@ -167,9 +150,10 @@ pub fn raise_srt_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
 }
 
 /// Test helper: forces a `UdpError` raise from Rust, exposed as
-/// `_native._raise_udp_error_for_test` so the
-/// `check-py-udp-error-mapping-coverage.sh` ratchet sees at least one
-/// call site for `make_udp_error` per kind variant during Wave A.
+/// `_native._raise_udp_error_for_test` so `test_error_wiring.py` can
+/// confirm end-to-end wiring for a caller-supplied kind. (Runtime
+/// `&str` kind — not visible to the error-mapping-coverage ratchet;
+/// see the `srt` helper above.)
 #[cfg(feature = "udp")]
 #[pyfunction]
 #[pyo3(name = "_raise_udp_error_for_test")]
@@ -178,9 +162,10 @@ pub fn raise_udp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
 }
 
 /// Test helper: forces a `TcpError` raise from Rust, exposed as
-/// `_native._raise_tcp_error_for_test` so the
-/// `check-py-tcp-error-mapping-coverage.sh` ratchet sees at least one
-/// call site for `make_tcp_error` per kind variant during Wave B.
+/// `_native._raise_tcp_error_for_test` so `test_error_wiring.py` can
+/// confirm end-to-end wiring for a caller-supplied kind. (Runtime
+/// `&str` kind — not visible to the error-mapping-coverage ratchet;
+/// see the `srt` helper above.)
 #[cfg(feature = "tcp")]
 #[pyfunction]
 #[pyo3(name = "_raise_tcp_error_for_test")]
@@ -189,9 +174,10 @@ pub fn raise_tcp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
 }
 
 /// Test helper: forces an `HlsError` raise from Rust, exposed as
-/// `_native._raise_hls_error_for_test` so the
-/// `check-py-hls-error-mapping-coverage.sh` ratchet sees at least one
-/// call site for `make_hls_error` per kind variant during Wave C.
+/// `_native._raise_hls_error_for_test` so `test_error_wiring.py` can
+/// confirm end-to-end wiring for a caller-supplied kind. (Runtime
+/// `&str` kind — not visible to the error-mapping-coverage ratchet;
+/// see the `srt` helper above.)
 #[cfg(feature = "hls")]
 #[pyfunction]
 #[pyo3(name = "_raise_hls_error_for_test")]
@@ -200,9 +186,10 @@ pub fn raise_hls_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
 }
 
 /// Test helper: forces a `RistError` raise from Rust, exposed as
-/// `_native._raise_rist_error_for_test` so the
-/// `check-py-rist-error-mapping-coverage.sh` ratchet sees at least one
-/// call site for `make_rist_error` per kind variant during Wave D.
+/// `_native._raise_rist_error_for_test` so `test_error_wiring.py` can
+/// confirm end-to-end wiring for a caller-supplied kind. (Runtime
+/// `&str` kind — not visible to the error-mapping-coverage ratchet;
+/// see the `srt` helper above.)
 #[cfg(feature = "rist")]
 #[pyfunction]
 #[pyo3(name = "_raise_rist_error_for_test")]

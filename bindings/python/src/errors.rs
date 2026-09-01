@@ -238,8 +238,9 @@ pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr
 ///
 /// The wildcard arm routes unknown future variants (added via the
 /// `#[non_exhaustive]` hatch on `CodecParseError`) to `ENGINE_ERROR`
-/// so this fn never panics on a Rust-side enum addition — the bash
-/// ratchet `scripts/check/python/codec-error-mapping-coverage.sh` will surface the
+/// so this fn never panics on a Rust-side enum addition — the
+/// `pyarm` row in `scripts/ratchets/error-mapping.tsv` (driven by
+/// `scripts/check/python/error-mapping-coverage.sh`) will surface the
 /// omission in CI.
 ///
 /// Called from codec-parser wrappers.

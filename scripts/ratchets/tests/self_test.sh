@@ -106,5 +106,52 @@ expect "py: unknown kind at call site fails"     1 bash "$PY" --tsv "$tmp/py.tsv
 expect "py: comment-only call site not counted"  1 bash "$PY" --tsv "$tmp/py.tsv" --exc-file "$tmp/exceptions.py" --src-dir "$tmp/src_comment"
 expect "py: malformed table fails closed"        1 bash "$PY" --tsv "$tmp/malformed.tsv" --exc-file "$tmp/exceptions.py" --src-dir "$tmp/src_ok"
 
+# ---- pyarm fixtures (Rust-enum-variant -> explicit arm in a binding .rs) ---
+cat > "$tmp/bar_enum.rs" <<'EOF'
+pub enum BarError {
+    Alpha,
+    Beta(u32),
+    Gamma { x: u32 },
+}
+EOF
+cat > "$tmp/bar_arm_ok.rs" <<'EOF'
+fn bar_error_to_pyerr(e: &BarError) -> PyErr {
+    match e {
+        BarError::Alpha => 1,
+        BarError::Beta(_) => 2,
+        BarError::Gamma { .. } => 3,
+    }
+}
+EOF
+cat > "$tmp/bar_arm_missing.rs" <<'EOF'
+fn bar_error_to_pyerr(e: &BarError) -> PyErr {
+    match e {
+        BarError::Alpha => 1,
+        BarError::Beta(_) => 2,
+    }
+}
+EOF
+# Mapper that locally aliases the enum (mirrors the real klv_encode_error_to_pyerr
+# case) — only the alias spelling appears, never the canonical enum name.
+cat > "$tmp/bar_arm_aliased.rs" <<'EOF'
+fn bar_error_to_pyerr(e: &BarError) -> PyErr {
+    use BarError as RustE;
+    match e {
+        RustE::Alpha => 1,
+        RustE::Beta(_) => 2,
+        RustE::Gamma { .. } => 3,
+    }
+}
+EOF
+printf 'pyarm\tbar\tBarError\t%s\t%s\tbar_error_to_pyerr\n' "$tmp/bar_enum.rs" "$tmp/bar_arm_ok.rs" > "$tmp/pyarm.tsv"
+printf 'pyarm\tbar\tBarError\t%s\t%s\tbar_error_to_pyerr\n' "$tmp/bar_enum.rs" "$tmp/bar_arm_missing.rs" > "$tmp/pyarm_missing.tsv"
+printf 'pyarm\tbar\tBarError\t%s\t%s\tbar_error_to_pyerr\tBarError|RustE\n' "$tmp/bar_enum.rs" "$tmp/bar_arm_aliased.rs" > "$tmp/pyarm_aliased.tsv"
+printf 'pyarm\tbar\tBarError\t%s\t%s\tbar_error_to_pyerr\n' "$tmp/bar_enum.rs" "$tmp/bar_arm_aliased.rs" > "$tmp/pyarm_no_alias.tsv"
+
+expect "pyarm: all variants have explicit arms passes" 0 bash "$PY" --tsv "$tmp/pyarm.tsv"
+expect "pyarm: missing arm fails"                      1 bash "$PY" --tsv "$tmp/pyarm_missing.tsv"
+expect "pyarm: match_names alias passes"                0 bash "$PY" --tsv "$tmp/pyarm_aliased.tsv"
+expect "pyarm: aliased arms w/o match_names fail"       1 bash "$PY" --tsv "$tmp/pyarm_no_alias.tsv"
+
 if [[ "$fail" == 0 ]]; then echo "self-test: ALL OK"; fi
 exit "$fail"

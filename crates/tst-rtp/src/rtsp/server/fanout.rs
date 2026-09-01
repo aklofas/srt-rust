@@ -1,11 +1,10 @@
-//! Per-peer fanout subscriber task — spawned by Wave D Task 17 (PLAY
-//! handler) for each connected client. Drains the mount's broadcast
-//! channel and writes RTP frames to the peer over UDP or
-//! TCP-interleaved.
+//! Per-peer fanout subscriber task — spawned by the PLAY handler for
+//! each connected client. Drains the mount's broadcast channel and
+//! writes RTP frames to the peer over UDP or TCP-interleaved.
 //!
 //! Per [[feedback-wire-primitives-at-call-site-as-explicit-task]] this
-//! task ships the primitive (`spawn_peer_fanout`); the actual call site
-//! (handle_play → spawn_peer_fanout(...)) lands in Task 17.
+//! module ships the primitive (`spawn_peer_fanout`); the call site is
+//! `rtsp::server::handlers::handle_play`.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -607,6 +607,8 @@ pub struct RtpRecvTransport {
     scratch: Vec<u8>,
     /// Companion RTCP socket bound on `port + 1` per RFC 3550 §11.
     /// `None` when the caller opted out via `RtpRecvSocketBuilder::rtcp(false)`.
+    /// Retained on the transport so it stays alive for the reporter
+    /// thread's lifetime — the reporter holds its own `try_clone`'d FD.
     #[allow(dead_code)]
     rtcp_socket: Option<UdpSocket>,
     /// RTCP-derived counters, shared with the reporter thread (which

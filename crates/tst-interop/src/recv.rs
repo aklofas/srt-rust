@@ -14,6 +14,7 @@ use tst_pipeline::{
     ReconnectPolicy, ShellError, ShellErrorKind,
 };
 
+use crate::cli::write_json;
 use crate::profiles::Profile;
 use crate::report_types::VerifyReport;
 use crate::transport::{self, Teeing};
@@ -365,14 +366,4 @@ pub fn run_managed(
         write_json(target, &report)?;
     }
     Ok(report)
-}
-
-fn write_json(target: &str, report: &VerifyReport) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(report).expect("VerifyReport always serializes");
-    if target == "-" {
-        println!("{json}");
-    } else {
-        std::fs::write(target, json).map_err(|e| format!("write {target}: {e}"))?;
-    }
-    Ok(())
 }

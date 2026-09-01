@@ -503,11 +503,8 @@ fn run_verify(args: &[String]) -> ! {
     }
 
     if let Some(target) = json_out {
-        let json = serde_json::to_string_pretty(&report).expect("VerifyReport always serializes");
-        if target == "-" {
-            println!("{json}");
-        } else if let Err(e) = std::fs::write(&target, json) {
-            eprintln!("verify: failed to write {target}: {e}");
+        if let Err(e) = cli::write_json(&target, &report) {
+            eprintln!("verify: {e}");
             std::process::exit(2);
         }
     }

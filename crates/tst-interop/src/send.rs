@@ -19,6 +19,7 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::transport::{Transport, TransportError};
 use tst_pipeline::{ManagedTransport, MuxSender, ReconnectPolicy};
 
+use crate::cli::write_json;
 use crate::fixtures::{self, AuSizeMode};
 use crate::mux_setup;
 use crate::profiles::{KlvMode, Profile, VideoCodec};
@@ -256,14 +257,4 @@ pub fn run_managed(
         write_json(target, &metrics)?;
     }
     Ok(metrics)
-}
-
-fn write_json(target: &str, metrics: &CellMetrics) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(metrics).expect("CellMetrics always serializes");
-    if target == "-" {
-        println!("{json}");
-    } else {
-        std::fs::write(target, json).map_err(|e| format!("write {target}: {e}"))?;
-    }
-    Ok(())
 }

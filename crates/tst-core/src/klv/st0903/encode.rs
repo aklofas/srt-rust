@@ -230,8 +230,7 @@ pub fn encoded_len_standalone(ls: &VmtiLs) -> usize {
 /// Number of wire bytes that [`encode`] would produce for `ls`. Mirrors
 /// `encode`'s field-by-field structure so the two cannot drift.
 pub fn encoded_len(ls: &VmtiLs) -> usize {
-    use crate::klv::length::{ber_len, ber_oid_len};
-    use crate::klv::st0903::var_uint::var_u32_len;
+    use crate::klv::length::{ber_len, ber_oid_len, var_uint_min_len};
 
     fn tlv_len(value_len: usize) -> usize {
         1 /* tag */ + ber_len(value_len) + value_len
@@ -247,19 +246,19 @@ pub fn encoded_len(ls: &VmtiLs) -> usize {
         total += tlv_len(s.len());
     }
     if let Some(v) = ls.version_number {
-        total += tlv_len(var_u32_len(v as u32));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if let Some(v) = ls.total_targets_in_frame {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if let Some(v) = ls.num_targets_reported {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if let Some(v) = ls.frame_width {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if let Some(v) = ls.frame_height {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if let Some(ref s) = ls.source_sensor {
         total += tlv_len(s.len());

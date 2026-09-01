@@ -205,8 +205,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
 /// Number of bytes `pack` would occupy when encoded. Mirrors
 /// `write_pack`'s field-by-field structure.
 pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
-    use crate::klv::length::{ber_len, ber_oid_len, ber_oid_len_u64};
-    use crate::klv::st0903::var_uint::{var_u32_len, var_u64_len};
+    use crate::klv::length::{ber_len, ber_oid_len, ber_oid_len_u64, var_uint_min_len};
 
     fn tlv_len(value_len: usize) -> usize {
         1 /* tag */ + ber_len(value_len) + value_len
@@ -214,13 +213,13 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
 
     let mut total = ber_oid_len_u64(pack.target_id);
     if let Some(v) = pack.centroid_pixel {
-        total += tlv_len(var_u64_len(v));
+        total += tlv_len(var_uint_min_len(v));
     }
     if let Some(v) = pack.bbox_top_left_pixel {
-        total += tlv_len(var_u64_len(v));
+        total += tlv_len(var_uint_min_len(v));
     }
     if let Some(v) = pack.bbox_bottom_right_pixel {
-        total += tlv_len(var_u64_len(v));
+        total += tlv_len(var_uint_min_len(v));
     }
     if pack.priority.is_some() {
         total += tlv_len(1);
@@ -229,7 +228,7 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
         total += tlv_len(1);
     }
     if let Some(v) = pack.history {
-        total += tlv_len(var_u32_len(v as u32));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if pack.percentage_of_target_pixels.is_some() {
         total += tlv_len(1);
@@ -238,7 +237,7 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
         total += tlv_len(3);
     }
     if let Some(v) = pack.target_intensity {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if pack.centroid_lat_offset.is_some() {
         total += tlv_len(3);
@@ -268,13 +267,13 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
         total += tlv_len(b.len());
     }
     if let Some(v) = pack.centroid_pix_row {
-        total += tlv_len(var_u64_len(v));
+        total += tlv_len(var_uint_min_len(v));
     }
     if let Some(v) = pack.centroid_pix_col {
-        total += tlv_len(var_u64_len(v));
+        total += tlv_len(var_uint_min_len(v));
     }
     if let Some(v) = pack.algorithm_id {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_uint_min_len(v as u64));
     }
     if pack.detection_status.is_some() {
         total += tlv_len(1);

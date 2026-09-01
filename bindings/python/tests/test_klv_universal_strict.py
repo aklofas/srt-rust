@@ -13,7 +13,6 @@ from tstrans.klv import (
 )
 from tstrans.exceptions import KlvError, KlvErrorKind
 
-from _builders.klv_tlv import ber_short as _ber_short
 from _builders.klv_tlv import tlv as _tlv
 
 

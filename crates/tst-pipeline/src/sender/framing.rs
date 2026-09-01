@@ -414,8 +414,8 @@ mod tests {
     fn strict_mode_rejects_non_sync_first_byte() {
         // STRICT mode errors immediately on the first non-0x47 byte. The
         // max_unsynced_bytes knob is RECOVER-mode-only and is not
-        // exercised here. (RECOVER mode tracks bytes_skipped_for_sync in
-        // stats but does not auto-error on threshold.)
+        // exercised here — see recover_mode_errors_after_exceeding_max_unsynced_bytes
+        // below for RECOVER mode's own threshold behavior.
         let mut framing = TsFraming::new(200);
         let no_sync = vec![0x00; 300]; // 300 bytes, never 0x47
         let result = framing.push_strict(&no_sync);

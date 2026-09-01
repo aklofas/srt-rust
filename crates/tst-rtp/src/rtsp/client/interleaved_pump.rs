@@ -20,11 +20,11 @@
 //!   between main-thread requests, so queuing them would overflow the
 //!   bounded queue on any long receive-only session and fail it.
 //!
-//! Closes Phase 2 deferred fix 1 (client side) — see
-//! `[[feedback-wire-primitives-at-call-site-as-explicit-task]]`. There is
-//! no server-side counterpart: the RTSP server never expects client→server
-//! `$`-frames (no ANNOUNCE/RECORD support), so it reads plain RTSP request
-//! bytes off the TCP stream directly (`rtsp::server::session`).
+//! Closes Phase 2 deferred fix 1 (client side). There is no
+//! server-side counterpart: the RTSP server never expects
+//! client→server `$`-frames (no ANNOUNCE/RECORD support), so it reads
+//! plain RTSP request bytes off the TCP stream directly
+//! (`rtsp::server::session`).
 //!
 //! # Wire-up status
 //!

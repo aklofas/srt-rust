@@ -79,7 +79,8 @@ pub struct SenderError {
     ///   duplicate data.
     /// - `Some(true)` — consumed: framed and retained in the pending
     ///   queue (drains exactly once on the next `send_ts`/`flush`); do
-    ///   NOT push the same input again.
+    ///   NOT push the same input again. Also `Some(true)` for RECOVER
+    ///   mode's `NoSyncAfterLimit` — see `send_ts`'s Retention contract.
     /// - `None` — the error did not originate from a `send_ts` input
     ///   path (e.g. `flush`, which has no per-call input).
     pub input_consumed: Option<bool>,

@@ -85,19 +85,8 @@ fn make_kinded_error(
 /// `<Prefix>Error` and the kind enum is `<Prefix>ErrorKind`. An optional
 /// `cfg(...)` arm gates the wrapper behind a cargo feature.
 macro_rules! make_error_fn {
-    ($fn_name:ident, $prefix:literal) => {
-        pub fn $fn_name(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-            make_kinded_error(
-                py,
-                concat!($prefix, "Error"),
-                concat!($prefix, "ErrorKind"),
-                kind_variant,
-                message,
-            )
-        }
-    };
-    ($fn_name:ident, $prefix:literal, cfg($($cfg:tt)*)) => {
-        #[cfg($($cfg)*)]
+    ($fn_name:ident, $prefix:literal $(, cfg($($cfg:tt)*))?) => {
+        $(#[cfg($($cfg)*)])?
         pub fn $fn_name(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
             make_kinded_error(
                 py,

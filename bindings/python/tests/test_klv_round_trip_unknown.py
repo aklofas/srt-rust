@@ -41,17 +41,13 @@ from tstrans.klv import (
     encode_vmti,
 )
 
+from _builders.klv_tlv import ber_short as _ber_short
+from _builders.klv_tlv import tlv as _tlv
+
 
 # ---------------------------------------------------------------------------
 # Test helpers — manual TLV synthesis for fixture injection
 # ---------------------------------------------------------------------------
-
-
-def _ber_short(n: int) -> bytes:
-    """BER short-form length (single byte, value < 0x80)."""
-    if not 0 <= n < 0x80:
-        raise ValueError(f"value {n} out of BER short-form range")
-    return bytes([n])
 
 
 def _ber_long(n: int) -> bytes:
@@ -64,14 +60,6 @@ def _ber_long(n: int) -> bytes:
     # Find the minimum number of bytes needed
     payload = n.to_bytes((n.bit_length() + 7) // 8, "big")
     return bytes([0x80 | len(payload)]) + payload
-
-
-def _tlv(tag: int, value: bytes) -> bytes:
-    """1-byte tag + BER short-form length + value (ST 0102 / ST 0903 / ST 0601
-    body TLV shape)."""
-    if not 0 <= tag < 0x80:
-        raise ValueError(f"tag {tag} out of single-byte BER-OID range")
-    return bytes([tag]) + _ber_short(len(value)) + value
 
 
 def _st0601_checksum(buf: bytes) -> int:

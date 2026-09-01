@@ -22,7 +22,6 @@ to avoid coupling to the Wave A/B test fixtures.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 
@@ -44,6 +43,8 @@ from tstrans.rtp import (
     RtspServerConfig,
 )
 
+from _builders.ports import free_udp_port as _free_udp_port
+
 
 # --------------------------------------------------------------------------- #
 # Shared helpers                                                              #
@@ -55,19 +56,6 @@ from tstrans.rtp import (
 # frame and immediately drains the AU through the elementary-stream PES
 # packer. Reused across both integration tests.
 _IDR_NAL = bytes([0x00, 0x00, 0x00, 0x01, 0x65, 0xBB])
-
-
-def _free_udp_port() -> int:
-    """Bind a UDP socket to port 0, read back the kernel-picked port,
-    close the socket, return the port number. The port is released
-    before return so the caller can rebind; on Linux loopback the kernel
-    won't reuse it before the test re-claims it.
-    """
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 def _build_test_program():

@@ -9,7 +9,6 @@ another thread wakes a parked recv within a few seconds.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Optional, Tuple
@@ -20,23 +19,7 @@ import tstrans
 import tstrans.srt
 from tstrans.exceptions import SrtError, SrtErrorKind
 
-
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    """Ask the OS for an ephemeral TCP port, then release it. SRT
-    binds on a UDP port — but the kernel allocates UDP ports separately
-    from TCP, and we just need *some* ephemeral integer the OS hasn't
-    handed out to UDP loopback. Tests run sequentially in pytest's
-    default config, so the tiny TOCTOU window doesn't matter."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from _builders.ports import free_tcp_port as _free_tcp_port
 
 
 def _make_loopback_pair(

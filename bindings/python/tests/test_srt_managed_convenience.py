@@ -18,7 +18,6 @@ tests against a scripted RecvTransport.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Optional, Tuple
@@ -44,27 +43,13 @@ from tstrans.srt import (
     ReconnectPolicy,
 )
 
+from _builders.mux_programs import video_only_program as _video_only_program
+from _builders.ports import free_tcp_port as _free_tcp_port
+
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    """Ask the OS for an ephemeral TCP port, then release it."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _video_only_program() -> object:
-    return (
-        MuxerProgramConfigBuilder(1, 0x100)
-        .add_video(0x101, VideoCodec.H264)
-        .build()
-    )
 
 
 def _video_data_program() -> object:

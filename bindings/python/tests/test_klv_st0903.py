@@ -9,15 +9,8 @@ import pytest
 from tstrans.exceptions import KlvError, KlvErrorKind
 from tstrans.klv import Klv0903, VmtiLs, VTargetPack, decode_vmti
 
-
-def _ber_short(n: int) -> bytes:
-    assert 0 <= n < 0x80
-    return bytes([n])
-
-
-def _tlv(tag: int, value: bytes) -> bytes:
-    assert 0 <= tag < 0x80
-    return bytes([tag]) + _ber_short(len(value)) + value
+from _builders.klv_tlv import ber_short as _ber_short
+from _builders.klv_tlv import tlv as _tlv
 
 
 def _minimal_vmti_body() -> bytes:

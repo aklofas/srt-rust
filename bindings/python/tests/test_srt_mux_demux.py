@@ -9,7 +9,6 @@ the end. No external network is required.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Optional, Tuple
@@ -32,31 +31,13 @@ from tstrans.mpegts import (
     VideoCodec,
 )
 
+from _builders.mux_programs import video_only_program as _video_only_program
+from _builders.ports import free_tcp_port as _free_tcp_port
+
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    """Ask the OS for an ephemeral TCP port, then release it. UDP and
-    TCP ports are independent in the kernel; we just need *some*
-    ephemeral integer the OS hasn't handed out to a UDP loopback. Tests
-    run sequentially, so the tiny TOCTOU window doesn't matter."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _video_only_program() -> object:
-    """Minimal single-video-stream MuxerProgramConfig."""
-    return (
-        MuxerProgramConfigBuilder(1, 0x100)
-        .add_video(0x101, VideoCodec.H264)
-        .build()
-    )
 
 
 def _video_klv_program() -> object:

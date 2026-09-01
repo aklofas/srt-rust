@@ -19,7 +19,6 @@ for that scenario.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Optional, Tuple
@@ -31,21 +30,7 @@ import tstrans.srt
 from tstrans.exceptions import SrtError, SrtErrorKind
 from tstrans.srt import ManagedTransportStats
 
-
-# --------------------------------------------------------------------------- #
-# Helpers (mirror test_srt_transport.py shape)                                #
-# --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    """OS-allocated ephemeral port. SRT binds on UDP but the kernel
-    allocates UDP/TCP ports separately — any ephemeral integer suffices
-    for a loopback test."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from _builders.ports import free_tcp_port as _free_tcp_port
 
 
 def _make_managed_pair(

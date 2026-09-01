@@ -44,7 +44,6 @@ Test inventory:
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import List, Optional, Tuple
@@ -62,22 +61,13 @@ from tstrans.mpegts import (
     VideoCodec,
 )
 
+from _builders.mux_programs import video_only_program as _video_only_program
+from _builders.ports import free_tcp_port as _free_tcp_port
+
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
-
-
-def _free_tcp_port() -> int:
-    """Ask the OS for an ephemeral TCP port, then release it. SRT binds
-    on UDP but the kernel allocates UDP/TCP ports separately — any
-    ephemeral integer suffices for a loopback test. The tiny TOCTOU
-    window is fine since pytest runs sequentially by default."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 def _video_klv_program() -> object:
@@ -87,14 +77,6 @@ def _video_klv_program() -> object:
         MuxerProgramConfigBuilder(1, 0x100)
         .add_video(0x101, VideoCodec.H264)
         .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
-        .build()
-    )
-
-
-def _video_only_program() -> object:
-    return (
-        MuxerProgramConfigBuilder(1, 0x100)
-        .add_video(0x101, VideoCodec.H264)
         .build()
     )
 

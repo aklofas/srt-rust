@@ -35,38 +35,16 @@ Watchdog: 5 s per call.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 
 import pytest
 
 import tstrans.srt as srt
-from tstrans.mpegts import (
-    MuxerProgramConfigBuilder,
-    Pts90khz,
-    VideoCodec,
-)
+from tstrans.mpegts import Pts90khz
 
-
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
-
-def _free_tcp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _video_only_program() -> object:
-    return (
-        MuxerProgramConfigBuilder(1, 0x100)
-        .add_video(0x101, VideoCodec.H264)
-        .build()
-    )
+from _builders.mux_programs import video_only_program as _video_only_program
+from _builders.ports import free_tcp_port as _free_tcp_port
 
 
 NAL_IDR = b"\x00\x00\x00\x01\x65\xBB"

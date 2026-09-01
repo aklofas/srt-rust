@@ -19,23 +19,10 @@ which is the CANCELLED path, not a peer-initiated clean teardown), so
 
 from __future__ import annotations
 
-import socket
-
 import tstrans.rtp
 from tstrans.rtp import StreamEndReason
 
-
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-
-
-def _free_udp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from _builders.ports import free_udp_port as _free_udp_port
 
 
 # --------------------------------------------------------------------------- #

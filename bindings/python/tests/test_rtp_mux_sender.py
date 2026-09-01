@@ -26,27 +26,13 @@ from tstrans.mpegts import (
     VideoCodec,
 )
 
+from _builders.mux_programs import video_only_program as _video_only_program
+from _builders.ports import free_udp_port as _free_udp_port
+
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
-
-
-def _free_udp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _video_only_program(pid_video: int = 0x101) -> object:
-    """Minimal single-video-stream MuxerProgramConfig."""
-    return (
-        MuxerProgramConfigBuilder(1, 0x100)
-        .add_video(pid_video, VideoCodec.H264)
-        .build()
-    )
 
 
 def _video_klv_program() -> object:

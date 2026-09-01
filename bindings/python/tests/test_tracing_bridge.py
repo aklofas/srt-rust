@@ -14,17 +14,10 @@ observe both the "installed" and "not installed" states cleanly.
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 
-
-def _free_udp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from _builders.ports import free_udp_port as _free_udp_port
 
 
 # `DemuxReceiver.__init__` (crates/tst-pipeline/src/demux_receiver.rs)

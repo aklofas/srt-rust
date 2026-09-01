@@ -2,18 +2,17 @@
 //!
 //! Wraps `tst_rtp::RtspServerBuilder` with a mutable opaque handle so C
 //! callers can configure a server incrementally before calling
-//! `tst_rtsp_server_builder_start` (Task 8).
+//! `tst_rtsp_server_builder_start`.
 //!
 //! # Builder pattern divergence from the Rust API
 //!
 //! `RtspServerBuilder` uses `&mut self -> &mut Self` chain setters (which
 //! is already FFI-friendly on the Rust side), but the C ABI stores fields
 //! independently in `TstRtspServerBuilder` (see `bindings/c/core/src/handle.rs`)
-//! and reconstructs the Rust builder from them at `start` time (Task 8).
-//! This matches the T5 `TstRtspClientBuilder` pattern, keeps the opaque
-//! struct layout stable across future Rust API changes, and avoids holding
-//! a partially-constructed `RtspServerBuilder` inside an `Option<T>` across
-//! C setter calls.
+//! and reconstructs the Rust builder from them at `start` time. This matches
+//! the `TstRtspClientBuilder` pattern, keeps the opaque struct layout stable
+//! across future Rust API changes, and avoids holding a partially-constructed
+//! `RtspServerBuilder` inside an `Option<T>` across C setter calls.
 //!
 //! # Auth scheme
 //!
@@ -75,8 +74,8 @@ use crate::panic::ffi_catch;
 /// Auth, TLS, session limits, and drain policy may be set with the
 /// `_auth_*`, `_tls_cert_pem`, `_max_sessions`, `_session_timeout`,
 /// `_fanout_capacity`, and `_graceful_shutdown_drain_ms` setters before
-/// calling `tst_rtsp_server_builder_start` (Task 8) to bind the listener
-/// and begin accepting connections.
+/// calling `tst_rtsp_server_builder_start` to bind the listener and begin
+/// accepting connections.
 ///
 /// Returns a non-NULL builder pointer on success, or NULL with the
 /// thread-local last-error populated on failure (bad URL, non-IP-literal
@@ -386,7 +385,7 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_fanout_capacity(
 
 /// Set the graceful-shutdown drain window in milliseconds.
 ///
-/// When `tst_rtsp_server_stop` (Task 9) is called, the server sends an RFC
+/// When `tst_rtsp_server_stop` is called, the server sends an RFC
 /// 7826 §13.5.1 Notice 5402 ("Server-Initiated TEARDOWN") ANNOUNCE to each
 /// active session, then waits up to `ms` milliseconds (plus 1 s fixed
 /// overhead) for in-flight RTP frames to drain before closing the listener
@@ -495,8 +494,8 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_tls_cert_pem(
 /// you want to discard it.  After this call the pointer is invalid; any
 /// further use is undefined behavior.  NULL is a no-op.
 ///
-/// Prefer `tst_rtsp_server_builder_start` (Task 8) which also consumes
-/// the builder — `_free` is the error-path companion.
+/// Prefer `tst_rtsp_server_builder_start` which also consumes the builder —
+/// `_free` is the error-path companion.
 ///
 /// # Safety
 ///
@@ -568,9 +567,10 @@ unsafe fn extract_credentials_pair(
 ///
 /// Mirrors `tst_rtp::builder::ServerAuthScheme` (which is `pub(crate)`)
 /// without depending on the private Rust enum across the crate boundary at
-/// field-initialization time.  Task 8's `_start` maps this tag back to the
-/// corresponding `RtspServerBuilder::auth_basic` / `auth_digest_md5` /
-/// `auth_digest_sha256` call when reconstructing the Rust builder.
+/// field-initialization time.  `tst_rtsp_server_builder_start` maps this tag
+/// back to the corresponding `RtspServerBuilder::auth_basic` /
+/// `auth_digest_md5` / `auth_digest_sha256` call when reconstructing the
+/// Rust builder.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum TstRtspServerAuthScheme {
     Basic,

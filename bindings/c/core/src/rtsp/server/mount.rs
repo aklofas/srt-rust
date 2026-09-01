@@ -80,7 +80,7 @@ use crate::rtsp::server::types::{TstRtspMountHandle, TstRtspServer};
 ///
 /// Returns a non-NULL `tst_rtsp_mount_handle_t*` on success, NULL on
 /// failure with last-error set. The handle must eventually be freed with
-/// `tst_rtsp_mount_handle_free` (Task 9 / 10 scope).
+/// `tst_rtsp_mount_handle_free`.
 ///
 /// # Safety
 ///

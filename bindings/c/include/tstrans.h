@@ -1344,12 +1344,12 @@ typedef struct tst_rtsp_cancel_handle_t tst_rtsp_cancel_handle_t;
  * Configuration accumulator for the RTSP client.
  *
  * Allocated by `tst_rtsp_client_builder_new` and consumed (or freed) by
- * `tst_rtsp_client_builder_connect` (Task 6) / `tst_rtsp_client_builder_free`.
+ * `tst_rtsp_client_builder_connect` / `tst_rtsp_client_builder_free`.
  *
  * Fields are stored independently rather than wrapping `RtspClientBuilder`
  * directly because `RtspClientBuilder` uses consuming `mut self -> Self`
- * chain setters, making in-place C mutation cumbersome.  Task 6's connect
- * path constructs the final `RtspClientBuilder` from these fields.
+ * chain setters, making in-place C mutation cumbersome.  The connect path
+ * constructs the final `RtspClientBuilder` from these fields.
  */
 typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
 #endif
@@ -1360,7 +1360,7 @@ typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
  *
  * Obtained from [`super::mount::tst_rtsp_server_add_unicast_mount`] or
  * [`super::mount::tst_rtsp_server_add_multicast_mount`]. Push methods
- * (`push_video`, `push_klv`, etc.) are in Task 9. Freed with
+ * (`push_video`, `push_klv`, etc.) live in `mount.rs`. Freed with
  * `tst_rtsp_mount_handle_free`.
  *
  * The `MountHandle` returned by the Rust API is `Clone + Send`, so multiple
@@ -1383,13 +1383,12 @@ typedef struct TstRtspMountHandle TstRtspMountHandle;
  * Opaque handle for a started RTSP server.
  *
  * Obtained from [`super::start::tst_rtsp_server_builder_start`]. Freed (with
- * graceful shutdown) via `tst_rtsp_server_stop` + `tst_rtsp_server_free`
- * (Task 10), or implicitly via Drop (hard cancel).
+ * graceful shutdown) via `tst_rtsp_server_stop` + `tst_rtsp_server_free`,
+ * or implicitly via Drop (hard cancel).
  *
  * The inner `Mutex<Option<…>>` gives close-idempotence: after `_stop` or
  * `_free` the `Option` is `None` and subsequent calls return `TST_E_CLOSED`.
- * This mirrors the `TstRtspSession` shape used in the client surface
- * (Task 6).
+ * This mirrors the `TstRtspSession` shape used in the client surface.
  */
 typedef struct TstRtspServer TstRtspServer;
 #endif
@@ -1399,7 +1398,7 @@ typedef struct TstRtspServer TstRtspServer;
  * Configuration accumulator for the RTSP server.
  *
  * Allocated by `tst_rtsp_server_builder_new` and consumed (or freed) by
- * `tst_rtsp_server_builder_start` (Task 8) / `tst_rtsp_server_builder_free`.
+ * `tst_rtsp_server_builder_start` / `tst_rtsp_server_builder_free`.
  *
  * Fields are stored independently rather than wrapping `RtspServerBuilder`
  * directly.  Even though `RtspServerBuilder` uses `&mut self -> &mut Self`
@@ -5818,8 +5817,8 @@ void tst_rtsp_cancel_handle_free(struct tst_rtsp_cancel_handle_t *handle);
  * you want to discard it.  After this call the pointer is invalid; any
  * further use is undefined behavior.  NULL is a no-op.
  *
- * Prefer `tst_rtsp_client_builder_connect` (Task 6) which also consumes
- * the builder — `_free` is the error-path companion.
+ * Prefer `tst_rtsp_client_builder_connect` which also consumes the builder —
+ * `_free` is the error-path companion.
  *
  * # Safety
  *
@@ -5881,8 +5880,8 @@ void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
  * you want to discard it.  After this call the pointer is invalid; any
  * further use is undefined behavior.  NULL is a no-op.
  *
- * Prefer `tst_rtsp_server_builder_start` (Task 8) which also consumes
- * the builder — `_free` is the error-path companion.
+ * Prefer `tst_rtsp_server_builder_start` which also consumes the builder —
+ * `_free` is the error-path companion.
  *
  * # Safety
  *
@@ -8366,7 +8365,7 @@ void tst_rtsp_client_builder_keepalive(struct tst_rtsp_client_builder_t *builder
  * Transport preference, auth credentials, keepalive policy, and (for
  * `rtsps://`) TLS root certificates may be set with the `_transport_pref`,
  * `_auth_*`, `_keepalive`, and `_tls_root_cert_pem` setters before calling
- * `tst_rtsp_client_builder_connect` (Task 6) to open a live session.
+ * `tst_rtsp_client_builder_connect` to open a live session.
  *
  * `?recv_timeout=<ms>` on `url` configures a persistent receive deadline
  * on the transport `tst_rtsp_session_into_demux_receiver` returns —
@@ -8879,7 +8878,7 @@ struct TstRtspMountHandle *tst_rtsp_server_add_multicast_mount(struct TstRtspSer
  *
  * Returns a non-NULL `tst_rtsp_mount_handle_t*` on success, NULL on
  * failure with last-error set. The handle must eventually be freed with
- * `tst_rtsp_mount_handle_free` (Task 9 / 10 scope).
+ * `tst_rtsp_mount_handle_free`.
  *
  * # Safety
  *
@@ -9027,7 +9026,7 @@ void tst_rtsp_server_builder_fanout_capacity(struct TstRtspServerBuilder *builde
 /**
  * Set the graceful-shutdown drain window in milliseconds.
  *
- * When `tst_rtsp_server_stop` (Task 9) is called, the server sends an RFC
+ * When `tst_rtsp_server_stop` is called, the server sends an RFC
  * 7826 §13.5.1 Notice 5402 ("Server-Initiated TEARDOWN") ANNOUNCE to each
  * active session, then waits up to `ms` milliseconds (plus 1 s fixed
  * overhead) for in-flight RTP frames to drain before closing the listener
@@ -9077,8 +9076,8 @@ void tst_rtsp_server_builder_max_sessions(struct TstRtspServerBuilder *builder, 
  * Auth, TLS, session limits, and drain policy may be set with the
  * `_auth_*`, `_tls_cert_pem`, `_max_sessions`, `_session_timeout`,
  * `_fanout_capacity`, and `_graceful_shutdown_drain_ms` setters before
- * calling `tst_rtsp_server_builder_start` (Task 8) to bind the listener
- * and begin accepting connections.
+ * calling `tst_rtsp_server_builder_start` to bind the listener and begin
+ * accepting connections.
  *
  * Returns a non-NULL builder pointer on success, or NULL with the
  * thread-local last-error populated on failure (bad URL, non-IP-literal
@@ -9140,8 +9139,6 @@ void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builde
  *   Notice 5402 "Server-Initiated TEARDOWN" to each active session), then
  *   `tst_rtsp_server_free` to release the handle.
  * - Or simply `tst_rtsp_server_free` for a hard-cancel Drop path.
- *
- * Both `_stop` and `_free` land in Task 10's scope.
  *
  * # Safety
  *

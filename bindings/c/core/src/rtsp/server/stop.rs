@@ -1,6 +1,6 @@
 //! Server-level lifecycle: stats, cancel, stop, free.
 //!
-//! Five entry points covering the back half of the `TstRtspServer` lifecycle
+//! The entry points covering the back half of the `TstRtspServer` lifecycle
 //! (opened + started earlier; these query, cancel, stop, and free it):
 //!
 //! ```text

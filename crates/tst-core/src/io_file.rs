@@ -105,13 +105,23 @@ pub fn demux_file_with_config(
 /// error policy.
 ///
 /// ```no_run
+/// # #[allow(deprecated)]
+/// # {
 /// use tst_core::io_file::DemuxFromFile;
 ///
 /// let iter = DemuxFromFile::open("input.ts").unwrap();
 /// for event in iter {
 ///     println!("{:?}", event);
 /// }
+/// # }
 /// ```
+#[deprecated(
+    since = "0.6.0",
+    note = "lossy on read/demux-feed errors (silently coerces to early EOF) \
+            — use `TryDemuxFromFile` instead, which surfaces the same \
+            failures via `Iterator<Item = io::Result<DemuxEvent>>`; \
+            removal no earlier than 1.0"
+)]
 pub struct DemuxFromFile {
     file: File,
     buf: Box<[u8; 65536]>,
@@ -120,6 +130,7 @@ pub struct DemuxFromFile {
     eof: bool,
 }
 
+#[allow(deprecated)] // the impl block for a deprecated type warns on every field touch
 impl DemuxFromFile {
     /// Open `path` with default [`DemuxerConfig`].
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
@@ -138,6 +149,7 @@ impl DemuxFromFile {
     }
 }
 
+#[allow(deprecated)] // the impl block for a deprecated type warns on every field touch
 impl Iterator for DemuxFromFile {
     type Item = DemuxEvent;
 

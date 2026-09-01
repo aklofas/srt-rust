@@ -204,20 +204,6 @@ pub(super) fn escape_obu_unit_body(unit_bytes: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-/// Result of wrapping an elementary OBU stream into binding framing.
-pub(super) struct Av1WrapResult {
-    /// Bytes appended to `out`. Not consumed by the mux push path
-    /// (which derives the length from `out.len()` directly), but used by
-    /// unit tests to assert byte-exact wrap sizing.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) written: usize,
-    /// True iff the wrap consumed the entire `obu_bytes` input cleanly
-    /// (every OBU carried `obu_has_size_field=1` and fit the buffer).
-    /// False when the walk bailed early — the input is not a well-formed
-    /// elementary OBU stream.
-    pub(super) fully_consumed: bool,
-}
-
 /// Wrap a raw AV1 low-overhead OBU bytestream in per-OBU
 /// `ts_open_bitstream_unit()` framing (AV1-in-MPEG-2-TS binding §3.2).
 ///
@@ -248,10 +234,12 @@ pub(super) struct Av1WrapResult {
 ///
 /// Empty input → empty output (no start codes, no escape bytes).
 ///
-/// Appends to `out` (does not clear it). Returns an [`Av1WrapResult`]
-/// reporting bytes written and whether the full input was consumed.
-pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> Av1WrapResult {
-    let start_len = out.len();
+/// Appends to `out` (does not clear it; the mux push path derives the
+/// wrapped length from `out.len()` directly). Returns `true` iff the wrap
+/// consumed the entire `obu_bytes` input cleanly (every OBU carried
+/// `obu_has_size_field=1` and fit the buffer); `false` when the walk
+/// bailed early — the input is not a well-formed elementary OBU stream.
+pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> bool {
     let mut i = 0usize;
     while i < obu_bytes.len() {
         let obu_start = i;
@@ -302,10 +290,7 @@ pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> Av1W
         out.extend_from_slice(&AV1_TS_OBU_START_CODE);
         escape_obu_unit_body(obu_slice, out);
     }
-    Av1WrapResult {
-        written: out.len() - start_len,
-        fully_consumed: i == obu_bytes.len(),
-    }
+    i == obu_bytes.len()
 }
 
 /// True iff `caller_descs` contains any descriptor that the receiver-side
@@ -914,8 +899,7 @@ mod tests {
         // Single Frame Header OBU with a benign body.
         let raw = make_obu(3, &[0x42, 0xAA, 0x55, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF]);
         let mut wrapped = Vec::new();
-        let wrap = wrap_av1_obus_binding(&raw, &mut wrapped);
-        assert_eq!(wrap.written, wrapped.len());
+        wrap_av1_obus_binding(&raw, &mut wrapped);
         // Must begin with the binding §3.2 3-byte start code 0x000001.
         assert_eq!(&wrapped[..3], &[0x00, 0x00, 0x01]);
         // Exactly one start code (single OBU in).
@@ -976,8 +960,7 @@ mod tests {
         // from the previous one-start-code-per-AU behavior (validate-1 C8
         // follow-up).
         let mut wrapped = Vec::new();
-        let wrap = wrap_av1_obus_binding(&[], &mut wrapped);
-        assert_eq!(wrap.written, 0);
+        wrap_av1_obus_binding(&[], &mut wrapped);
         assert!(wrapped.is_empty());
     }
 

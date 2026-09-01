@@ -34,6 +34,7 @@ use tst_pipeline::{
 use tst_srt::{Listener, ListenerConfig, Socket, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
+use crate::jutil::join_host_port;
 use crate::mpegts::{build_demux_config_from_args, convert_event, throw_demux_error};
 
 use super::JniCancel;
@@ -54,16 +55,6 @@ struct JniDemuxReceiver {
 /// Per-type leased-handle registry for `org.tstrans.srt.DemuxReceiver`. No cancel
 /// hook (srt model — the public cancel handle + connection-close end iteration).
 static REGISTRY: LazyLock<HandleRegistry<JniDemuxReceiver>> = LazyLock::new(HandleRegistry::new);
-
-/// Join `host:port`, bracketing bare IPv6 literals. Mirror of the helper in
-/// `srt/transport.rs` (inlined there) / `srt/mux_sender.rs`.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
 
 /// Map a `DemuxReceiverError` raised by `recv_event` onto a thrown Java
 /// exception. Transport-side errors map to `SrtException` (via the shared

@@ -38,22 +38,13 @@ use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtU
 use super::JniCancel;
 use super::stats::{build_managed_transport_stats, build_socket_stats};
 use crate::handle::HandleRegistry;
+use crate::jutil::join_host_port;
 
 // -----------------------------------------------------------------------
 // Factory helpers — rebuild a fresh SrtTransport from a URL string.
 // Ported verbatim from tst-py's managed_basic.rs: every failure maps to
 // TransportError::Broken so the reconnect loop treats it as recoverable.
 // -----------------------------------------------------------------------
-
-/// Build an `addr` string from a parsed `SrtUrl`, bracketing IPv6 literals so
-/// `Socket::connect_with` / `Listener::bind_with` accept them.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
 
 /// Build a fresh caller-mode `SrtTransport` from a URL string. Used by the
 /// reconnect factory closure: every Broken/Closed event reruns this.

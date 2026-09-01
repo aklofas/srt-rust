@@ -430,3 +430,13 @@ pub fn read_nullable_byte_buffer(
     let bytes = read_byte_buffer(env, &obj)?;
     Ok(Some(bytes))
 }
+
+/// Join `host:port`, bracketing bare IPv6 literals so `Socket::connect_with` /
+/// `Listener::bind_with` accept them.
+pub fn join_host_port(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}

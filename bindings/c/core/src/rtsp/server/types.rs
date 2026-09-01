@@ -41,11 +41,8 @@ pub struct TstRtspServer {
     /// or `tst_rtsp_server_free` consumes the value.
     pub(crate) inner: Mutex<Option<Box<tst_rtp::RtspServer>>>,
     /// Hard-cancel handle. Cloned from the server before inserting into
-    /// `inner` so that `tst_rtsp_server_cancel` (Task 10) can fire it
+    /// `inner` so that `tst_rtsp_server_cancel_handle` can fire it
     /// without acquiring the `inner` Mutex.
-    // `cancel` is read by Task 10's `tst_rtsp_server_cancel` entry point.
-    // Allow dead_code until T10 lands.
-    #[allow(dead_code)]
     pub(crate) cancel: tst_rtp::RtspServerCancelHandle,
 }
 

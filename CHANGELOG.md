@@ -404,10 +404,11 @@ is a separate, JVM-only behavior change from an earlier arc.)
   the C ABI setter (`tst_sender_config_set_max_unsynced_bytes`) but
   never constructed. `send_ts` now returns `NoSyncAfterLimit { max }`
   once scanning exceeds the configured threshold without acquiring
-  sync; the counter resets afterward so the watchdog can fire again on
-  the next `max_unsynced_bytes` of unrecovered garbage (cumulative
-  across `send_ts` calls until sync is acquired — how the garbage is
-  chunked across calls can affect exactly when it fires). Set
+  sync. The count accumulates across `send_ts` calls until sync is
+  acquired OR the watchdog fires, resetting to zero either way, so a
+  persistently non-TS source trips it again every `max_unsynced_bytes`
+  — how the garbage is chunked across calls can affect exactly when it
+  first fires. Set
   `max_unsynced_bytes` to `usize::MAX` to effectively disable the
   watchdog. C-visible: `tst_sender_send_ts` can now return
   `TST_E_INVALID_TS` where it previously always returned 0 for a

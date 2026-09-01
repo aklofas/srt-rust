@@ -283,23 +283,6 @@ fn throw_codec_inner(
     fields: &CodecErrFields,
     message: &str,
 ) -> jni::errors::Result<()> {
-    let exc = build_codec_object(env, kind, codec, fields, message)?;
-    env.throw(JThrowable::from(exc))
-}
-
-/// Construct (but do NOT throw) an `org.tstrans.CodecParseException` object from
-/// a kind literal + diagnostic fields. The object-construction half of
-/// [`throw_codec_inner`], split out so the demux audio bytes-fallback path can
-/// attach a `CodecParseException` to a `DemuxEvent.Audio` record without raising
-/// it. Mirrors tst-py, where `codec_parse_error_to_pyerr` builds a `PyErr` value
-/// the audio arm stores on the event rather than throwing.
-fn build_codec_object<'local>(
-    env: &mut JNIEnv<'local>,
-    kind: &str,
-    codec: &str,
-    fields: &CodecErrFields,
-    message: &str,
-) -> jni::errors::Result<JObject<'local>> {
     // 17 local refs are live at the `new_object` call (kind_val + codec_str +
     // field_str + 12 boxed ints + msg + exc), over the JNI-guaranteed 16-slot
     // floor — reserve headroom up front, matching the KLV-builder house pattern.
@@ -338,7 +321,7 @@ Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;\
 Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;\
 Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;\
 Ljava/lang/Integer;)V";
-    env.new_object(
+    let exc = env.new_object(
         "org/tstrans/CodecParseException",
         ctor_sig,
         &[
@@ -359,7 +342,8 @@ Ljava/lang/Integer;)V";
             JValue::Object(&had),
             JValue::Object(&layer),
         ],
-    )
+    )?;
+    env.throw(JThrowable::from(exc))
 }
 
 /// Map + throw a Rust `CodecParseError`. All 12 Kind literals appear inline as

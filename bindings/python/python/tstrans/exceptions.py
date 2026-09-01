@@ -359,9 +359,7 @@ class UdpErrorKind(enum.IntEnum):
     (built with the `udp` cargo feature, default-on)."""
 
     URL = 0
-    HOST_NOT_LITERAL = 1
     IO = 2
-    IFACE_UNSUPPORTED = 3
     PAYLOAD_TOO_LARGE = 4
     CLOSED = 5
     INVALID_CONFIG = 6

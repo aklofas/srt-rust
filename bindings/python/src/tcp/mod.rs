@@ -32,7 +32,7 @@
 //! fallback through Python `bytes()` builtin for `bytearray`/`memoryview`.
 //!
 //! Error mapping: `tst_tcp::error::TcpError` -> `tstrans.exceptions.TcpError`
-//! with `.kind` set to one of the eight `TcpErrorKind` variants.
+//! with `.kind` set to one of the seven `TcpErrorKind` variants.
 //! `scripts/check/python/error-mapping-coverage.sh` enforces that every
 //! `TcpErrorKind` variant has at least one literal
 //! `make_tcp_error(py, "<VARIANT>", ...)` call site in this crate.
@@ -62,14 +62,13 @@ use crate::errors::make_tcp_error;
 /// unknown future variant to `IO` so this fn never panics on a Rust-side
 /// enum addition. The bash ratchet will surface the omission in CI.
 ///
-/// Each of the eight `TcpErrorKind` variants gets a literal call site below
+/// Each of the seven `TcpErrorKind` variants gets a literal call site below
 /// so the `check-py-tcp-error-mapping-coverage.sh` ratchet stays green.
 fn map_tcp_error_kind(py: Python<'_>, e: TcpError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {
         TcpErrorKind::Url => make_tcp_error(py, "URL", &msg),
         TcpErrorKind::Io => make_tcp_error(py, "IO", &msg),
-        TcpErrorKind::PayloadTooLarge => make_tcp_error(py, "PAYLOAD_TOO_LARGE", &msg),
         TcpErrorKind::Closed => make_tcp_error(py, "CLOSED", &msg),
         TcpErrorKind::ConnectTimeout => make_tcp_error(py, "CONNECT_TIMEOUT", &msg),
         TcpErrorKind::InvalidConfig => make_tcp_error(py, "INVALID_CONFIG", &msg),

@@ -17,7 +17,7 @@
 //! - `stats`, `close` — fast read-only / atomic; no GIL release needed.
 //!
 //! Error mapping: `tst_rist::RistError` → `tstrans.exceptions.RistError` with
-//! `.kind` set to one of the ten `RistErrorKind` variants. The Rust
+//! `.kind` set to one of the six `RistErrorKind` variants. The Rust
 //! `RistErrorKind` is `#[non_exhaustive]`; the wildcard arm routes any unknown
 //! future variant to `IO`. The bash ratchet
 //! `scripts/check-py-rist-error-mapping-coverage.sh` enforces every variant
@@ -54,21 +54,17 @@ use crate::errors::make_rist_error;
 /// future variant to `IO` so this fn never panics on a Rust-side enum addition.
 /// The bash ratchet surfaces the omission in CI.
 ///
-/// Each of the ten `RistErrorKind` variants gets a literal call site below so
+/// Each of the six `RistErrorKind` variants gets a literal call site below so
 /// the `check-py-rist-error-mapping-coverage.sh` ratchet stays green.
 fn map_rist_error_from_err(py: Python<'_>, e: RistError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {
         RistErrorKind::Url => make_rist_error(py, "URL", &msg),
         RistErrorKind::Ffi => make_rist_error(py, "FFI", &msg),
-        RistErrorKind::PayloadTooLarge => make_rist_error(py, "PAYLOAD_TOO_LARGE", &msg),
-        RistErrorKind::Closed => make_rist_error(py, "CLOSED", &msg),
         RistErrorKind::InvalidConfig => make_rist_error(py, "INVALID_CONFIG", &msg),
         RistErrorKind::EncryptionDisabled => make_rist_error(py, "ENCRYPTION_DISABLED", &msg),
         RistErrorKind::ContextCreateFailed => make_rist_error(py, "CONTEXT_CREATE_FAILED", &msg),
         RistErrorKind::PeerCreateFailed => make_rist_error(py, "PEER_CREATE_FAILED", &msg),
-        RistErrorKind::RecvTimeout => make_rist_error(py, "RECV_TIMEOUT", &msg),
-        RistErrorKind::Io => make_rist_error(py, "IO", &msg),
         // Wildcard for #[non_exhaustive] additions not yet mapped.
         _ => make_rist_error(py, "IO", &msg),
     }

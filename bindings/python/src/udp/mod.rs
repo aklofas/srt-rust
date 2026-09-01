@@ -20,7 +20,7 @@
 //! `bytearray`/`memoryview`.
 //!
 //! Error mapping: `tst_udp::UdpError` → `tstrans.exceptions.UdpError` with
-//! `.kind` set to one of the seven `UdpErrorKind` variants. The Rust
+//! `.kind` set to one of the three `UdpErrorKind` variants. The Rust
 //! `UdpErrorKind` numeric codes are 1-indexed; the Python `UdpErrorKind`
 //! enum is 0-indexed — the mapping uses enum *names*, not numeric codes,
 //! so there is no off-by-one issue.
@@ -51,17 +51,13 @@ use crate::errors::make_udp_error;
 /// unknown future variant to `IO` so this fn never panics on a Rust-side
 /// enum addition. The bash ratchet will surface the omission in CI.
 ///
-/// Each of the seven `UdpErrorKind` variants gets a literal call site below
+/// Each of the three `UdpErrorKind` variants gets a literal call site below
 /// so the `check-py-udp-error-mapping-coverage.sh` ratchet stays green.
 fn map_udp_error(py: Python<'_>, e: UdpError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {
         UdpErrorKind::Url => make_udp_error(py, "URL", &msg),
-        UdpErrorKind::HostNotLiteral => make_udp_error(py, "HOST_NOT_LITERAL", &msg),
         UdpErrorKind::Io => make_udp_error(py, "IO", &msg),
-        UdpErrorKind::IfaceUnsupported => make_udp_error(py, "IFACE_UNSUPPORTED", &msg),
-        UdpErrorKind::PayloadTooLarge => make_udp_error(py, "PAYLOAD_TOO_LARGE", &msg),
-        UdpErrorKind::Closed => make_udp_error(py, "CLOSED", &msg),
         UdpErrorKind::InvalidConfig => make_udp_error(py, "INVALID_CONFIG", &msg),
         // Wildcard for #[non_exhaustive] additions not yet mapped.
         _ => make_udp_error(py, "IO", &msg),

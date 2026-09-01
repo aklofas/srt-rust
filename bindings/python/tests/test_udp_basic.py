@@ -159,11 +159,11 @@ def test_udp_error_recv_timeout() -> None:
 
 def test_udp_error_kind_count() -> None:
     """Sentinel: catches drift if Rust adds a new UdpErrorKind variant."""
-    assert len(UdpErrorKind) == 7
+    assert len(UdpErrorKind) == 5
 
 
 def test_udp_error_wiring_via_test_helper() -> None:
-    """Verify make_udp_error wiring for all 7 kind variants via test helper."""
+    """Verify make_udp_error wiring for all 5 kind variants via test helper."""
     from tstrans._native import _raise_udp_error_for_test
 
     for kind in UdpErrorKind:

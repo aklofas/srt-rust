@@ -396,6 +396,15 @@ is a separate, JVM-only behavior change from an earlier arc.)
   (`Result<(Vec<Vec<u8>>, &SenderStats), TsFramingError>`, was an
   infallible tuple).
 
+- **Security: `hlss://` with no `?cert=`/`?key=` no longer silently
+  serves plaintext HTTP.** `HlsUrl.tls` (set from the `hlss` scheme)
+  was parsed but never consulted — `HlsConfig::validate()` only
+  rejected a half-configured cert/key pair, so an `hlss://` bind with
+  neither param validated clean and bound plain HTTP with no
+  indication that TLS was never applied. `HlsConfig` gains a `tls`
+  field, set by `merge_from_url`; `validate()` now rejects `tls: true`
+  without both `tls_cert` and `tls_key`.
+
 ---
 
 ## [0.5.1] — 2026-08-18

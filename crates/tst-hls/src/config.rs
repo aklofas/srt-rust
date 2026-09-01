@@ -80,6 +80,12 @@ pub struct HlsConfig {
     /// Optional TLS server key path (PEM).  Required if [`Self::tls_cert`] set.
     /// Ignored when the `serve` feature is disabled.
     pub tls_key: Option<PathBuf>,
+    /// Whether the bind is required to be HTTPS. Set by
+    /// [`Self::merge_from_url`] from an `hlss://` URL's scheme;
+    /// [`Self::validate`] rejects `tls: true` without both
+    /// [`Self::tls_cert`] and [`Self::tls_key`] set, instead of silently
+    /// falling back to a plaintext bind.
+    pub tls: bool,
 }
 
 impl Default for HlsConfig {
@@ -94,6 +100,7 @@ impl Default for HlsConfig {
             basic_auth: None,
             tls_cert: None,
             tls_key: None,
+            tls: false,
         }
     }
 }
@@ -103,6 +110,7 @@ impl HlsConfig {
     #[cfg(feature = "serve")]
     pub fn merge_from_url(&mut self, url: &HlsUrl) {
         self.bind = SocketAddr::new(url.addr, url.port);
+        self.tls = url.tls;
         if let Some(dir) = &url.output_dir {
             self.output_dir = PathBuf::from(dir);
         }
@@ -171,6 +179,11 @@ impl HlsConfig {
         match (&self.tls_cert, &self.tls_key) {
             (Some(_), None) => Some("tls_cert set but tls_key missing".into()),
             (None, Some(_)) => Some("tls_key set but tls_cert missing".into()),
+            (None, None) if self.tls => Some(
+                "hlss:// requires ?cert= and ?key= (or tls_cert/tls_key set \
+                 directly) — refusing to silently fall back to plaintext HTTP"
+                    .into(),
+            ),
             _ => None,
         }
     }
@@ -279,5 +292,36 @@ mod tests {
         assert_eq!(cfg.segment_duration, Duration::from_secs(6));
         assert_eq!(cfg.playlist_window, 10);
         assert_eq!(cfg.mode, HlsMode::Vod);
+    }
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn hlss_without_cert_and_key_fails_validation() {
+        // hlss:// with neither ?cert= nor ?key= must be rejected, not
+        // silently downgraded to a plaintext bind.
+        let mut cfg = HlsConfig::default();
+        let u = HlsUrl::parse("hlss://0.0.0.0:8443").unwrap();
+        cfg.merge_from_url(&u);
+        assert!(cfg.tls);
+        assert!(cfg.validate().is_some());
+    }
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn hlss_with_cert_and_key_passes_validation() {
+        let mut cfg = HlsConfig::default();
+        let u = HlsUrl::parse("hlss://0.0.0.0:8443?cert=server.crt&key=server.key").unwrap();
+        cfg.merge_from_url(&u);
+        assert_eq!(cfg.validate(), None);
+    }
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn plain_hls_without_cert_and_key_still_passes_validation() {
+        let mut cfg = HlsConfig::default();
+        let u = HlsUrl::parse("hls://0.0.0.0:8080").unwrap();
+        cfg.merge_from_url(&u);
+        assert!(!cfg.tls);
+        assert_eq!(cfg.validate(), None);
     }
 }

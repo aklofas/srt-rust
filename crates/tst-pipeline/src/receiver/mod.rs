@@ -308,8 +308,8 @@ impl<R: RecvTransport> Receiver<R> {
     /// the underlying transport has been re-established, bytes left over
     /// from the dead connection must not seed the new alignment search.
     /// Note that `ManagedRecvTransport` itself does **not** own the
-    /// `Receiver` (it lives one layer up, inside `DemuxReceiver`); this method
-    /// exists for a future `ManagedReceiver` shell to call.
+    /// `Receiver` (it lives one layer up, inside `DemuxReceiver`);
+    /// `ManagedDemuxReceiver` calls this on the reconnect-detected path.
     pub fn reset_sync(&mut self) {
         self.syncer.reset();
     }

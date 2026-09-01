@@ -15,9 +15,9 @@
 //!   converts `AcceptError::ListenerClosed` to `StopIteration` so a
 //!   `cancel()` call from another thread closes the loop cleanly.
 //!
-//! Error mapping uses `make_srt_error(py, "<KIND>", &msg)` with the
-//! kind literal on the same line as the `(` so the T4 grep ratchet
-//! sees every coverage point.
+//! Error mapping for `UrlError`/`ConnectError`/`BindError`/`AcceptError`/
+//! `IoError` reuses the canonical mappers in `srt/errors.rs` (the coverage
+//! ratchet greps the whole `srt/` directory, not per-file).
 
 #![allow(
     unsafe_op_in_unsafe_fn,
@@ -40,61 +40,18 @@ use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 
 use tst_core::transport::TransportCancel;
-use tst_srt::error::{AcceptError, BindError, ConnectError, IoError};
+use tst_srt::error::AcceptError;
 use tst_srt::options::{Congestion, MaxBandwidth, Passphrase, StreamId};
 use tst_srt::{
-    Listener as SrtListener, ListenerConfig, Socket as SrtSocket, SocketConfig, SrtUrl, UrlError,
-    url::Mode,
+    Listener as SrtListener, ListenerConfig, Socket as SrtSocket, SocketConfig, SrtUrl, url::Mode,
 };
 
 use crate::errors::make_srt_error;
+use crate::srt::errors::{
+    accept_error_to_pyerr, bind_error_to_pyerr, connect_error_to_pyerr, io_error_to_pyerr,
+    url_error_to_pyerr,
+};
 use crate::srt::transport::{PyCancelHandle, PyReceiver, PySender};
-
-// ---------------------------------------------------------------------------
-// Error mapping (mirrors transport.rs — kept inline so the grep ratchet
-// sees each kind literal on the same line as `make_srt_error(`).
-// ---------------------------------------------------------------------------
-
-fn url_error_to_pyerr(py: Python<'_>, e: UrlError) -> PyErr {
-    make_srt_error(py, "CONFIG_INVALID", &e.to_string())
-}
-
-fn connect_error_to_pyerr(py: Python<'_>, e: ConnectError) -> PyErr {
-    match e {
-        ConnectError::InvalidAddress(_) | ConnectError::InvalidOption(_) => {
-            make_srt_error(py, "CONFIG_INVALID", &e.to_string())
-        }
-        ConnectError::TimedOut => make_srt_error(py, "TIMEOUT", &e.to_string()),
-        ConnectError::Refused
-        | ConnectError::BadEncryption { .. }
-        | ConnectError::Rejected { .. } => make_srt_error(py, "CONNECT_FAILED", &e.to_string()),
-        _ => make_srt_error(py, "CONNECT_FAILED", &e.to_string()),
-    }
-}
-
-fn bind_error_to_pyerr(py: Python<'_>, e: BindError) -> PyErr {
-    match e {
-        BindError::InvalidAddress(_) | BindError::InvalidOption(_) => {
-            make_srt_error(py, "CONFIG_INVALID", &e.to_string())
-        }
-        _ => make_srt_error(py, "CONNECT_FAILED", &e.to_string()),
-    }
-}
-
-fn accept_error_to_pyerr(py: Python<'_>, e: AcceptError) -> PyErr {
-    match e {
-        AcceptError::TimedOut => make_srt_error(py, "TIMEOUT", &e.to_string()),
-        AcceptError::ListenerClosed => make_srt_error(py, "CLOSED", &e.to_string()),
-        _ => make_srt_error(py, "ACCEPT_FAILED", &e.to_string()),
-    }
-}
-
-fn io_error_to_pyerr(py: Python<'_>, e: IoError) -> PyErr {
-    match e {
-        IoError::SocketClosed => make_srt_error(py, "CLOSED", "socket closed"),
-        _ => make_srt_error(py, "IO", &e.to_string()),
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Builder mode tracking

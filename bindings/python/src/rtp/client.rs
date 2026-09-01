@@ -1023,8 +1023,8 @@ fn make_rtsp_error_pure(kind: &str, message: &str) -> PyErr {
 /// - `Protocol { .. }` (other 4xx/5xx) → `PROTOCOL`
 /// - `AuthFailed` / `AuthUnsupported` → `AUTH_FAILED`
 /// - `UnsupportedTransport` → `UNSUPPORTED_TRANSPORT`
-/// - `BadResponse` / `BadSdp` / `InterleavedFraming` /
-///   `SessionExpired` / `LocalCancel` / `Url` → `PROTOCOL`
+/// - `BadResponse` / `BadSdp` / `SessionExpired` / `LocalCancel` / `Url`
+///   → `PROTOCOL`
 /// - `Timeout` → `TIMEOUT`
 /// - `NoMp2tMedia` / `MultipleMp2tMedia` → `MOUNT` (SETUP-time mount
 ///   path issue from the SDP side)
@@ -1048,7 +1048,6 @@ fn rtsp_error_kind_str(e: &RustRtspError) -> &'static str {
         RustRtspError::BadResponse { .. } => "PROTOCOL",
         RustRtspError::BadSdp { .. } => "PROTOCOL",
         RustRtspError::UnsupportedTransport => "UNSUPPORTED_TRANSPORT",
-        RustRtspError::InterleavedFraming { .. } => "PROTOCOL",
         RustRtspError::SessionExpired => "PROTOCOL",
         RustRtspError::Timeout => "TIMEOUT",
         RustRtspError::LocalCancel => "PROTOCOL",

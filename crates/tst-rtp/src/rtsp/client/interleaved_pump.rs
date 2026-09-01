@@ -20,11 +20,11 @@
 //!   between main-thread requests, so queuing them would overflow the
 //!   bounded queue on any long receive-only session and fail it.
 //!
-//! Mirror of the server-side pump (`crate::rtsp::server::interleaved_pump`,
-//! only present under the `rtsp-server` feature — plain text, not an
-//! intra-doc link, so this compiles in the client-only build too). Closes
-//! Phase 2 deferred fix 1 (client side) — see
-//! `[[feedback-wire-primitives-at-call-site-as-explicit-task]]`.
+//! Closes Phase 2 deferred fix 1 (client side) — see
+//! `[[feedback-wire-primitives-at-call-site-as-explicit-task]]`. There is
+//! no server-side counterpart: the RTSP server never expects client→server
+//! `$`-frames (no ANNOUNCE/RECORD support), so it reads plain RTSP request
+//! bytes off the TCP stream directly (`rtsp::server::session`).
 //!
 //! # Wire-up status
 //!
@@ -132,6 +132,85 @@ pub(crate) struct InterleavedChannels {
     pub(crate) rtp: u8,
     /// Channel number for RTCP frames (conventionally `rtp + 1`).
     pub(crate) rtcp: u8,
+}
+
+/// Look for a complete `$<channel><len_be16><payload>` binary
+/// interleaved frame (RFC 7826 §14) at the start of `buf`.
+///
+/// Returns `None` if `buf` doesn't start with `$` or doesn't yet hold
+/// the full `4 + length` bytes (the pump reads more and retries). On
+/// success, returns `(channel, total_len)` — `buf[4..total_len]` is the
+/// frame's payload and `buf[..total_len]` is the whole frame to drain.
+//
+// `#[doc(hidden)] pub` so `tst-rtp-fuzz`'s `rtsp_client_pump_framing`
+// target can drive this exact parsing rule without a live socket/thread
+// — see that target for the harness. Not part of the crate's stable
+// public API.
+#[doc(hidden)]
+pub fn parse_binary_frame_header(buf: &[u8]) -> Option<(u8, usize)> {
+    if buf.first() != Some(&b'$') || buf.len() < 4 {
+        return None;
+    }
+    let channel = buf[1];
+    let length = u16::from_be_bytes([buf[2], buf[3]]) as usize;
+    let total_len = 4 + length;
+    if buf.len() < total_len {
+        return None;
+    }
+    Some((channel, total_len))
+}
+
+/// Outcome of scanning for a complete RTSP message (headers terminated
+/// by `CRLFCRLF` + `Content-Length` body) at the start of `buf`. See
+/// [`scan_rtsp_message_boundary`].
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RtspFrameBoundary {
+    /// `buf` doesn't yet hold a complete message.
+    Incomplete,
+    /// The header block (up to and including `CRLFCRLF`) is not valid
+    /// UTF-8. Treated as a resync point rather than a fatal error —
+    /// skip `skip` bytes and keep reading.
+    NonUtf8Headers { skip: usize },
+    /// `Content-Length` is missing/unparseable/oversized/duplicated.
+    BadContentLength { detail: &'static str },
+    /// `end + 4 + content_length` overflowed `usize`. Unreachable in
+    /// practice (both operands are capped well below `usize::MAX` by
+    /// `pump_accumulation_exceeded` / `content_length_from_header_text`)
+    /// but checked for defense in depth.
+    LengthOverflow,
+    /// A complete message occupies `buf[..len]`.
+    Complete { len: usize },
+}
+
+/// Scan `buf` for the next complete RTSP message boundary.
+//
+// `#[doc(hidden)] pub` — see [`parse_binary_frame_header`]'s doc for why.
+#[doc(hidden)]
+pub fn scan_rtsp_message_boundary(buf: &[u8]) -> RtspFrameBoundary {
+    let end = match buf.windows(4).position(|w| w == b"\r\n\r\n") {
+        Some(e) => e,
+        None => return RtspFrameBoundary::Incomplete,
+    };
+    let header_text = match std::str::from_utf8(&buf[..end]) {
+        Ok(s) => s,
+        Err(_) => return RtspFrameBoundary::NonUtf8Headers { skip: end + 4 },
+    };
+    let content_length = match content_length_from_header_text(header_text) {
+        Ok(n) => n,
+        Err(detail) => return RtspFrameBoundary::BadContentLength { detail },
+    };
+    let len = match end
+        .checked_add(4)
+        .and_then(|e| e.checked_add(content_length))
+    {
+        Some(m) => m,
+        None => return RtspFrameBoundary::LengthOverflow,
+    };
+    if buf.len() < len {
+        return RtspFrameBoundary::Incomplete;
+    }
+    RtspFrameBoundary::Complete { len }
 }
 
 /// Spawn the sync interleaved pump thread.
@@ -294,15 +373,10 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                     }
                     if buf[0] == b'$' {
                         // Binary interleaved frame: `$<channel><len_be16><payload>`.
-                        if buf.len() < 4 {
-                            break; // Need more bytes to read the header.
-                        }
-                        let channel = buf[1];
-                        let length = u16::from_be_bytes([buf[2], buf[3]]) as usize;
-                        if buf.len() < 4 + length {
-                            break; // Need more bytes to read the body.
-                        }
-                        let payload_bytes = &buf[4..4 + length];
+                        let Some((channel, total_len)) = parse_binary_frame_header(&buf) else {
+                            break; // Need more bytes.
+                        };
+                        let payload_bytes = &buf[4..total_len];
                         if channel == channels.rtp {
                             stats.rtp_frames_received.fetch_add(1, Ordering::Relaxed);
                             // Decode the RTP header as a structural validity gate:
@@ -377,30 +451,23 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                                 "frame on unknown channel; dropping"
                             );
                         }
-                        buf.drain(..4 + length);
+                        buf.drain(..total_len);
                     } else {
                         // RTSP response. Frame on `CRLFCRLF` + body of
-                        // `Content-Length` bytes.
-                        let end = match buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                            Some(e) => e,
-                            None => break, // Need more bytes.
-                        };
-                        let header_text = match std::str::from_utf8(&buf[..end]) {
-                            Ok(s) => s,
-                            Err(_) => {
+                        // `Content-Length` bytes. Strict Content-Length:
+                        // unparseable, oversized (> MAX_RTSP_BODY_BYTES), or
+                        // duplicate are all hostile. Silently coercing to 0
+                        // would desync framing, and an uncapped length would
+                        // let a peer drive unbounded buffering — close the
+                        // pump instead.
+                        let msg_end = match scan_rtsp_message_boundary(&buf) {
+                            RtspFrameBoundary::Incomplete => break, // Need more bytes.
+                            RtspFrameBoundary::NonUtf8Headers { skip } => {
                                 stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
-                                buf.drain(..end + 4);
+                                buf.drain(..skip);
                                 continue;
                             }
-                        };
-                        // Strict Content-Length: unparseable, oversized
-                        // (> MAX_RTSP_BODY_BYTES), or duplicate are all hostile.
-                        // Silently coercing to 0 would desync framing, and an
-                        // uncapped length would let a peer drive unbounded
-                        // buffering — close the pump instead.
-                        let content_length = match content_length_from_header_text(header_text) {
-                            Ok(n) => n,
-                            Err(detail) => {
+                            RtspFrameBoundary::BadContentLength { detail } => {
                                 tracing::warn!(
                                     target: "tst_rtp::client::pump",
                                     detail,
@@ -412,22 +479,12 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                                 });
                                 return;
                             }
-                        };
-                        // content_length <= MAX_RTSP_BODY_BYTES and end < buf.len(),
-                        // so this can't overflow; checked_add for defense in depth.
-                        let msg_end = match end
-                            .checked_add(4)
-                            .and_then(|e| e.checked_add(content_length))
-                        {
-                            Some(m) => m,
-                            None => {
+                            RtspFrameBoundary::LengthOverflow => {
                                 stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
                                 return;
                             }
+                            RtspFrameBoundary::Complete { len } => len,
                         };
-                        if buf.len() < msg_end {
-                            break; // Need more bytes for the body.
-                        }
                         // Keepalive-ping responses are consumed HERE, never
                         // queued: nothing drains ctrl_rx between main-thread
                         // requests, so on a receive-only session (SETUP/PLAY

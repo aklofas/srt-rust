@@ -128,7 +128,6 @@ fn rtsp_error_kind(e: &RtspError) -> &'static str {
         RtspError::BadResponse { .. } => "PROTOCOL",
         RtspError::BadSdp { .. } => "PROTOCOL",
         RtspError::UnsupportedTransport => "UNSUPPORTED_TRANSPORT",
-        RtspError::InterleavedFraming { .. } => "PROTOCOL",
         RtspError::SessionExpired => "PROTOCOL",
         RtspError::Timeout => "TIMEOUT",
         RtspError::LocalCancel => "PROTOCOL",
@@ -167,15 +166,14 @@ pub(crate) fn server_error_to_jvm(env: &mut JNIEnv, e: &RtspServerError) {
 
 /// Map a `tst_rtp::error::MountError` onto a thrown exception. Ported 1:1 from
 /// tst-py `server.rs::mount_error_to_pyerr`: `Mux(_) | Closed → RtspException(MOUNT)`
-/// (the failure originates in the mount push path), `PeerBackpressure →
-/// RtpException(TRANSPORT)` (informational). NOTE: this DIFFERS from the wave-B
-/// MuxSender, whose `Mux(...)` became `MuxException` — MountHandle pushes are MOUNT.
+/// (the failure originates in the mount push path). NOTE: this DIFFERS from the
+/// wave-B MuxSender, whose `Mux(...)` became `MuxException` — MountHandle pushes
+/// are MOUNT.
 pub(crate) fn mount_error_to_jvm(env: &mut JNIEnv, e: &MountError) {
     use MountError as E;
     let msg = e.to_string();
     match e {
         E::Mux(_) | E::Closed => throw_rtsp(env, "MOUNT", &msg),
-        E::PeerBackpressure { .. } => throw_rtp(env, "TRANSPORT", &msg),
         // non-exhaustive: future mount-side failures route to MOUNT.
         _ => throw_rtsp(env, "MOUNT", &msg),
     }

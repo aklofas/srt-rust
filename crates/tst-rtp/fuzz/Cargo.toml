@@ -26,8 +26,8 @@ doc               = false
 bench             = false
 
 [[bin]]
-name              = "rtsp_interleaved_demux"
-path              = "fuzz_targets/rtsp_interleaved_demux.rs"
+name              = "rtsp_client_pump_framing"
+path              = "fuzz_targets/rtsp_client_pump_framing.rs"
 test              = false
 doc               = false
 bench             = false

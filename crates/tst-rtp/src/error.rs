@@ -72,15 +72,6 @@ pub enum RtspError {
     #[error("RTSP server does not support a transport we accept")]
     UnsupportedTransport,
 
-    /// Malformed `$<channel:u8><length:u16><payload>` interleaved frame
-    /// from the server (length field doesn't match payload size,
-    /// channel out of allocated range, etc.). The control channel
-    /// surfaces this immediately; downstream
-    /// `RtpRecvTransport::recv_bytes` then yields
-    /// `TransportError::Broken`.
-    #[error("malformed interleaved frame: {detail}")]
-    InterleavedFraming { detail: &'static str },
-
     /// Server closed our session (sent RTSP/1.0 454 Session Not Found
     /// on a keepalive ping, or the underlying TCP went RST). After
     /// this, no further requests succeed; caller must construct a fresh
@@ -230,11 +221,4 @@ pub enum MountError {
     /// explicitly removed in a future API).
     #[error("mount closed")]
     Closed,
-
-    /// At least one peer's broadcast subscriber lagged past capacity; the
-    /// `dropped_frames` count is informational (the push itself
-    /// succeeded). Callers wanting end-to-end no-drop semantics can react
-    /// by slowing their push rate.
-    #[error("peer backpressure: {dropped_frames} frames dropped on slow peers")]
-    PeerBackpressure { dropped_frames: u64 },
 }

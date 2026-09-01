@@ -642,7 +642,6 @@ pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
         BadResponse { .. } => TstError::RtspProtocol,
         BadSdp { .. } => TstError::RtspProtocol,
         UnsupportedTransport => TstError::RtspUnsupported,
-        InterleavedFraming { .. } => TstError::RtspProtocol,
         SessionExpired => TstError::RtspProtocol,
         Timeout => TstError::RtspTimeout,
         LocalCancel => TstError::RtspProtocol,
@@ -665,7 +664,7 @@ pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
 }
 
 /// Map a [`tst_rtp::MountError`] to the appropriate `TstError` variant.
-/// All three variants collapse to `TstError::RtspMount`.
+/// Both variants collapse to `TstError::RtspMount`.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // RTSP-feature-gated callers; unused in minimal builds
 pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
@@ -673,7 +672,6 @@ pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
     match e {
         Mux(_) => TstError::RtspMount,
         Closed => TstError::RtspMount,
-        PeerBackpressure { .. } => TstError::RtspMount,
         // Required by #[non_exhaustive].
         _ => TstError::RtspMount,
     }

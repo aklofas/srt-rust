@@ -26,7 +26,7 @@ use tst_rtp::cancel::RtspServerCancelHandle;
 use tst_rtp::rtsp::server::mount::{MountHandle as RustMountHandle, MountKind as RustMountKind};
 use tst_rtp::rtsp::server::{RtspServer as RustRtspServer, ServerStats as RustServerStats};
 
-use crate::errors::{make_rtp_error, make_rtsp_error};
+use crate::errors::make_rtsp_error;
 use crate::mux::{
     PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig,
     PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
@@ -74,17 +74,15 @@ fn server_error_to_pyerr(py: Python<'_>, e: tst_rtp::error::RtspServerError) -> 
     }
 }
 
-/// Map an [`tst_rtp::error::MountError`] to a Python `RtspError(MOUNT)` or
-/// `RtpError(TRANSPORT)`. Most mount-side push failures are MuxError
-/// wrappings; we route those to `RtspError(MOUNT)` with the muxer's
-/// `Display` since the failure originates in the mount push path.
-/// `PeerBackpressure` is informational and routes to `RtpError(TRANSPORT)`.
+/// Map an [`tst_rtp::error::MountError`] to a Python `RtspError(MOUNT)`.
+/// Mount-side push failures are MuxError wrappings; we route those to
+/// `RtspError(MOUNT)` with the muxer's `Display` since the failure
+/// originates in the mount push path.
 fn mount_error_to_pyerr(py: Python<'_>, e: tst_rtp::error::MountError) -> PyErr {
     use tst_rtp::error::MountError as E;
     let msg = e.to_string();
     match e {
         E::Mux(_) | E::Closed => make_rtsp_error(py, "MOUNT", &msg),
-        E::PeerBackpressure { .. } => make_rtp_error(py, "TRANSPORT", &msg),
         _ => make_rtsp_error(py, "MOUNT", &msg),
     }
 }

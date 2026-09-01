@@ -158,11 +158,6 @@ impl ServerSessionState {
 /// dropping it when this future ends) releases the slot on every exit
 /// path. The counter is therefore touched only by the accept loop (+reserve)
 /// and this guard's `Drop` (-release) — never here directly.
-///
-/// `dead_code` allowed because T8 (the listener) is in flight in a
-/// parallel worktree — it dispatches into this function. Once T8 lands
-/// the allow can come off.
-#[allow(dead_code)]
 pub(crate) async fn handle_connection(
     state: Arc<ServerState>,
     tcp: TcpStream,

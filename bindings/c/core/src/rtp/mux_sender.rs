@@ -99,7 +99,7 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_open(
         if let Some(ssrc) = rtp_url.ssrc {
             builder.ssrc(ssrc);
         }
-        let transport = match builder.connect() {
+        let transport = match builder.build() {
             Ok(t) => t,
             Err(e) => {
                 set_last_error(TstError::RtpTransport, &format!("rtp connect: {e}"));

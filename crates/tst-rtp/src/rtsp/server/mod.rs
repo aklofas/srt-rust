@@ -4,14 +4,11 @@
 //! Phase 3 — populated across Waves A through G.
 
 pub mod auth;
-pub mod builder;
 pub mod fanout;
 pub mod handlers;
-pub mod interleaved_pump;
 pub mod listener;
 pub mod mount;
 pub mod multicast;
-pub mod runtime;
 pub mod session;
 #[cfg(feature = "rtsp-server-tls")]
 pub mod tls;
@@ -35,9 +32,6 @@ use crate::url::RtspScheme;
 /// Internal server state shared between the listener task, per-session
 /// tasks, and mount handles. `Arc<ServerState>` lives as long as any
 /// task references it; cloning is cheap.
-///
-/// `dead_code` allowed on several fields (all are live in the fully-wired server).
-#[allow(dead_code)]
 pub(crate) struct ServerState {
     pub(crate) builder: RtspServerBuilder,
     /// Graceful-shutdown signal. `stop()` flips this; per-session tasks
@@ -101,7 +95,6 @@ pub(crate) struct ServerState {
 /// RFC 7826 §14 interleaved RTP frames — `RtspServer::stop` takes the
 /// same lock to write the Notice 5402 ANNOUNCE before cancelling the
 /// session.
-#[allow(dead_code)]
 pub(crate) struct ActiveSession {
     /// RTSP session ID, once SETUP succeeded.
     pub(crate) session_id: std::sync::Mutex<Option<String>>,

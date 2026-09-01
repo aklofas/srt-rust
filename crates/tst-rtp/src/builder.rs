@@ -4,12 +4,12 @@
 //! **Stability: Stable** — see the
 //! [API stability reference](https://github.com/aklofas/ts-transformer/blob/main/docs/reference/api-stability.md).
 //!
-//! Mirrors the `SocketBuilder` / `ListenerBuilder` shape from `tst-srt`
-//! — `&mut self -> &mut Self` setters, terminal `connect` / `listen`
-//! takes `&self` and clones the inner URL.
+//! Mirrors the `SocketBuilder` / `ListenerBuilder` setter shape from
+//! `tst-srt` — `&mut self -> &mut Self` setters, with a terminal `build`
+//! that takes `self` by value.
 //!
-//! The terminal methods delegate to [`RtpTransport::connect_with`] /
-//! [`RtpRecvTransport::listen_with`]; the builder is sugar, not a
+//! `build` delegates to [`RtpTransport::connect_with_rtcp`] /
+//! [`RtpRecvTransport::listen_with_rtcp`]; the builder is sugar, not a
 //! parallel implementation.
 
 #[cfg(feature = "rtsp-server-tls")]
@@ -105,15 +105,8 @@ impl RtpSocketBuilder {
         self
     }
 
-    /// Build the transport. Equivalent to [`Self::connect`] but takes
-    /// `self` by value to match the builder convention.
+    /// Build the transport.
     pub fn build(self) -> Result<RtpTransport, ConnectError> {
-        RtpTransport::connect_with_rtcp(&self.url, self.rtcp)
-    }
-
-    /// Build the transport. Kept for backward compatibility with the
-    /// original Phase 1 builder shape.
-    pub fn connect(&self) -> Result<RtpTransport, ConnectError> {
         RtpTransport::connect_with_rtcp(&self.url, self.rtcp)
     }
 }
@@ -178,15 +171,8 @@ impl RtpRecvSocketBuilder {
         self
     }
 
-    /// Build the recv transport. Takes `self` by value to match the
-    /// builder convention.
+    /// Build the recv transport.
     pub fn build(self) -> Result<RtpRecvTransport, ConnectError> {
-        RtpRecvTransport::listen_with_rtcp(&self.url, self.rtcp)
-    }
-
-    /// Build the recv transport. Kept for backward compatibility with
-    /// the original Phase 1 builder shape.
-    pub fn listen(&self) -> Result<RtpRecvTransport, ConnectError> {
         RtpRecvTransport::listen_with_rtcp(&self.url, self.rtcp)
     }
 }
@@ -411,7 +397,6 @@ pub(crate) enum ServerAuthScheme {
 /// Task 7's `RtspServer::from_builder`.
 #[cfg(feature = "rtsp-server")]
 #[derive(Clone)]
-#[allow(dead_code)] // `password` is held for Task 7's auth handler; read at challenge time.
 pub(crate) struct ServerAuthConfig {
     pub(crate) scheme: ServerAuthScheme,
     pub(crate) realm: String,
@@ -609,13 +594,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn socket_builder_round_trip_via_connect() {
+    fn socket_builder_round_trip_via_build() {
         // Use port 1 — likely refused on bind→connect→sendto, but the
-        // builder fields should propagate through connect_with cleanly.
+        // builder fields should propagate through connect_with_rtcp cleanly.
         let mut b = RtpSocketBuilder::new("127.0.0.1", 1);
         b.pkt_size(376).ssrc(0xABCDEF01);
         let t = b
-            .connect()
+            .build()
             .expect("connect to 127.0.0.1:1 should bind locally");
         // The Transport trait's max_payload() returns the application-
         // visible cap (pkt_size minus the 12-byte RTP header).
@@ -627,7 +612,7 @@ mod tests {
     fn recv_builder_binds_unicast() {
         let b = RtpRecvSocketBuilder::new("127.0.0.1", 0);
         // Port 0 -> OS-assigned; doesn't conflict.
-        let _ = b.listen().expect("bind 127.0.0.1:0 should succeed");
+        let _ = b.build().expect("bind 127.0.0.1:0 should succeed");
     }
 
     /// Both knob homes land on the same `RtspUrl` field: the builder

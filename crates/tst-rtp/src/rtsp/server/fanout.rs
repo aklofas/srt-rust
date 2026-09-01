@@ -25,7 +25,6 @@ use crate::packet::{RTP_HEADER_LEN, RtpHeader};
 ///
 /// Multicast mounts don't spawn per-peer tasks — they have a single
 /// shared sender; see Task 14's multicast module for that path.
-#[allow(dead_code)]
 pub(crate) enum PeerTransport {
     Udp {
         socket: Arc<tokio::net::UdpSocket>,
@@ -46,8 +45,8 @@ pub(crate) enum PeerTransport {
 /// When constructed with [`Self::with_mount_total`], every `add` also
 /// bumps a shared mount-level total so `MountStats::frames_dropped_total`
 /// sums the drops across all of a mount's peers in real time. Constructed
-/// via [`Self::new`] (no mount link) the per-peer count is still tracked
-/// but not aggregated — used by the fanout unit tests.
+/// via `Default` (no mount link) the per-peer count is still tracked but
+/// not aggregated — used by the fanout unit tests.
 #[derive(Default)]
 pub(crate) struct PeerDropCounter {
     pub(crate) dropped: AtomicU64,
@@ -56,11 +55,7 @@ pub(crate) struct PeerDropCounter {
     mount_total: Option<Arc<AtomicU64>>,
 }
 
-#[allow(dead_code)]
 impl PeerDropCounter {
-    pub(crate) fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
     /// Construct a counter linked to a mount's shared dropped-frame total.
     pub(crate) fn with_mount_total(mount_total: Arc<AtomicU64>) -> Arc<Self> {
         Arc::new(Self {
@@ -73,9 +68,6 @@ impl PeerDropCounter {
         if let Some(total) = &self.mount_total {
             total.fetch_add(n, Ordering::Relaxed);
         }
-    }
-    pub(crate) fn get(&self) -> u64 {
-        self.dropped.load(Ordering::Relaxed)
     }
 }
 
@@ -98,7 +90,6 @@ impl PeerDropCounter {
 /// that value in the PLAY `RTP-Info` `rtptime` field (RFC 7826 §18.45),
 /// so the RTP timestamps in the first packets correspond to what the
 /// client was told to expect.
-#[allow(dead_code)]
 pub(crate) fn spawn_peer_fanout(
     mut rx: broadcast::Receiver<Bytes>,
     transport: PeerTransport,
@@ -199,7 +190,7 @@ mod tests {
         let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
         let (tx, rx) = broadcast::channel::<Bytes>(8);
         let cancel = CancellationToken::new();
-        let drop_counter = PeerDropCounter::new();
+        let drop_counter = Arc::new(PeerDropCounter::default());
         let transport = PeerTransport::Udp {
             socket: send_sock,
             peer_addr,
@@ -248,7 +239,7 @@ mod tests {
         let peer_addr = peer.local_addr().unwrap();
         let (tx, rx) = broadcast::channel::<Bytes>(2); // very small
         let cancel = CancellationToken::new();
-        let drop_counter = PeerDropCounter::new();
+        let drop_counter = Arc::new(PeerDropCounter::default());
         let transport = PeerTransport::Udp {
             socket: send_sock,
             peer_addr,
@@ -273,7 +264,7 @@ mod tests {
         // Give the task a moment to wake + observe lag.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        let dropped = drop_counter.get();
+        let dropped = drop_counter.dropped.load(Ordering::Relaxed);
         assert!(dropped > 0, "expected drop counter to tick; got {dropped}");
 
         cancel.cancel();
@@ -312,7 +303,7 @@ mod tests {
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        let peer_dropped = drop_counter.get();
+        let peer_dropped = drop_counter.dropped.load(Ordering::Relaxed);
         let mount_dropped = mount_total.load(Ordering::Relaxed);
         assert!(
             peer_dropped > 0,
@@ -334,7 +325,7 @@ mod tests {
         let peer_addr = peer.local_addr().unwrap();
         let (_tx, rx) = broadcast::channel::<Bytes>(8);
         let cancel = CancellationToken::new();
-        let drop_counter = PeerDropCounter::new();
+        let drop_counter = Arc::new(PeerDropCounter::default());
         let transport = PeerTransport::Udp {
             socket: send_sock,
             peer_addr,
@@ -370,7 +361,7 @@ mod tests {
         let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
         let (tx, rx) = broadcast::channel::<Bytes>(8);
         let cancel = CancellationToken::new();
-        let drop_counter = PeerDropCounter::new();
+        let drop_counter = Arc::new(PeerDropCounter::default());
         let transport = PeerTransport::Udp {
             socket: send_sock,
             peer_addr,

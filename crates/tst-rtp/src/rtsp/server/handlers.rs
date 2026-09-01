@@ -2,11 +2,6 @@
 //! state machine. Shared helpers (`server_header`, `error_response`,
 //! `challenge_response`), OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE,
 //! TEARDOWN, and GET_PARAMETER are all fully implemented.
-//!
-//! Module-level `dead_code` allow: some handler functions are only
-//! called from the per-session dispatcher in `session.rs`.
-
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket as StdUdpSocket};

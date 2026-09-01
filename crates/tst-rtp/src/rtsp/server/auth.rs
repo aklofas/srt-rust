@@ -4,11 +4,6 @@
 //! `crate::rtsp::auth`: the wire shapes of `WWW-Authenticate` and
 //! `Authorization` are direct mirrors. Server emits challenges; client
 //! emits responses; server verifies by recomputing the same Digest math.
-//!
-//! The `dead_code` allow at module level is scoped to this submodule
-//! (consumed by `handlers.rs`).
-
-#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU32, Ordering};
 

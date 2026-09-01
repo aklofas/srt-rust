@@ -28,10 +28,6 @@ use crate::transport::RtpRecvTransport;
 /// This type is `Send`: moving it to a dedicated receive/watchdog thread
 /// is a supported, documented use — a regression here is a breaking
 /// change.
-//
-// `dead_code` allowed on legacy fields that the SETUP code path may not
-// touch on all flow combinations (peer_addr for TcpInterleaved, etc.).
-#[allow(dead_code)]
 pub struct RtspSession {
     pub(crate) session_id: String,
     pub(crate) transport: TransportResponse,
@@ -43,13 +39,11 @@ pub struct RtspSession {
     pub(crate) data_rx: Option<mpsc::Receiver<Bytes>>,
     /// For TcpInterleaved: consumer side of the pump's RTCP channel.
     /// `None` for UDP sessions (UDP carries RTCP on its own dedicated
-    /// socket pair). T27 (Phase 4 Stage 3) wires the pump's RTCP demux
-    /// onto this `mpsc::Receiver<Bytes>`; T28 will consume it inside
-    /// [`Self::into_recv_transport`] and feed each frame to the
-    /// `RtcpReporterHandle` for receiver-side stats. Until T28 lands,
-    /// the receiver is held here and dropped at session drop — which
-    /// closes the pump's `mpsc::Sender` side and lets the pump observe
-    /// `SendError` once the consumer goes away.
+    /// socket pair). The pump's RTCP demux feeds this
+    /// `mpsc::Receiver<Bytes>`; [`Self::into_recv_transport`] consumes
+    /// it via `RtpRecvTransport::from_mpsc_with_rtcp`, which spawns the
+    /// ingest thread that feeds each frame into `RtcpStats` for
+    /// receiver-side stats.
     pub(crate) rtcp_rx: Option<mpsc::Receiver<Bytes>>,
     /// The `?recv_timeout=` value parsed from the `RtspUrl` at connect
     /// time (see `RtspClient::attempt_setup`). Applied to the transport

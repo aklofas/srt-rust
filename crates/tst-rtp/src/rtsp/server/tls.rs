@@ -30,7 +30,6 @@ use crate::error::RtspServerError;
 /// `Arc<rustls::ServerConfig>`) ready to be applied to accepted TCP
 /// connections. Built at server-bind time from cert + key file paths.
 #[derive(Clone)]
-#[allow(dead_code)] // constructed by listener (Task 8); kept here so the surface ships in this task
 pub(crate) struct TlsServerConfig {
     pub(crate) acceptor: TlsAcceptor,
 }
@@ -49,7 +48,6 @@ impl TlsServerConfig {
     /// (v1 pattern; mTLS is a future-work item). Returns
     /// [`RtspServerError::Tls`] on any file open / PEM parse / keypair
     /// validation failure.
-    #[allow(dead_code)] // called by listener (Task 8); kept here so the surface ships in this task
     pub(crate) fn load(cert_pem: &Path, key_pem: &Path) -> Result<Self, RtspServerError> {
         let cert_file = std::fs::File::open(cert_pem).map_err(|e| {
             RtspServerError::Tls(format!(
@@ -96,7 +94,6 @@ impl TlsServerConfig {
     /// Returns a [`TokioTlsServerStream`] that implements `AsyncRead +
     /// AsyncWrite`; per-session tasks treat it interchangeably with a
     /// plain [`TcpStream`].
-    #[allow(dead_code)] // wired up by listener (Task 8); kept here so the surface ships in this task
     pub(crate) async fn accept(
         &self,
         tcp: TcpStream,
@@ -114,7 +111,6 @@ impl TlsServerConfig {
 /// Implements `AsyncRead + AsyncWrite` via the inner type — the per-session
 /// task takes this and reads/writes RTSP requests + (for interleaved
 /// transport) binary RTP frames over the same TLS session.
-#[allow(dead_code)] // consumed by per-session task (Wave B Task 9)
 pub(crate) struct TokioTlsServerStream {
     pub(crate) inner: tokio_rustls::server::TlsStream<TcpStream>,
 }

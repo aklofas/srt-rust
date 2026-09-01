@@ -37,7 +37,6 @@ use pyo3::prelude::*;
 
 use secrecy::SecretString;
 use tst_rtp::error::RtspError as RustRtspError;
-use tst_rtp::rtsp::auth::DigestAlgorithm as RustDigestAlgorithm;
 use tst_rtp::rtsp::client::session::RtspSession as RustRtspSession;
 use tst_rtp::rtsp::client::{
     RtspCancelHandle as RustRtspCancelHandle, RtspClient as RustRtspClient,
@@ -102,22 +101,6 @@ pub enum PyDigestAlgorithm {
     MD5 = 0,
     /// RFC 7616 §3.4 with `algorithm=SHA-256`.
     SHA256 = 1,
-}
-
-impl PyDigestAlgorithm {
-    /// Carried over the boundary into tst-rtp. Currently unused
-    /// because tst-rtp's `RtspClientBuilder::auth(user, password)`
-    /// doesn't take a hint — the algorithm is picked at challenge
-    /// time from the server's WWW-Authenticate header. Kept here so
-    /// the Python-side surface can introspect what the user asked
-    /// for, and so a future tighter binding can pass it through.
-    #[allow(dead_code)]
-    fn to_rust(self) -> RustDigestAlgorithm {
-        match self {
-            PyDigestAlgorithm::MD5 => RustDigestAlgorithm::Md5,
-            PyDigestAlgorithm::SHA256 => RustDigestAlgorithm::Sha256,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

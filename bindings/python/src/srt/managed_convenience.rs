@@ -43,7 +43,7 @@ use pyo3::prelude::*;
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::transport::{TransportCancel, TransportError};
 use tst_pipeline::{
-    BoxedMuxSender, ManagedDemuxReceiver as RustManagedDemuxReceiver, ManagedDemuxReceiverConfig,
+    ManagedDemuxReceiver as RustManagedDemuxReceiver, ManagedDemuxReceiverConfig,
     ManagedRecvTransport, ManagedTransport, MuxSender as RustMuxSender, MuxSenderError,
     MuxSenderErrorSource,
 };
@@ -55,10 +55,7 @@ use crate::mux::{
     PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
     PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
 };
-use crate::srt::errors::{
-    accept_error_to_pyerr, bind_error_to_pyerr, connect_error_to_pyerr, transport_error_to_pyerr,
-    url_error_to_pyerr,
-};
+use crate::srt::errors::{transport_error_to_pyerr, url_error_to_pyerr};
 use crate::srt::policy::{PyManagedTransportStats, PyReconnectPolicy};
 use crate::srt::transport::{PyCancelHandle, PySocketStats};
 
@@ -607,12 +604,6 @@ impl PyManagedMuxSender {
     }
 }
 
-// `BoxedMuxSender` import kept for future cross-task helpers (e.g. when
-// the lowlevel `Builder` learns to promote a managed transport). Unused
-// today; silence the warning.
-#[allow(dead_code)]
-type _BoxedMuxSenderAlias = BoxedMuxSender;
-
 // ---------------------------------------------------------------------------
 // PyManagedDemuxReceiver — wraps ManagedDemuxReceiver<SrtTransport>.
 // ---------------------------------------------------------------------------
@@ -964,18 +955,6 @@ impl PyManagedDemuxReceiver {
 enum BindOrConnect {
     ListenInitial(TransportError),
     ConnectInitial(TransportError),
-}
-
-// Silence "unused" lints for the BindError/AcceptError helpers — they're
-// only used by the non-Managed receiver. We import them transitively for
-// future symmetry but don't use them here (the managed path collapses
-// listen+accept into one helper that returns `TransportError`).
-#[allow(dead_code)]
-fn _suppress_warns(py: Python<'_>) {
-    let _ = bind_error_to_pyerr;
-    let _ = accept_error_to_pyerr;
-    let _ = connect_error_to_pyerr;
-    let _ = py;
 }
 
 // ---------------------------------------------------------------------------

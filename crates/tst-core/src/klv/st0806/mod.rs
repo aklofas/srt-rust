@@ -11,9 +11,10 @@
 //! [`crate::klv::st0601`].
 //!
 //! The checksum ([`RvtLs::crc32`]) is CRC-32/MPEG-2 (ISO/IEC 13818-1),
-//! computed via the crate-private `klv::crc32` substrate — **not** the
-//! ST 0601 16-bit running-sum in [`crate::klv::checksum`]. This is a real
-//! divergence between the two typed layers, not a copy-paste artifact.
+//! computed via the same `mpegts::common::crc32` substrate MPEG-TS PSI
+//! sections use — **not** the ST 0601 16-bit running-sum in
+//! [`crate::klv::checksum`]. This is a real divergence between the two
+//! typed layers, not a copy-paste artifact.
 //!
 //! Two nested repeatable Local Sets (Tag 12 [`RvtPoi`], Tag 13 [`RvtAoi`])
 //! and one nested repeatable User Defined LS (Tag 11 [`RvtUserData`])

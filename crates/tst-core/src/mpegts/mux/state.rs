@@ -268,10 +268,11 @@ pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> bool
             // lenient-stance (same as split_obus on the demux side).
             break;
         }
-        let (obu_size, consumed) = match crate::codec::av1::leb128::read_leb128(obu_bytes, i) {
-            Ok(t) => t,
-            Err(_) => break, // truncated LEB128 — stop
-        };
+        let (obu_size, consumed) =
+            match crate::codec::av1::decode::leb128::read_leb128(obu_bytes, i) {
+                Ok(t) => t,
+                Err(_) => break, // truncated LEB128 — stop
+            };
         i += consumed;
         let obu_size = match usize::try_from(obu_size) {
             Ok(n) => n,

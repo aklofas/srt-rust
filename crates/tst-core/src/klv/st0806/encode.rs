@@ -5,12 +5,12 @@
 use alloc::vec::Vec;
 
 use crate::error::KlvEncodeError;
-use crate::klv::crc32::crc32_mpeg2;
 use crate::klv::length::{ber_len, write_ber};
 use crate::klv::pack::{emit_ber_oid_tlv, is_typed_tag};
 use crate::klv::st0601::OutOfRangePolicy;
 use crate::klv::st0601::mapping::encode_fixed_range;
 use crate::klv::st0601::tags::LinearRange;
+use crate::mpegts::common::crc32::crc32_mpeg2;
 
 use super::decode::{ALT_RANGE, LAT_RANGE, LON_RANGE};
 use super::model::{RVT_LS_UL, RvtAoi, RvtLs, RvtPoi, RvtUserData};

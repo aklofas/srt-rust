@@ -41,7 +41,7 @@ fn standalone_with_crc() -> alloc::vec::Vec<u8> {
     assert!(declared_len < 0x80, "fixture must stay in BER short form");
     out.push(declared_len as u8);
     out.extend_from_slice(&body);
-    let crc = crate::klv::crc32::crc32_mpeg2(&out);
+    let crc = crate::mpegts::common::crc32::crc32_mpeg2(&out);
     out.extend_from_slice(&crc.to_be_bytes());
     out
 }

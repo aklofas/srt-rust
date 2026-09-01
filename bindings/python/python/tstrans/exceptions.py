@@ -355,8 +355,12 @@ class SrtError(_KindMessageError):
 
 
 class UdpErrorKind(enum.IntEnum):
-    """Mirrors `tst_udp::UdpErrorKind`. Raised by `tstrans.udp` operations
-    (built with the `udp` cargo feature, default-on)."""
+    """Discriminator for `UdpError.kind`. Combines `tst_udp::UdpErrorKind`'s
+    own variants (URL, IO, INVALID_CONFIG) with transport-level kinds the
+    `tstrans.udp` binding maps from `tst_core::transport::TransportError`
+    onto the same exception (CLOSED, PAYLOAD_TOO_LARGE). Raised by
+    `tstrans.udp` operations (built with the `udp` cargo feature,
+    default-on)."""
 
     URL = 0
     IO = 2

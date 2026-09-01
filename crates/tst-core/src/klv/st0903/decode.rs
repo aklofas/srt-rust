@@ -339,7 +339,7 @@ fn decode_vtarget_series(
 ///   canonical BER length encoding.
 pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
-    use crate::klv::length::{read_ber_oid_strict, read_ber_strict};
+    use crate::klv::length::read_strict_tlv;
 
     let mut ls = VmtiLs::default();
     // BER-OID dedup must run on u32 (future ST 0903.7+ tags ≥ 128 will
@@ -358,24 +358,7 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
 
     while !cursor.is_empty() {
         let item_start = offset;
-        // Strict BER-OID tag per ST 0107.5 §6.3.1 (rejects leading 0x80
-        // continuation-of-zero encoding).
-        let (tag, after_tag) = match read_ber_oid_strict(cursor) {
-            Ok(v) => v,
-            Err(mut e) => {
-                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
-                    *o += item_start;
-                }
-                if let KlvDecodeError::NonCanonicalTag { offset: o } = &mut e {
-                    *o += item_start;
-                }
-                if let KlvDecodeError::MalformedTag { offset: o } = &mut e {
-                    *o += item_start;
-                }
-                return Err(e);
-            }
-        };
-        let consumed_tag = cursor.len() - after_tag.len();
+        let (tag, declared_len, consumed, after_len) = read_strict_tlv(cursor, item_start)?;
 
         // Duplicate-tag check on the BER-OID-decoded u32 — covers both
         // the typed u8 universe (tags 1..=103) and future multi-byte
@@ -394,33 +377,16 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
             });
         }
 
-        let (declared_len, after_len) = match read_ber_strict(after_tag) {
-            Ok(v) => v,
-            Err(mut e) => {
-                let inner_off = item_start + consumed_tag;
-                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
-                    *o += inner_off;
-                }
-                if let KlvDecodeError::NonCanonicalLength { offset: o } = &mut e {
-                    *o += inner_off;
-                }
-                if let KlvDecodeError::MalformedLength { offset: o } = &mut e {
-                    *o += inner_off;
-                }
-                return Err(e);
-            }
-        };
-        let consumed_len = after_tag.len() - after_len.len();
         if after_len.len() < declared_len {
             return Err(KlvDecodeError::Truncated {
-                offset: item_start + consumed_tag + consumed_len,
+                offset: item_start + consumed,
                 needed: declared_len,
                 have: after_len.len(),
             });
         }
         let value = &after_len[..declared_len];
         cursor = &after_len[declared_len..];
-        offset = item_start + consumed_tag + consumed_len + declared_len;
+        offset = item_start + consumed + declared_len;
 
         // Tags > 0xFF are preserved as forward-compat unknowns (ST
         // 0107.5 §6); the typed table only covers the u8 universe.

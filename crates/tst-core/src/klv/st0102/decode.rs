@@ -95,44 +95,12 @@ pub fn decode_strict(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
 /// decode that follows reuses the permissive `Iter` — by this point the
 /// bytes have already cleared the strict-BER gate.
 fn strict_ber_walk(buf: &[u8]) -> Result<(), KlvDecodeError> {
-    use crate::klv::length::{read_ber_oid_strict, read_ber_strict};
+    use crate::klv::length::read_strict_tlv;
     let mut rest = buf;
     let mut offset = 0usize;
     while !rest.is_empty() {
         let item_start = offset;
-        let (_tag, after_tag) = match read_ber_oid_strict(rest) {
-            Ok(v) => v,
-            Err(mut e) => {
-                if let KlvDecodeError::NonCanonicalTag { offset: o } = &mut e {
-                    *o += item_start;
-                }
-                if let KlvDecodeError::MalformedTag { offset: o } = &mut e {
-                    *o += item_start;
-                }
-                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
-                    *o += item_start;
-                }
-                return Err(e);
-            }
-        };
-        let consumed_tag = rest.len() - after_tag.len();
-        let (len, after_len) = match read_ber_strict(after_tag) {
-            Ok(v) => v,
-            Err(mut e) => {
-                let len_start = item_start + consumed_tag;
-                if let KlvDecodeError::NonCanonicalLength { offset: o } = &mut e {
-                    *o += len_start;
-                }
-                if let KlvDecodeError::MalformedLength { offset: o } = &mut e {
-                    *o += len_start;
-                }
-                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
-                    *o += len_start;
-                }
-                return Err(e);
-            }
-        };
-        let consumed_len = after_tag.len() - after_len.len();
+        let (_tag, len, consumed, after_len) = read_strict_tlv(rest, item_start)?;
         if len > after_len.len() {
             // Truncated value: stop the strict pre-walk and let the permissive
             // typed decode below surface it — `Iter::local_set` returns
@@ -140,7 +108,7 @@ fn strict_ber_walk(buf: &[u8]) -> Result<(), KlvDecodeError> {
             break;
         }
         rest = &after_len[len..];
-        offset = item_start + consumed_tag + consumed_len + len;
+        offset = item_start + consumed + len;
     }
     Ok(())
 }

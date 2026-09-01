@@ -109,6 +109,56 @@ pub fn read_ber_oid_strict(buf: &[u8]) -> Result<(u32, &[u8]), KlvDecodeError> {
     read_ber_oid(buf)
 }
 
+/// Add `base` to every offset-carrying [`KlvDecodeError`] variant.
+///
+/// `read_ber_oid_strict` / `read_ber_strict` report offsets relative to
+/// the slice they were handed, not the caller's original buffer; a
+/// strict-mode TLV walker rebases each error to the item's true position
+/// before surfacing it. Shared by the ST 0601 / ST 0102 / ST 0903 strict
+/// pre-walks, which each independently re-implemented this as 2-3
+/// identical `if let Variant { offset } = &mut e { *offset += x }` arms
+/// per read call.
+pub(crate) fn rebase_offset(e: &mut KlvDecodeError, base: usize) {
+    match e {
+        KlvDecodeError::Truncated { offset, .. }
+        | KlvDecodeError::NonCanonicalTag { offset }
+        | KlvDecodeError::MalformedTag { offset }
+        | KlvDecodeError::NonCanonicalLength { offset }
+        | KlvDecodeError::MalformedLength { offset } => *offset += base,
+        _ => {}
+    }
+}
+
+/// One step of a strict-mode TLV pre-walk: a strict BER-OID tag (per
+/// ST 0107.5 §6.3.1) followed by a strict BER length (per §6.3.2), with
+/// every offset-carrying error rebased to `base` — the item's start
+/// position in the caller's original buffer — via [`rebase_offset`].
+///
+/// Returns `(tag, declared_len, consumed, after_len)`. `declared_len` is
+/// the length field's value, NOT yet bounds-checked against
+/// `after_len.len()` — callers differ on how they handle a truncated
+/// value (ST 0601 / ST 0903 hard-error immediately; ST 0102 stops the
+/// strict pre-walk and defers to the later permissive pass), so that
+/// check stays at the call site. `consumed` is the tag+length byte
+/// count — `buf[..consumed]` is this TLV's header, and `after_len` is
+/// everything past it (potentially shorter than `declared_len`).
+pub(crate) fn read_strict_tlv(
+    buf: &[u8],
+    base: usize,
+) -> Result<(u32, usize, usize, &[u8]), KlvDecodeError> {
+    let (tag, after_tag) = read_ber_oid_strict(buf).map_err(|mut e| {
+        rebase_offset(&mut e, base);
+        e
+    })?;
+    let consumed_tag = buf.len() - after_tag.len();
+    let (declared_len, after_len) = read_ber_strict(after_tag).map_err(|mut e| {
+        rebase_offset(&mut e, base + consumed_tag);
+        e
+    })?;
+    let consumed_len = after_tag.len() - after_len.len();
+    Ok((tag, declared_len, consumed_tag + consumed_len, after_len))
+}
+
 /// Number of bytes BER would use to encode `value`.
 pub fn ber_len(value: usize) -> usize {
     if value < 0x80 {

@@ -65,8 +65,6 @@ use crate::rtsp::server::types::TstRtspServer;
 ///   `tst_rtsp_server_free` to release the handle.
 /// - Or simply `tst_rtsp_server_free` for a hard-cancel Drop path.
 ///
-/// Both `_stop` and `_free` land in Task 10's scope.
-///
 /// # Safety
 ///
 /// `builder` must be a non-NULL pointer returned by

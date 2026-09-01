@@ -664,7 +664,7 @@ pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
 }
 
 /// Map a [`tst_rtp::MountError`] to the appropriate `TstError` variant.
-/// Both variants collapse to `TstError::RtspMount`.
+/// Every variant collapses to `TstError::RtspMount`.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // RTSP-feature-gated callers; unused in minimal builds
 pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
@@ -678,7 +678,7 @@ pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
 }
 
 /// Map a [`tst_rtp::RtspServerError`] to the appropriate `TstError` variant.
-/// All 11 variants collapse to `TstError::RtspServer`.
+/// Every variant collapses to `TstError::RtspServer`.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // RTSP-feature-gated callers; unused in minimal builds
 pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstError {

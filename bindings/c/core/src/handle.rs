@@ -136,12 +136,12 @@ impl<T> Handle<T> {
 /// Configuration accumulator for the RTSP client.
 ///
 /// Allocated by `tst_rtsp_client_builder_new` and consumed (or freed) by
-/// `tst_rtsp_client_builder_connect` (Task 6) / `tst_rtsp_client_builder_free`.
+/// `tst_rtsp_client_builder_connect` / `tst_rtsp_client_builder_free`.
 ///
 /// Fields are stored independently rather than wrapping `RtspClientBuilder`
 /// directly because `RtspClientBuilder` uses consuming `mut self -> Self`
-/// chain setters, making in-place C mutation cumbersome.  Task 6's connect
-/// path constructs the final `RtspClientBuilder` from these fields.
+/// chain setters, making in-place C mutation cumbersome.  The connect path
+/// constructs the final `RtspClientBuilder` from these fields.
 // `#[allow(dead_code)]`: fields are read by the RTSP connect path which is
 // gated behind the `rtp` feature; they appear unused in minimal builds.
 #[cfg(feature = "rtp")]
@@ -212,7 +212,7 @@ impl TstRtspClientBuilder {
 /// Configuration accumulator for the RTSP server.
 ///
 /// Allocated by `tst_rtsp_server_builder_new` and consumed (or freed) by
-/// `tst_rtsp_server_builder_start` (Task 8) / `tst_rtsp_server_builder_free`.
+/// `tst_rtsp_server_builder_start` / `tst_rtsp_server_builder_free`.
 ///
 /// Fields are stored independently rather than wrapping `RtspServerBuilder`
 /// directly.  Even though `RtspServerBuilder` uses `&mut self -> &mut Self`
@@ -303,7 +303,7 @@ impl TstRtspServerBuilder {
     }
 
     /// Construct a `tst_rtp::RtspServer` from this accumulator's fields.
-    /// Called by T8's `tst_rtsp_server_builder_start` after consuming the
+    /// Called by `tst_rtsp_server_builder_start` after consuming the
     /// builder via `from_raw`.
     ///
     /// TLS cert + key PEM bytes: tst-c is built without tst-rtp's `tls`

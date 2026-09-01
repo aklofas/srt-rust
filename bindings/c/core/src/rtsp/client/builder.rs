@@ -2,16 +2,16 @@
 //!
 //! Wraps `tst_rtp::RtspClientBuilder` with a mutable opaque handle so C
 //! callers can configure a client incrementally before calling
-//! `tst_rtsp_client_builder_connect` (Task 6).
+//! `tst_rtsp_client_builder_connect`.
 //!
 //! # Builder pattern divergence from the Rust API
 //!
 //! `RtspClientBuilder` uses consuming `mut self -> Self` chain methods.
 //! To support mutable-in-place C setter semantics we store the configuration
 //! fields directly in `TstRtspClientBuilder` (see `bindings/c/core/src/handle.rs`)
-//! and reconstruct the Rust builder from them at `connect` time (Task 6).
-//! This avoids the `mem::replace(inner, RtspClientBuilder::new(...))` dance
-//! which would require passing a dummy URL and re-parsing it on every setter.
+//! and reconstruct the Rust builder from them at `connect` time. This avoids
+//! the `mem::replace(inner, RtspClientBuilder::new(...))` dance which would
+//! require passing a dummy URL and re-parsing it on every setter.
 //!
 //! # Transport preference
 //!
@@ -36,7 +36,7 @@
 //! `RtspClientBuilder::tls_root_certs` takes a `rustls::RootCertStore`.
 //! Rather than pulling `rustls` as a direct dependency of `tst-c`, we store
 //! the raw PEM bytes and parse them into a `RootCertStore` at connect time
-//! (Task 6) when `tst-rtp`'s `tls` feature is active.  If the `tls` feature
+//! when `tst-rtp`'s `tls` feature is active.  If the `tls` feature
 //! is not enabled, calling `tst_rtsp_client_builder_tls_root_cert_pem` still
 //! succeeds (it stores the bytes) but `_connect` will surface an error if the
 //! URL uses `rtsps://`.
@@ -61,7 +61,7 @@ use crate::panic::ffi_catch;
 /// Transport preference, auth credentials, keepalive policy, and (for
 /// `rtsps://`) TLS root certificates may be set with the `_transport_pref`,
 /// `_auth_*`, `_keepalive`, and `_tls_root_cert_pem` setters before calling
-/// `tst_rtsp_client_builder_connect` (Task 6) to open a live session.
+/// `tst_rtsp_client_builder_connect` to open a live session.
 ///
 /// `?recv_timeout=<ms>` on `url` configures a persistent receive deadline
 /// on the transport `tst_rtsp_session_into_demux_receiver` returns —
@@ -240,8 +240,8 @@ pub unsafe extern "C" fn tst_rtsp_client_builder_tls_root_cert_pem(
 /// you want to discard it.  After this call the pointer is invalid; any
 /// further use is undefined behavior.  NULL is a no-op.
 ///
-/// Prefer `tst_rtsp_client_builder_connect` (Task 6) which also consumes
-/// the builder — `_free` is the error-path companion.
+/// Prefer `tst_rtsp_client_builder_connect` which also consumes the builder —
+/// `_free` is the error-path companion.
 ///
 /// # Safety
 ///

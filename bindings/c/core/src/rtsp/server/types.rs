@@ -30,13 +30,12 @@ use std::sync::atomic::AtomicBool;
 /// Opaque handle for a started RTSP server.
 ///
 /// Obtained from [`super::start::tst_rtsp_server_builder_start`]. Freed (with
-/// graceful shutdown) via `tst_rtsp_server_stop` + `tst_rtsp_server_free`
-/// (Task 10), or implicitly via Drop (hard cancel).
+/// graceful shutdown) via `tst_rtsp_server_stop` + `tst_rtsp_server_free`,
+/// or implicitly via Drop (hard cancel).
 ///
 /// The inner `Mutex<Option<…>>` gives close-idempotence: after `_stop` or
 /// `_free` the `Option` is `None` and subsequent calls return `TST_E_CLOSED`.
-/// This mirrors the `TstRtspSession` shape used in the client surface
-/// (Task 6).
+/// This mirrors the `TstRtspSession` shape used in the client surface.
 pub struct TstRtspServer {
     /// Live Rust `RtspServer`. `None` after a call to `tst_rtsp_server_stop`
     /// or `tst_rtsp_server_free` consumes the value.
@@ -62,7 +61,7 @@ impl TstRtspServer {
 ///
 /// Obtained from [`super::mount::tst_rtsp_server_add_unicast_mount`] or
 /// [`super::mount::tst_rtsp_server_add_multicast_mount`]. Push methods
-/// (`push_video`, `push_klv`, etc.) are in Task 9. Freed with
+/// (`push_video`, `push_klv`, etc.) live in `mount.rs`. Freed with
 /// `tst_rtsp_mount_handle_free`.
 ///
 /// The `MountHandle` returned by the Rust API is `Clone + Send`, so multiple

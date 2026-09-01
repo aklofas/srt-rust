@@ -3,7 +3,7 @@
 //! Wraps `tst_rtp::RtspClientBuilder` and `tst_rtp::RtspClient` (and the
 //! resulting `RtspSession`) with a sync C ABI.
 //!
-//! Task 5 (Wave A) ships the builder + auth entry points:
+//! The builder + auth entry points (`builder`):
 //! - `tst_rtsp_client_builder_new` — allocate and parse URL
 //! - `tst_rtsp_client_builder_transport_pref` — set preferred transport
 //! - `tst_rtsp_client_builder_keepalive` — enable/disable auto-keepalive
@@ -13,7 +13,7 @@
 //! - `tst_rtsp_client_builder_auth_digest_sha256` — Digest SHA-256 credentials
 //! - `tst_rtsp_client_builder_free` — discard without connecting
 //!
-//! Task 6 (Wave B) adds:
+//! The session entry points (`session`):
 //! - `tst_rtsp_client_builder_connect` — consume builder, run DESCRIBE+SETUP
 //! - `tst_rtsp_session_play` — send PLAY
 //! - `tst_rtsp_session_pause` — send PAUSE

@@ -20,8 +20,6 @@
 //! - Query params: `?ttl=N`, `?iface=eth0`, `?tos=0xb8`, `?rcvbuf=8M`,
 //!   `?sndbuf=2M`, `?pkt_size=1316`, `?localaddr=...`
 
-pub(crate) mod url;
-
 pub mod sender;
 pub mod receiver;
 pub mod mux_sender;

@@ -27,8 +27,6 @@
 //! in a data-path call, close the handle from the same thread (or rely on the
 //! socket's read/write behavior). This is the same contract as the UDP module.
 
-pub(crate) mod url;
-
 pub mod sender;
 pub mod receiver;
 pub mod mux_sender;

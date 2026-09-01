@@ -413,7 +413,10 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_reset_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    crate::transport_impls::managed_demux_receiver_reset_stats(&handle.inner, &handle.stream_stats_buf)
+    crate::transport_impls::managed_demux_receiver_reset_stats(
+        &handle.inner,
+        &handle.stream_stats_buf,
+    )
 }
 
 #[unsafe(no_mangle)]

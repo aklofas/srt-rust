@@ -69,7 +69,7 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_open(
     demux_cfg: *const TstDemuxConfig,
 ) -> *mut TstUdpDemuxReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
-        let url_str = match unsafe { super::url::parse_url_str(url) } {
+        let url_str = match unsafe { crate::c_str::parse_c_str(url, TstError::UdpConfig, "url") } {
             Some(s) => s,
             None => return std::ptr::null_mut(),
         };

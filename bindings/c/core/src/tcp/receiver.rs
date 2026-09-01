@@ -62,7 +62,7 @@ pub struct TstTcpReceiver {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_recv_open(url: *const c_char) -> *mut TstTcpReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
-        let url_str = match unsafe { super::url::parse_url_str(url) } {
+        let url_str = match unsafe { crate::c_str::parse_c_str(url, TstError::TcpConfig, "url") } {
             Some(s) => s,
             None => return std::ptr::null_mut(),
         };

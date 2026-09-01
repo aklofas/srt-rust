@@ -28,8 +28,6 @@
 //!   `?aes-type=128|192|256&secret=<psk>` — forces Main Profile; returns
 //!   `TST_E_RIST_ENCRYPTION_DISABLED (-41)` when mbedtls is disabled.
 
-pub(crate) mod url;
-
 pub mod sender;
 pub mod receiver;
 pub mod mux_sender;

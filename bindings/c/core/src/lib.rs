@@ -94,6 +94,14 @@ pub mod stats;
 pub mod stream_end_reason;
 mod ffi_slice;
 mod panic;
+// Shared C-string -> &str bridge, consumed only by the four transport
+// families whose url.rs modules delegate to it (rtp's URL parsing needs
+// more than a borrowed &str, so it stays separate — see c_str.rs docs).
+// Gated on the union of those features for the same reason transport_impls
+// is: with all of udp/tcp/rist/hls off, nothing calls it and -D warnings
+// clippy rejects the dead code in the default (transport-less) build.
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist", feature = "hls"))]
+mod c_str;
 // Generic transport body impls shared across the family modules. Gated on the
 // UNION of the consuming transport features (not just `std`): with all
 // transports off, nothing calls these generic bodies and `-D warnings` clippy

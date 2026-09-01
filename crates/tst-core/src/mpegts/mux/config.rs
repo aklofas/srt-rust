@@ -281,7 +281,6 @@ impl MuxerConfig {
     ) -> Result<MuxerConfig, MuxError> {
         use crate::mpegts::demux::{
             AudioCodec as DemuxAudio, StreamKind as DemuxKind, SubtitleCodec as DemuxSub,
-            VideoCodec as DemuxVideo,
         };
         let mut prog = MuxerProgramConfigBuilder::new(pm.program_number, pm.pmt_pid);
         let mut offenders: Vec<String> = Vec::new();
@@ -318,13 +317,7 @@ impl MuxerConfig {
             };
             match &s.kind {
                 DemuxKind::Video(c) => {
-                    let codec = match c {
-                        DemuxVideo::H264 => VideoCodec::H264,
-                        DemuxVideo::H265 => VideoCodec::H265,
-                        DemuxVideo::H266 => VideoCodec::H266,
-                        DemuxVideo::Av1 => VideoCodec::Av1,
-                    };
-                    prog.add_video(s.pid, codec);
+                    prog.add_video(s.pid, VideoCodec::from(*c));
                     if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_video(video_idx, tlvs)?;
                     }
@@ -528,50 +521,26 @@ impl MuxerConfig {
 
             // Per-stream validation (PID range, KLV invariant).
             for s in &prog.streams {
-                match s {
-                    StreamSpec::Video { pid, .. } => {
-                        if !pid::is_user_pid(*pid) {
-                            return Err(MuxError::InvalidConfig(
-                                "video pid must be in 0x0010..=0x1FFE",
-                            ));
-                        }
-                    }
-                    StreamSpec::Klv {
-                        pid,
-                        stream_type,
-                        carries_pts,
-                    } => {
-                        if !pid::is_user_pid(*pid) {
-                            return Err(MuxError::InvalidConfig(
-                                "klv pid must be in 0x0010..=0x1FFE",
-                            ));
-                        }
-                        if *stream_type == KlvStreamType::SynchronousMetadata && !*carries_pts {
-                            return Err(MuxError::InvalidConfig(
-                                "klv stream_type=SynchronousMetadata requires carries_pts=true",
-                            ));
-                        }
-                    }
-                    StreamSpec::Audio { pid, .. } => {
-                        if !pid::is_user_pid(*pid) {
-                            return Err(MuxError::InvalidConfig(
-                                "audio pid must be in 0x0010..=0x1FFE",
-                            ));
-                        }
-                    }
-                    StreamSpec::Subtitle { pid, .. } => {
-                        if !pid::is_user_pid(*pid) {
-                            return Err(MuxError::InvalidConfig(
-                                "subtitle pid must be in 0x0010..=0x1FFE",
-                            ));
-                        }
-                    }
-                    StreamSpec::Data { pid, .. } => {
-                        if !pid::is_user_pid(*pid) {
-                            return Err(MuxError::InvalidConfig(
-                                "data pid must be in 0x0010..=0x1FFE",
-                            ));
-                        }
+                if !pid::is_user_pid(s.pid()) {
+                    let msg = match s {
+                        StreamSpec::Video { .. } => "video pid must be in 0x0010..=0x1FFE",
+                        StreamSpec::Klv { .. } => "klv pid must be in 0x0010..=0x1FFE",
+                        StreamSpec::Audio { .. } => "audio pid must be in 0x0010..=0x1FFE",
+                        StreamSpec::Subtitle { .. } => "subtitle pid must be in 0x0010..=0x1FFE",
+                        StreamSpec::Data { .. } => "data pid must be in 0x0010..=0x1FFE",
+                    };
+                    return Err(MuxError::InvalidConfig(msg));
+                }
+                if let StreamSpec::Klv {
+                    stream_type,
+                    carries_pts,
+                    ..
+                } = s
+                {
+                    if *stream_type == KlvStreamType::SynchronousMetadata && !*carries_pts {
+                        return Err(MuxError::InvalidConfig(
+                            "klv stream_type=SynchronousMetadata requires carries_pts=true",
+                        ));
                     }
                 }
             }
@@ -958,14 +927,7 @@ impl MuxerProgramConfigBuilder {
     /// collide with any other program's PMT or any stream PID.
     pub fn new(program_number: u16, pmt_pid: u16) -> Self {
         Self {
-            program: MuxerProgramConfig {
-                program_number,
-                pmt_pid,
-                streams: Vec::new(),
-                pcr_pid: None,
-                program_descriptors: Vec::new(),
-                stream_descriptors: Vec::new(),
-            },
+            program: MuxerProgramConfig::new(program_number, pmt_pid),
         }
     }
 

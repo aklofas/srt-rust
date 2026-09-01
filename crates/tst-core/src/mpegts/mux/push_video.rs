@@ -457,12 +457,12 @@ impl Muxer {
             // grows the Vec as needed; this preallocation just avoids
             // a couple of reallocations on typical input.
             let mut v = Vec::with_capacity(3 + nal.len() + (nal.len() >> 1));
-            let wrap = wrap_av1_obus_binding(nal, &mut v);
+            let fully_consumed = wrap_av1_obus_binding(nal, &mut v);
             // A non-empty input that does not fully consume is NOT a valid
             // elementary OBU stream (most commonly already-carried wire bytes
             // mistakenly sent to the wrapping push). Never emit a successful
             // empty/partial AU.
-            if !nal.is_empty() && !wrap.fully_consumed {
+            if !nal.is_empty() && !fully_consumed {
                 return Err(MuxError::InvalidAv1Obu);
             }
             v

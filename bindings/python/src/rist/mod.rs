@@ -16,12 +16,17 @@
 //!   timeout-poll loop.
 //! - `stats`, `close` — fast read-only / atomic; no GIL release needed.
 //!
-//! Error mapping: `tst_rist::RistError` → `tstrans.exceptions.RistError` with
-//! `.kind` set to one of the six `RistErrorKind` variants. The Rust
-//! `RistErrorKind` is `#[non_exhaustive]`; the wildcard arm routes any unknown
-//! future variant to `IO`. The bash ratchet
-//! `scripts/check-py-rist-error-mapping-coverage.sh` enforces every variant
-//! has a literal `make_rist_error(py, "<VARIANT>", ...)` call site.
+//! Error mapping: `tst_rist::RistError` → `tstrans.exceptions.RistError`.
+//! `.kind` is populated from two sources: `tst_rist::RistErrorKind`'s own
+//! variants (URL, FFI, INVALID_CONFIG, ENCRYPTION_DISABLED,
+//! CONTEXT_CREATE_FAILED, PEER_CREATE_FAILED), and the transport-level
+//! kinds this binding maps from `tst_core::transport::TransportError` onto
+//! the same exception (CLOSED, PAYLOAD_TOO_LARGE, RECV_TIMEOUT, IO — see
+//! `transport_error_to_pyerr` below). `RistErrorKind` is `#[non_exhaustive]`;
+//! the wildcard arm routes any unknown future variant to `IO`. The bash
+//! ratchet `scripts/check-py-rist-error-mapping-coverage.sh` enforces every
+//! `RistErrorKind` variant has a literal `make_rist_error(py, "<VARIANT>", ...)`
+//! call site.
 //!
 //! Timeout recv implementation: `RistRecvTransport::recv_bytes` internally
 //! polls with a 100 ms window (POLL_TIMEOUT_MS in tst-rist/recv.rs) and
@@ -54,8 +59,11 @@ use crate::errors::make_rist_error;
 /// future variant to `IO` so this fn never panics on a Rust-side enum addition.
 /// The bash ratchet surfaces the omission in CI.
 ///
-/// Each of the six `RistErrorKind` variants gets a literal call site below so
-/// the `check-py-rist-error-mapping-coverage.sh` ratchet stays green.
+/// Each of `RistErrorKind`'s Rust-enum variants gets a literal call site
+/// below so the `check-py-rist-error-mapping-coverage.sh` ratchet stays
+/// green. `transport_error_to_pyerr` below maps the remaining observable
+/// kinds (`CLOSED`, `PAYLOAD_TOO_LARGE`, `RECV_TIMEOUT`) from
+/// `TransportError` instead — those never reach this function.
 fn map_rist_error_from_err(py: Python<'_>, e: RistError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {

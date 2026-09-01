@@ -19,11 +19,14 @@
 //! for `bytes`, fallback through Python `bytes()` builtin for
 //! `bytearray`/`memoryview`.
 //!
-//! Error mapping: `tst_udp::UdpError` → `tstrans.exceptions.UdpError` with
-//! `.kind` set to one of the three `UdpErrorKind` variants. The Rust
-//! `UdpErrorKind` numeric codes are 1-indexed; the Python `UdpErrorKind`
-//! enum is 0-indexed — the mapping uses enum *names*, not numeric codes,
-//! so there is no off-by-one issue.
+//! Error mapping: `tst_udp::UdpError` → `tstrans.exceptions.UdpError`.
+//! `.kind` is populated from two sources: `tst_udp::UdpErrorKind`'s own
+//! variants (URL, IO, INVALID_CONFIG), and the transport-level kinds this
+//! binding maps from `tst_core::transport::TransportError` onto the same
+//! exception (CLOSED, PAYLOAD_TOO_LARGE — see `transport_error_to_pyerr`
+//! below). The Rust `UdpErrorKind` numeric codes are 1-indexed; the
+//! Python `UdpErrorKind` enum is 0-indexed — the mapping uses enum
+//! *names*, not numeric codes, so there is no off-by-one issue.
 //!
 //! The 27th bash ratchet `scripts/check-py-udp-error-mapping-coverage.sh`
 //! enforces that every `UdpErrorKind` variant has at least one literal
@@ -51,8 +54,11 @@ use crate::errors::make_udp_error;
 /// unknown future variant to `IO` so this fn never panics on a Rust-side
 /// enum addition. The bash ratchet will surface the omission in CI.
 ///
-/// Each of the three `UdpErrorKind` variants gets a literal call site below
-/// so the `check-py-udp-error-mapping-coverage.sh` ratchet stays green.
+/// Each of `UdpErrorKind`'s Rust-enum variants gets a literal call site
+/// below so the `check-py-udp-error-mapping-coverage.sh` ratchet stays
+/// green. `transport_error_to_pyerr` below maps the remaining observable
+/// kinds (`CLOSED`, `PAYLOAD_TOO_LARGE`) from `TransportError` instead —
+/// those never reach this function.
 fn map_udp_error(py: Python<'_>, e: UdpError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {

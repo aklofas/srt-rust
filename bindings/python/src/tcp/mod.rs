@@ -31,8 +31,13 @@
 //! two-path pattern from udp/mod.rs: fast zero-copy `&[u8]` for `bytes`,
 //! fallback through Python `bytes()` builtin for `bytearray`/`memoryview`.
 //!
-//! Error mapping: `tst_tcp::error::TcpError` -> `tstrans.exceptions.TcpError`
-//! with `.kind` set to one of the seven `TcpErrorKind` variants.
+//! Error mapping: `tst_tcp::error::TcpError` -> `tstrans.exceptions.TcpError`.
+//! `.kind` is populated from two sources: `tst_tcp::error::TcpErrorKind`'s
+//! own variants (URL, IO, CLOSED, CONNECT_TIMEOUT, INVALID_CONFIG, TLS,
+//! TLS_DISABLED), and the transport-level kind this binding maps from
+//! `tst_core::transport::TransportError` onto the same exception
+//! (PAYLOAD_TOO_LARGE — see `TcpTransportErr` below; CLOSED and IO are
+//! reachable from both sources, so they don't add to the total).
 //! `scripts/check/python/error-mapping-coverage.sh` enforces that every
 //! `TcpErrorKind` variant has at least one literal
 //! `make_tcp_error(py, "<VARIANT>", ...)` call site in this crate.
@@ -62,8 +67,11 @@ use crate::errors::make_tcp_error;
 /// unknown future variant to `IO` so this fn never panics on a Rust-side
 /// enum addition. The bash ratchet will surface the omission in CI.
 ///
-/// Each of the seven `TcpErrorKind` variants gets a literal call site below
-/// so the `check-py-tcp-error-mapping-coverage.sh` ratchet stays green.
+/// Each of `TcpErrorKind`'s Rust-enum variants gets a literal call site
+/// below so the `check-py-tcp-error-mapping-coverage.sh` ratchet stays
+/// green. `TcpTransportErr::into_pyerr` below maps the one remaining
+/// observable kind (`PAYLOAD_TOO_LARGE`) from `TransportError` instead —
+/// it never reaches this function.
 fn map_tcp_error_kind(py: Python<'_>, e: TcpError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {

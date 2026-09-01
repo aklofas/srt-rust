@@ -28,7 +28,10 @@ __all__: list[str]
 
 
 class UdpErrorKind(IntEnum):
-    """Discriminator for ``UdpError.kind``. Mirrors ``tst_udp::UdpErrorKind``."""
+    """Discriminator for ``UdpError.kind``. Combines ``tst_udp::UdpErrorKind``'s
+    own variants (URL, IO, INVALID_CONFIG) with transport-level kinds the
+    ``tstrans.udp`` binding maps from ``tst_core::transport::TransportError``
+    onto the same exception (CLOSED, PAYLOAD_TOO_LARGE)."""
 
     URL = 0
     IO = 2

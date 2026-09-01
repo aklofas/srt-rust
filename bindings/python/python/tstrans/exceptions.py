@@ -381,8 +381,13 @@ class UdpError(_KindMessageError):
 
 
 class TcpErrorKind(enum.IntEnum):
-    """Mirrors `tst_tcp::TcpErrorKind`. Raised by `tstrans.tcp` operations
-    (built with the `tcp` cargo feature, default-on)."""
+    """`tst_tcp::TcpErrorKind`'s variants, reachable via two paths:
+    construction/config-time errors from the concrete Rust
+    `TcpErrorKind` enum, and select `tst_core::transport::TransportError`
+    conditions mapped onto the same kinds at the `tstrans.tcp` send/recv
+    boundary (e.g. `CLOSED` / `PAYLOAD_TOO_LARGE` are reachable via
+    either path). Raised by `tstrans.tcp` operations (built with the
+    `tcp` cargo feature, default-on)."""
 
     URL = 0
     IO = 1
@@ -422,8 +427,13 @@ class HlsError(_KindMessageError):
 
 
 class RistErrorKind(enum.IntEnum):
-    """Mirrors `tst_rist::RistErrorKind`. Raised by `tstrans.rist`
-    operations (built with the `rist` cargo feature, default-on)."""
+    """`tst_rist::RistErrorKind`'s variants, reachable via two paths:
+    construction/config-time errors from the concrete Rust
+    `RistErrorKind` enum, and select `tst_core::transport::TransportError`
+    conditions mapped onto the same kinds at the `tstrans.rist` send/recv
+    boundary (e.g. `CLOSED` / `PAYLOAD_TOO_LARGE` / `RECV_TIMEOUT` are
+    reachable via either path). Raised by `tstrans.rist` operations
+    (built with the `rist` cargo feature, default-on)."""
 
     URL = 0
     FFI = 1

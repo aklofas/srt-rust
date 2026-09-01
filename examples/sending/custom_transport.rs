@@ -224,9 +224,10 @@ fn synthetic_nal_au(n: usize) -> Vec<u8> {
     buf
 }
 
-// Synthetic KLV blob. The 16-byte prefix is a placeholder Universal Label
-// — *not* a valid ST 0601 UL, just plausible-shaped bytes for the example.
-// The muxer doesn't parse KLV either; it wraps the blob in a
+// Synthetic KLV blob. The 16-byte prefix is the canonical ST 0601 UAS
+// Datalink LS key (`UniversalLabel::ST_0601_LS`, MISB ST 0601 §6) —
+// fine to hardcode here because the muxer is opaque to KLV contents
+// (no parsing on the send path); it just wraps the blob in a
 // metadata-stream PES and emits it. Real ST 0601 KLV is built via
 // `tst_core::klv::st0601` (see the `klv_encode_minimal` example).
 //

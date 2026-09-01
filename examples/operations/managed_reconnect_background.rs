@@ -359,7 +359,7 @@ fn synthetic_nal_au(n: usize) -> Vec<u8> {
 }
 
 // Synthetic KLV blob — see `managed_reconnect.rs` for the byte layout
-// rationale (placeholder UL + BER short-form length + filler).
+// rationale (canonical ST 0601 UL + BER short-form length + filler).
 fn synthetic_klv(n: usize, seq: i64) -> Vec<u8> {
     let mut buf = vec![
         0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,

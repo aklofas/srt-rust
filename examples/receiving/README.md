@@ -1,7 +1,8 @@
 # Receiving
 
-Receivers that pull TS bytes from a transport (SRT or file-replay) and
-either dump, demux, or re-mux them. Five examples, in read-order:
+Receivers that pull TS bytes from a transport (SRT, UDP, TCP, RIST,
+RTP/RTSP, or file-replay) and either dump, demux, or re-mux them.
+Eleven examples, in read-order:
 
 ## 1. `srt_caller_dump.rs` — caller-mode SRT receiver
 
@@ -64,3 +65,82 @@ of a capture.
 
 Cookbook: [Extract subtitle PES bytes from a captured `.ts` file](../../docs/cookbook/receiving/extract-subtitle-pes.md)
 (adjacent recipe — the same demux loop with subtitle filtering).
+
+## 6. `recv_udp.rs` — UDP receiver (unicast + multicast)
+
+```sh
+cargo run -p tst-examples --example recv_udp -- udp://@0.0.0.0:5004 out.ts
+cargo run -p tst-examples --example recv_udp -- 'udp://@239.10.0.1:5004?iface=eth0' out.ts
+```
+
+Lets you verify the on-wire format against any UDP MPEG-TS producer
+(our [`../sending/send_udp.rs`](../sending/send_udp.rs), ffmpeg,
+GStreamer, VLC, STANAG 4609 sensor pods).
+
+Cookbook: [Receive MPEG-TS over UDP](../../docs/cookbook/receiving/udp.md).
+
+## 7. `recv_tcp.rs` — TCP listener receiver
+
+```sh
+cargo run -p tst-examples --example recv_tcp -- 0.0.0.0:7001 out.ts
+```
+
+The symmetric listener for [`../sending/send_tcp.rs`](../sending/send_tcp.rs):
+accepts a single inbound caller on a fixed port, then drains the TS
+bytestream to disk. Pairs with `send_tcp`, ffmpeg's `-f mpegts
+tcp://host:port`, GStreamer's tcpsink, or any other TCP MPEG-TS
+producer.
+
+Cookbook: [Receive MPEG-TS over TCP](../../docs/cookbook/receiving/tcp.md).
+
+## 8. `recv_rist.rs` — `tst-rist` quickstart receiver
+
+```sh
+cargo run -p tst-examples --example recv_rist
+```
+
+Binds a RIST receiver on a loopback port (`rist://@host:port` — the
+`@` follows ffmpeg's listen-address convention) and reads packets
+until interrupted. Calls out the `TransportError::Backpressure`
+handling the librist poll-timeout produces between packets. Pair with
+[`../sending/send_rist.rs`](../sending/send_rist.rs).
+
+Cookbook: [Receive MPEG-TS over RIST](../../docs/cookbook/receiving/rist.md).
+
+## 9. `recv_rtp.rs` — `tst-rtp` quickstart receiver
+
+```sh
+cargo run -p tst-examples --example recv_rtp
+```
+
+Binds an `rtp://` URL and recvs N packets, printing byte counts + the
+malformed-packet counter. RTP has no handshake — `listen()` binds the
+socket and is done, unlike the SRT caller/listener pair. Pair with
+[`../sending/send_rtp.rs`](../sending/send_rtp.rs).
+
+## 10. `recv_rtsp_camera.rs` — pull MPEG-TS-over-RTP from an RTSP camera
+
+```sh
+cargo run -p tst-examples --example recv_rtsp_camera -- rtsp://admin:secret@cam.local/h264
+```
+
+The full RTSP client workflow for STANAG 4609 / gimbaled-platform
+cameras that advertise a single MPEG-TS m-line (PT=33, video + KLV +
+audio multiplexed): OPTIONS/DESCRIBE, `setup_mp2t_auto`, bridge into a
+[`DemuxReceiver`] via `into_recv_transport`, PLAY, iterate. Add
+`?transport=tcp` to force TCP-interleaved delivery through NAT/firewall
+setups that block UDP.
+
+## 11. `recv_rtsp_h264.rs` — RTSP H.264 → Muxer → `.ts` file gateway
+
+```sh
+cargo run -p tst-examples --example recv_rtsp_h264 -- rtsp://cam.local/h264
+```
+
+Diff from §10: for cameras that expose a bare H.264 elementary stream
+over RTSP (no enclosing MPEG-TS m-line), instead of `setup_mp2t_auto`
+this uses `setup_h264_auto` + `into_h264_receiver` (the RFC 6184
+depacketizer) and pushes each recovered access unit through a `Muxer`
+to build a `.ts` file.
+
+Cookbook: [Receive RTSP H.264 into a `.ts` file](../../docs/cookbook/receiving/recv-rtsp-h264-to-ts.md).

@@ -1,13 +1,12 @@
 //! KLV push paths (`push_klv` / `push_klv_to`) + KLV handle accessors
-//! (`klv_handles` / `klv_stream_handle` / `klv_handles_for_program`) +
-//! the single-stream-handle helper (`single_klv_handle`).
+//! (`klv_handles` / `klv_stream_handle` / `klv_handles_for_program`).
 //!
 //! Each public method's full rustdoc preamble stays with the method
 //! body — the doc comments are part of the API contract, not the
 //! source-file organization.
 
 use crate::error::MuxError;
-use crate::mpegts::common::{Pcr27mhz, Pts90khz};
+use crate::mpegts::common::Pts90khz;
 use alloc::vec::Vec;
 
 use super::Muxer;
@@ -16,7 +15,6 @@ use super::pes::{
     write_pes_header,
 };
 use super::state::ts_packets_for;
-use super::ts::AdaptationField;
 use super::types::{KlvStreamHandle, KlvStreamType, StreamKind};
 
 impl Muxer {
@@ -55,28 +53,13 @@ impl Muxer {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxError> {
-        let total_klv: usize = self.klv_streams.iter().map(|k| k.len()).sum();
-        if total_klv == 0 {
-            return Err(MuxError::NoKlvStreamsConfigured);
-        }
-        if total_klv > 1 {
-            return Err(MuxError::AmbiguousTarget {
-                kind: StreamKind::Klv,
-                count: total_klv,
-            });
-        }
-        let handle = self.single_klv_handle();
+        let handle = super::resolve_lone(
+            &self.klv_streams,
+            MuxError::NoKlvStreamsConfigured,
+            StreamKind::Klv,
+            KlvStreamHandle::pack,
+        )?;
         self.push_klv_to(handle, klv, pts, metadata_service_id)
-    }
-
-    /// Locate the program containing the lone KLV stream.
-    ///
-    /// Precondition: caller has verified `total_klv == 1` (typically via
-    /// `push_klv`'s `AmbiguousTarget` check). The `expect()` is safe because
-    /// `total_klv == 1` guarantees exactly one program has a non-empty
-    /// KLV stream list.
-    fn single_klv_handle(&self) -> KlvStreamHandle {
-        KlvStreamHandle::pack(super::locate_lone_program(&self.klv_streams), 0)
     }
 
     /// All `KlvStreamHandle`s for this muxer, in `(program, within-program)`
@@ -242,17 +225,7 @@ impl Muxer {
         // the PCR PID's own (zero, here) push cadence.
         self.reserve_preamble(prog_idx, pts, klv_pid, klv_packets)?;
 
-        let first_af =
-            if self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts.as_ticks()) {
-                let pcr = Pcr27mhz::from_pts(pts);
-                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
-                AdaptationField {
-                    pcr: Some(pcr),
-                    random_access: false,
-                }
-            } else {
-                AdaptationField::default()
-            };
+        let first_af = self.pcr_first_af(prog_idx, pts, klv_pid);
         self.drain_pes_scratch(klv_pid, first_af);
 
         // Count on the Ok path only — after all early-returns above. Stats

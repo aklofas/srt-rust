@@ -28,20 +28,6 @@ impl Muxer {
         }
     }
 
-    /// Reserve count for a PSI tick — `1 + programs.len()` (1 PAT + N PMTs)
-    /// when `psi_due` is true, else 0. Centralizes the formula so every
-    /// push path (`push_video` / `push_klv` / `push_audio` / `push_subtitle`)
-    /// agrees on the count `maybe_emit_psi` actually emits. The historical
-    /// hardcoded `2` (PAT + one PMT) under-reserved with N ≥ 2 programs and
-    /// let queue overflows slip past the BufferFull check.
-    pub(super) fn psi_packets_due(&self, prog_idx: usize, pts_90khz: i64) -> usize {
-        if self.psi_due(prog_idx, pts_90khz) {
-            1 + self.config.programs.len()
-        } else {
-            0
-        }
-    }
-
     pub(super) fn pcr_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {
         match self.pcr_last[prog_idx] {
             None => true,
@@ -71,20 +57,6 @@ impl Muxer {
     /// returns false to avoid duplicate PCR samples.
     pub(super) fn pcr_only_due(&self, prog_idx: usize, pts_90khz: i64, current_pid: u16) -> bool {
         self.pcr_pids[prog_idx] != current_pid && self.pcr_due(prog_idx, pts_90khz)
-    }
-
-    /// Reservation count (in 188-byte packets) for a possible PCR-only
-    /// injection prior to the current push. 1 if `pcr_only_due` is true,
-    /// else 0. Centralizes the formula so every push path
-    /// (`push_video` / `push_klv` / `push_audio` / `push_subtitle`)
-    /// agrees with what `maybe_emit_pcr_only` actually emits.
-    pub(super) fn pcr_only_packets_due(
-        &self,
-        prog_idx: usize,
-        pts_90khz: i64,
-        current_pid: u16,
-    ) -> usize {
-        usize::from(self.pcr_only_due(prog_idx, pts_90khz, current_pid))
     }
 
     /// Emit one adaptation-field-only PCR packet on the program's PCR PID

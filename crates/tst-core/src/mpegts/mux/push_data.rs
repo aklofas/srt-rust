@@ -1,6 +1,5 @@
 //! Data push paths (`push_data` / `push_data_to`) + data handle accessors
-//! (`data_handles` / `data_stream_handle` / `data_handles_for_program`) +
-//! the single-stream-handle helper (`single_data_handle`).
+//! (`data_handles` / `data_stream_handle` / `data_handles_for_program`).
 //!
 //! Data streams are a PES **pass-through**: the muxer applies no framing
 //! (no AU cell wrap, no payload inspection, no sequence numbering) — one
@@ -45,28 +44,13 @@ impl Muxer {
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
     pub fn push_data(&mut self, data: &[u8], pts: Pts90khz) -> Result<(), MuxError> {
-        let total_data: usize = self.data_streams.iter().map(|d| d.len()).sum();
-        if total_data == 0 {
-            return Err(MuxError::NoDataStreamsConfigured);
-        }
-        if total_data > 1 {
-            return Err(MuxError::AmbiguousTarget {
-                kind: StreamKind::Data,
-                count: total_data,
-            });
-        }
-        let handle = self.single_data_handle();
+        let handle = super::resolve_lone(
+            &self.data_streams,
+            MuxError::NoDataStreamsConfigured,
+            StreamKind::Data,
+            DataStreamHandle::pack,
+        )?;
         self.push_data_to(handle, data, pts)
-    }
-
-    /// Locate the program containing the lone data stream.
-    ///
-    /// Precondition: caller has verified `total_data == 1` (typically via
-    /// `push_data`'s `AmbiguousTarget` check). The `expect()` is safe because
-    /// `total_data == 1` guarantees exactly one program has a non-empty
-    /// data stream list.
-    fn single_data_handle(&self) -> DataStreamHandle {
-        DataStreamHandle::pack(super::locate_lone_program(&self.data_streams), 0)
     }
 
     /// All `DataStreamHandle`s for this muxer, in `(program, within-program)`

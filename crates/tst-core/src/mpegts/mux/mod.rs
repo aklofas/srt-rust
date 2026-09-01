@@ -332,8 +332,18 @@ impl Muxer {
         pid: u16,
         payload_pkts: usize,
     ) -> Result<(), MuxError> {
-        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
-        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), pid);
+        // Packet counts mirror what maybe_emit_psi / maybe_emit_pcr_only
+        // below actually emit: 1 PAT + N PMTs when the PSI tick is due
+        // (the historical hardcoded `2` under-reserved with N >= 2
+        // programs and let queue overflows slip past the check below),
+        // plus one PCR-only adaptation-field packet when the PCR PID has
+        // fallen behind and this push isn't already landing on it.
+        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
+            1 + self.config.programs.len()
+        } else {
+            0
+        };
+        let pcr_only_packets = usize::from(self.pcr_only_due(prog_idx, pts.as_ticks(), pid));
         if self.queue.len() + psi_packets + pcr_only_packets + payload_pkts
             > self.config.buffer_packets
         {
@@ -344,6 +354,33 @@ impl Muxer {
         self.maybe_emit_psi(prog_idx, pts.as_ticks());
         self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), pid);
         Ok(())
+    }
+
+    /// Compute the `AdaptationField` for the first TS packet of a push:
+    /// carries PCR (and updates `pcr_last[prog_idx]`) when `pid` is the
+    /// program's PCR PID and a PCR tick is due; a default (no-PCR) field
+    /// otherwise. Shared by `push_audio_to` / `push_klv_to`.
+    ///
+    /// `push_video_to` keeps its own copy — it also sets `random_access`
+    /// from `key_frame` and force-emits PCR on a coincident key frame
+    /// even when `pcr_due` would otherwise say no, a different rule than
+    /// the plain due-check here.
+    pub(super) fn pcr_first_af(
+        &mut self,
+        prog_idx: usize,
+        pts: crate::mpegts::common::Pts90khz,
+        pid: u16,
+    ) -> self::ts::AdaptationField {
+        if self.pcr_pids[prog_idx] == pid && self.pcr_due(prog_idx, pts.as_ticks()) {
+            let pcr = crate::mpegts::common::Pcr27mhz::from_pts(pts);
+            self.pcr_last[prog_idx] = Some(pcr.as_ticks());
+            self::ts::AdaptationField {
+                pcr: Some(pcr),
+                random_access: false,
+            }
+        } else {
+            self::ts::AdaptationField::default()
+        }
     }
 
     /// Packetize `self.pes_scratch` into 188-byte TS packets on `pid`.
@@ -445,8 +482,7 @@ fn first_program_handle<T, H>(
 /// will only fire if the caller's precondition check was wrong.
 ///
 /// Replaces identical `.iter().enumerate().find(…).map(…).expect(…)` blocks
-/// in `single_video_handle`, `single_klv_handle`, `single_data_handle`, and
-/// the inline finds in `push_audio` / `push_subtitle`.
+/// in `single_video_handle` and [`resolve_lone`].
 fn locate_lone_program<T>(streams: &[Vec<T>]) -> usize {
     streams
         .iter()
@@ -454,6 +490,31 @@ fn locate_lone_program<T>(streams: &[Vec<T>]) -> usize {
         .find(|(_, s)| !s.is_empty())
         .map(|(p, _)| p)
         .expect("caller verified exactly one non-empty program for this stream kind")
+}
+
+/// Resolve the single-stream handle for a `push_*` shorthand entry point:
+/// `none_configured` when no streams of this kind are configured,
+/// `MuxError::AmbiguousTarget` when more than one is, otherwise the lone
+/// stream's handle. Shared 3-step body of `push_audio` / `push_klv` /
+/// `push_subtitle` / `push_data`'s shorthand methods.
+///
+/// `push_video`'s shorthand keeps its own copy — it maps BOTH the zero-
+/// and ambiguous-count cases to `AmbiguousTarget` (no `NoVideoStreamsConfigured`
+/// variant exists), which doesn't fit this shape.
+fn resolve_lone<T, H>(
+    streams: &[Vec<T>],
+    none_configured: MuxError,
+    kind: StreamKind,
+    pack: fn(usize, usize) -> H,
+) -> Result<H, MuxError> {
+    let total: usize = streams.iter().map(|s| s.len()).sum();
+    if total == 0 {
+        return Err(none_configured);
+    }
+    if total > 1 {
+        return Err(MuxError::AmbiguousTarget { kind, count: total });
+    }
+    Ok(pack(locate_lone_program(streams), 0))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

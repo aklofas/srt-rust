@@ -46,21 +46,12 @@ impl Muxer {
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
     pub fn push_subtitle(&mut self, pts: Pts90khz, payload: &[u8]) -> Result<(), MuxError> {
-        let total_subtitle: usize = self.subtitle_streams.iter().map(|s| s.len()).sum();
-        if total_subtitle == 0 {
-            return Err(MuxError::NoSubtitleStreamsConfigured);
-        }
-        if total_subtitle > 1 {
-            return Err(MuxError::AmbiguousTarget {
-                kind: StreamKind::Subtitle,
-                count: total_subtitle,
-            });
-        }
-        // Locate the program with the lone subtitle stream — same iterate-to-find
-        // pattern as `push_audio` / `push_klv` (the lone stream may not be in
-        // program 0).
-        let handle =
-            SubtitleStreamHandle::pack(super::locate_lone_program(&self.subtitle_streams), 0);
+        let handle = super::resolve_lone(
+            &self.subtitle_streams,
+            MuxError::NoSubtitleStreamsConfigured,
+            StreamKind::Subtitle,
+            SubtitleStreamHandle::pack,
+        )?;
         self.push_subtitle_to(handle, pts, payload)
     }
 
@@ -171,7 +162,7 @@ impl Muxer {
         let subtitle_packets = ts_packets_for(self.pes_scratch.len());
         // Validate-1 C3: validate() bans subtitle PIDs as PCR PIDs, so
         // current_pid here will never equal self.pcr_pids[prog_idx] and
-        // pcr_only_packets_due reduces to the pure pcr_due predicate.
+        // pcr_only_due reduces to the pure pcr_due predicate.
         // Subtitle pushes are sparse; this is the prototypical case where
         // PCR injection is needed.
         self.reserve_preamble(prog_idx, pts, subtitle_pid, subtitle_packets)?;

@@ -6,13 +6,12 @@
 //! source-file organization.
 
 use crate::error::MuxError;
-use crate::mpegts::common::{Pcr27mhz, Pts90khz};
+use crate::mpegts::common::Pts90khz;
 use alloc::vec::Vec;
 
 use super::Muxer;
 use super::pes::{PesPtsField, write_audio_pes};
 use super::state::ts_packets_for;
-use super::ts::AdaptationField;
 use super::types::{AudioStreamHandle, StreamKind};
 
 impl Muxer {
@@ -39,23 +38,12 @@ impl Muxer {
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
     pub fn push_audio(&mut self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxError> {
-        let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
-        if total_audio == 0 {
-            return Err(MuxError::NoAudioStreamsConfigured);
-        }
-        if total_audio > 1 {
-            return Err(MuxError::AmbiguousTarget {
-                kind: StreamKind::Audio,
-                count: total_audio,
-            });
-        }
-        // Mirror push_video / push_klv: when exactly one stream exists, it is
-        // at (prog_idx=0, within_idx=0) in audio_streams — the first program
-        // that has audio is always index 0 in the nested vec. Note: if the lone
-        // audio stream is in program 1 (prog_idx=1 in config), audio_streams[1]
-        // is non-empty and audio_streams[0] is empty; pack(0,0) would resolve
-        // to the wrong slot. Iterate to find the actual location.
-        let handle = AudioStreamHandle::pack(super::locate_lone_program(&self.audio_streams), 0);
+        let handle = super::resolve_lone(
+            &self.audio_streams,
+            MuxError::NoAudioStreamsConfigured,
+            StreamKind::Audio,
+            AudioStreamHandle::pack,
+        )?;
         self.push_audio_to(handle, pts, frames)
     }
 
@@ -124,17 +112,7 @@ impl Muxer {
         // language tracks, sign-language audio) could still drift.
         self.reserve_preamble(prog_idx, pts, audio_pid, audio_packets)?;
 
-        let first_af =
-            if self.pcr_pids[prog_idx] == audio_pid && self.pcr_due(prog_idx, pts.as_ticks()) {
-                let pcr = Pcr27mhz::from_pts(pts);
-                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
-                AdaptationField {
-                    pcr: Some(pcr),
-                    random_access: false,
-                }
-            } else {
-                AdaptationField::default()
-            };
+        let first_af = self.pcr_first_af(prog_idx, pts, audio_pid);
         self.drain_pes_scratch(audio_pid, first_af);
 
         // Count on the Ok path only — after all early-returns above.

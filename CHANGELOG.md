@@ -358,6 +358,14 @@ JVM; see the corresponding entries in
 for the full history. (The JVM null-argument fix under **Fixed** below
 is a separate, JVM-only behavior change from an earlier arc.)
 
+- **`TcpListenerBuilder::from_url` now rejects a URL without `?listen=1`
+  at construction**, as its own doc has always promised
+  (`TcpUrlError::NotAListenerUrl`, new `#[non_exhaustive]` variant).
+  Previously this check didn't run at all — a caller-shaped URL like
+  `tcp://0.0.0.0:5000` was silently accepted and coerced into a
+  listener URL by the time `build()` re-derived one internally. Use
+  `TcpTransportBuilder::from_url` for caller-side URLs instead.
+
 ### Deprecated
 
 - **`tst_core::io_file::DemuxFromFile`** — silently coerces read and
@@ -410,7 +418,11 @@ is a separate, JVM-only behavior change from an earlier arc.)
   `TstError` enumerators these used to map to (`UdpPayloadTooLarge`
   = -28, `UdpIfaceUnsupported` = -29, `RistPayloadTooLarge` = -40) stay
   declared, unchanged, for ABI compatibility — their doc comments now
-  read "reserved; not currently produced."
+  read "reserved; not currently produced." Python-visible: two of the
+  nine had no other reachable path to their exception kind name and are
+  genuinely gone from the surface — `tstrans.exceptions.UdpErrorKind`
+  loses `HOST_NOT_LITERAL` and `IFACE_UNSUPPORTED` (7 → 5 members); a
+  caller matching on either name by attribute gets `AttributeError`.
 
 ### Fixed
 

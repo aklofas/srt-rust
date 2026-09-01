@@ -152,6 +152,13 @@ impl TcpListenerBuilder {
     /// `?listen=1` (callers must use [`TcpTransportBuilder`] instead).
     pub fn from_url(url: &str) -> Result<Self, TcpUrlError> {
         let url = TcpUrl::parse(url)?;
+        if !url.listen {
+            return Err(TcpUrlError::NotAListenerUrl(
+                "URL does not have ?listen=1 — use TcpTransportBuilder::from_url \
+                 for caller-side"
+                    .into(),
+            ));
+        }
         let mut config = SocketConfig::default();
         config.merge_from_url(&url);
         Ok(Self { url, config })
@@ -234,10 +241,25 @@ mod tests {
     }
 
     #[test]
-    fn ipv6_listener_builds() {
+    fn listener_builder_rejects_url_missing_listen_flag() {
+        // A caller-shaped URL (no ?listen=1) must be rejected here, at
+        // from_url, matching this fn's own doc promise — not silently
+        // coerced into a listener (the old format_url-based build() used
+        // to append ?listen=1 unconditionally) and not deferred to a
+        // confusing failure inside build().
+        let err = TcpListenerBuilder::from_url("tcp://0.0.0.0:5000").unwrap_err();
+        assert!(matches!(err, TcpUrlError::NotAListenerUrl(_)));
+    }
+
+    #[test]
+    fn ipv6_loopback_listener_builds() {
         // build() now goes straight from the parsed TcpUrl to TcpListener::
         // from_parsed — no format-then-reparse round trip to bracket IPv6
-        // literals for.
+        // literals for. Binds a real socket on IPv6 loopback -- "loopback"
+        // in the name is what routes it into nextest.toml's serialized
+        // `network` test-group instead of full parallel execution; it also
+        // hard-fails in an environment without IPv6 loopback, same as its
+        // network-group peers.
         let listener = TcpListenerBuilder::from_url("tcp://[::1]:0?listen=1")
             .unwrap()
             .build()

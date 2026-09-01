@@ -429,7 +429,7 @@ impl Drop for Socket {
 }
 
 // ============================================================================
-// Helpers (private to crate; consumed by listener.rs in Task 10)
+// Helpers (private to crate; shared by socket.rs and listener.rs)
 // ============================================================================
 
 pub(crate) fn duration_to_ms(d: Duration) -> i32 {

@@ -78,7 +78,7 @@ impl Shutdown {
 }
 
 /// State shared between `ManagedTransport`, its `ManagedStatsHandle`
-/// observers, and any spawned background worker (later task in this arc).
+/// observers, and any spawned background worker (see `worker_run` below).
 #[derive(Debug, Default)]
 pub(crate) struct ManagedShared {
     /// True while a background worker owns reconnect+drain.

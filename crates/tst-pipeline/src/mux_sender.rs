@@ -199,8 +199,8 @@ struct Inner<T: Transport> {
     ///
     /// Unbounded across repeated transport failures — the bare `MuxSender`
     /// has no cap. Callers expecting prolonged transport unavailability
-    /// should wrap with `ManagedTransport` (Task 9), which adds a
-    /// gap-buffer with overflow policy.
+    /// should wrap with `ManagedTransport`, which adds a gap-buffer with
+    /// overflow policy.
     pending_bytes: VecDeque<Vec<u8>>,
     closed: bool,
     bytes_sent: u64,
@@ -291,9 +291,9 @@ impl<T: Transport> MuxSender<T> {
     /// `pts: Pts90khz` is a newtype around the raw 90 kHz tick count. Construct
     /// from raw ticks with [`Pts90khz::new`] or from milliseconds with
     /// [`Pts90khz::from_millis`]. Internal arithmetic across the workspace still
-    /// uses raw `i64`; a follow-up plan tracked in `docs/project/deferred-features.md`
-    /// (landing later in this same plan) will design wrap-vs-saturate semantics
-    /// on `Pts90khz` and do the full internal sweep.
+    /// uses raw `i64`; a deferred item tracked in `docs/project/deferred-features.md`
+    /// will design wrap-vs-saturate semantics on `Pts90khz` and do the full
+    /// internal sweep.
     ///
     /// [`Pts90khz::new`]: tst_core::mpegts::common::Pts90khz::new
     /// [`Pts90khz::from_millis`]: tst_core::mpegts::common::Pts90khz::from_millis

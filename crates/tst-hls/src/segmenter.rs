@@ -202,7 +202,7 @@ impl Segmenter {
 
     /// First sequence number in `visible_segments`.
     pub(crate) fn media_sequence(&self) -> u64 {
-        self.visible_segments().first().map(|s| s.seq).unwrap_or(0)
+        self.history.front().map(|s| s.seq).unwrap_or(0)
     }
 
     /// Bytes in the segment currently being written (zero between cuts).

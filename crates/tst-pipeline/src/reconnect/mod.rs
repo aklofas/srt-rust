@@ -739,7 +739,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     fn max_payload(&self) -> usize {
         // Mutex-poisoning policy (safe-default on poison): SRT_TS_BUNDLE_BYTES is
         // already the "no live inner transport" default; poison falls through to
-        // the same default. Matches socket_stats (lines 419-422) shape.
+        // the same default. Matches socket_stats's shape below.
         // Deliberate asymmetry with ManagedRecvTransport (which caches the
         // last live inner's ceiling): understating a *send* budget is safe —
         // callers just chunk smaller — while understating a recv ceiling was

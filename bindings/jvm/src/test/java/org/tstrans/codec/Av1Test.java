@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -23,14 +24,6 @@ class Av1Test {
     // Minimal KEY_FRAME header body: show_existing_frame=0, frame_type=0,
     // show_frame=1 → high-nibble 0001 = 0x10.
     private static final byte[] KEYFRAME = unsigned(0x10);
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
-    }
 
     @Test
     void parseSequenceHeaderDimensions() throws CodecParseException {

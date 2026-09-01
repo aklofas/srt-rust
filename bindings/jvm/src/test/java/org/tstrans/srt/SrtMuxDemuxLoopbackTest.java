@@ -2,24 +2,23 @@ package org.tstrans.srt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
+import static org.tstrans.TestSupport.sha256Units;
+import static org.tstrans.TestSupport.syntheticH264Idr;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.tstrans.SrtException;
-import org.tstrans.codec.NalUnit;
-import org.tstrans.codec.VideoUnit;
+import org.tstrans.TestSupport;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
 import org.tstrans.mpegts.Muxer;
 import org.tstrans.mpegts.MuxerConfig;
-import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Live cross-binding loopback parity test for the high-level SRT convenience
@@ -101,32 +100,13 @@ class SrtMuxDemuxLoopbackTest {
      */
     private static final int PUSH_COUNT = 24;
 
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
-
-    /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) {
-            buf[5 + i] = (byte) (0xA5 ^ i);
-        }
-        return buf;
-    }
-
     /** Distinctive private-data record pushed once alongside the video stream. */
     private static final byte[] DATA_PAYLOAD =
         {(byte) 0xD0, 'D', 'A', 'T', 'A', (byte) 0xBE, (byte) 0xEF, 0x01};
 
-    /** The single-program H.264 + private-data config shared by the live and offline paths. */
+    /** Video + one private-data stream — see {@link TestSupport#roundtripConfigWithData()}. */
     private static MuxerConfig roundtripConfig() {
-        return MuxerConfig.builder()
-            .programNumber(1).pmtPid(0x1000)
-            .addVideo(0x1011, VideoCodec.H264)
-            .addData(0x0100, 0xF0, true)
-            .build();
+        return TestSupport.roundtripConfigWithData();
     }
 
     @Test
@@ -348,26 +328,4 @@ class SrtMuxDemuxLoopbackTest {
         throw new AssertionError("offline path produced no typed Video event");
     }
 
-    /**
-     * SHA-256 of the concatenated typed-unit payload bytes — concatenate every
-     * {@link NalUnit#payload()} (RBSP, Annex-B start codes already stripped by the
-     * demuxer). Identical helper to {@link SrtLoopbackScenarioTest}.
-     */
-    private static String sha256Units(List<VideoUnit> units) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        for (VideoUnit u : units) {
-            NalUnit n = (NalUnit) u;
-            ByteBuffer view = n.payload().duplicate();
-            byte[] bytes = new byte[view.remaining()];
-            view.get(bytes);
-            md.update(bytes);
-        }
-        byte[] digest = md.digest();
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
-    }
 }

@@ -1,9 +1,8 @@
 package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.freeUdpPort;
 
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,12 +26,6 @@ import org.junit.jupiter.api.Timeout;
  * </ul>
  */
 final class DemuxReceiverCloseRaceTest {
-
-    private static int freeUdpPort() throws Exception {
-        try (DatagramSocket s = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
-            return s.getLocalPort();
-        }
-    }
 
     /**
      * Bind an rtp receiver, retrying a few times if the discovered port's RTCP companion

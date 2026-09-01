@@ -2,21 +2,19 @@ package org.tstrans.srt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
+import static org.tstrans.TestSupport.sha256Units;
 
 import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.tstrans.SrtException;
 import org.tstrans.codec.NalUnit;
-import org.tstrans.codec.VideoUnit;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
 
@@ -81,10 +79,6 @@ class SrtLoopbackScenarioTest {
      * provides sufficient margin above loopback RTT (~0 ms).
      */
     private static final int LATENCY_MS = 120;
-
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
 
     /** Workspace-relative shared scenario dir; resolved from Gradle's user.dir (bindings/jvm). */
     private static Path scenarioDir() {
@@ -320,28 +314,6 @@ class SrtLoopbackScenarioTest {
         throw new AssertionError("no typed Video event found in the demuxed bytes");
     }
 
-    /**
-     * SHA-256 of the concatenated typed-unit payload bytes. Mirrors the Rust /
-     * Python golden builders: concatenate every {@link NalUnit#payload()} (RBSP,
-     * Annex-B start codes already stripped by the demuxer).
-     */
-    private static String sha256Units(List<VideoUnit> units) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        for (VideoUnit u : units) {
-            NalUnit n = (NalUnit) u;
-            ByteBuffer view = n.payload().duplicate();
-            byte[] bytes = new byte[view.remaining()];
-            view.get(bytes);
-            md.update(bytes);
-        }
-        byte[] digest = md.digest();
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
-    }
 
     /**
      * Minimal extraction of the {@code "event":"video"} core object's

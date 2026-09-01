@@ -1,6 +1,8 @@
 package org.tstrans.mpegts;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.syntheticH264Idr;
+
 import org.junit.jupiter.api.Test;
 import org.tstrans.MuxException;
 
@@ -204,17 +206,6 @@ class DataStreamTest {
         // push_data writes a PTS-only PES header (never a DTS) → dts is null.
         assertNull(a.dts());
         assertNull(b.dts());
-    }
-
-    /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) {
-            buf[5 + i] = (byte) (0xA5 ^ i);
-        }
-        return buf;
     }
 
     /** Naive contiguous-subarray scan — fine at TS-fixture sizes. */

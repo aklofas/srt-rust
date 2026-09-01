@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -37,14 +38,6 @@ class Mpeg2AudioTest {
         }
         // bytes [20..835) remain zero (body padding)
         return buf;
-    }
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
     }
 
     @Test

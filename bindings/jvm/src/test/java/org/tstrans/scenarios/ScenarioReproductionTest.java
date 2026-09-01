@@ -1,12 +1,12 @@
 package org.tstrans.scenarios;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.sha256Units;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -367,31 +367,6 @@ class ScenarioReproductionTest {
             "first ADTS frame sample rate must be 44100 Hz");
         assertEquals(2, adts.channelConfiguration(),
             "first ADTS frame channel_configuration must be 2 (stereo)");
-    }
-
-    /**
-     * SHA-256 of the concatenated typed-unit payload bytes. Mirrors the Rust /
-     * Python golden builders: concatenate every {@code NalUnit.payload()} (RBSP,
-     * Annex-B start codes already stripped by the demuxer). The {@code h264-st0601-mp}
-     * scenario carries H.264, so every unit is a {@link NalUnit}. The digest must
-     * still equal the committed golden's {@code video.payload_sha256}.
-     */
-    private static String sha256Units(List<VideoUnit> units) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        for (VideoUnit u : units) {
-            NalUnit n = (NalUnit) u;
-            ByteBuffer view = n.payload().duplicate();
-            byte[] bytes = new byte[view.remaining()];
-            view.get(bytes);
-            md.update(bytes);
-        }
-        byte[] digest = md.digest();
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
     }
 
     /**

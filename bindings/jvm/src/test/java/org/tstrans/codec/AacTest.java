@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,14 +21,6 @@ class AacTest {
     private static final byte[] ADTS_FRAME = unsigned(
             0xFF, 0xF1, 0x50, 0x80, 0x01, 0xFF, 0xFC,
             0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7);
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
-    }
 
     @Test
     void parseAacFramesYieldsOneFrame() throws CodecParseException {

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.tstrans.TestSupport.unsigned;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -28,14 +29,6 @@ class H264Test {
     // Rust slice_header_light test `synth_idr_slice_header_no_sps` feeds:
     // first_mb_in_slice=0, slice_type=7 (mod 5 = 2 = I), pps_id=0.
     private static final byte[] IDR_SLICE_NO_SPS = unsigned(0x88, 0x80);
-
-    private static byte[] unsigned(int... vals) {
-        byte[] out = new byte[vals.length];
-        for (int i = 0; i < vals.length; i++) {
-            out[i] = (byte) vals[i];
-        }
-        return out;
-    }
 
     @Test
     void parseSps1080pHighDimensions() throws CodecParseException {

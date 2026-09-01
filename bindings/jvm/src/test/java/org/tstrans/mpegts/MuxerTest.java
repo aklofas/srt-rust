@@ -1,27 +1,12 @@
 package org.tstrans.mpegts;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.syntheticH264Idr;
 
 import org.junit.jupiter.api.Test;
 import org.tstrans.MuxException;
 
 class MuxerTest {
-
-    /**
-     * Minimal H.264 IDR access unit in Annex-B framing: 4-byte start code +
-     * IDR NAL header (0x65) + deterministic filler. Mirrors the Rust
-     * {@code synthetic_h264_idr()} shape (enough to mux; not byte-locked here —
-     * the byte-exact proof lives in MuxRoundtripScenarioTest).
-     */
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[4 + 1 + 15];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01; // Annex-B start code
-        buf[4] = 0x65;                                               // IDR NAL header
-        for (int i = 0; i < 15; i++) {
-            buf[5 + i] = (byte) (0xA5 ^ i);
-        }
-        return buf;
-    }
 
     @Test
     void pushVideoThenDrainProducesTsPackets() throws Exception {

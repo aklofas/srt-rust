@@ -1,6 +1,8 @@
 package org.tstrans.mpegts;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.tstrans.TestSupport.syntheticH264Idr;
+
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,15 +14,6 @@ import org.tstrans.MuxException;
  * routing to a specific stream and forged-handle rejection.
  */
 class MuxerTargetedPushTest {
-
-    /** Annex-B IDR header (mirrors {@code DataStreamTest.syntheticH264Idr()}). */
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) buf[5 + i] = (byte) (0xA5 ^ i);
-        return buf;
-    }
 
     /**
      * Synthetic ADTS frame (mirrors tst-integration's {@code synthetic_adts_frame()}):

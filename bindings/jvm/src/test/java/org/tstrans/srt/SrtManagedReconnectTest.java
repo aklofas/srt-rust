@@ -2,6 +2,9 @@ package org.tstrans.srt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.tstrans.TestSupport.isLinux;
+import static org.tstrans.TestSupport.roundtripConfig;
+import static org.tstrans.TestSupport.syntheticH264Idr;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -9,8 +12,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.tstrans.SrtException;
 import org.tstrans.mpegts.DemuxEvent;
-import org.tstrans.mpegts.MuxerConfig;
-import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Live-socket RECONNECT parity test for the managed (auto-reconnect) SRT shells
@@ -199,10 +200,6 @@ class SrtManagedReconnectTest {
 
     // ── helpers (copied from SrtManagedLiveTest) ──────────────────────────────
 
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
-
     /**
      * A reconnect-friendly policy: constant(0) backoff, BOUNDED attempts. The bound
      * is deliberate — a retry-forever policy would let the managed caller spin in
@@ -231,22 +228,4 @@ class SrtManagedReconnectTest {
             && (se.kind() == SrtException.Kind.CLOSED || se.kind() == SrtException.Kind.BROKEN);
     }
 
-    /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
-    private static byte[] syntheticH264Idr() {
-        byte[] buf = new byte[20];
-        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
-        buf[4] = 0x65;
-        for (int i = 0; i < 15; i++) {
-            buf[5 + i] = (byte) (0xA5 ^ i);
-        }
-        return buf;
-    }
-
-    /** The single-program H.264 config shared by the peer's two connections. */
-    private static MuxerConfig roundtripConfig() {
-        return MuxerConfig.builder()
-            .programNumber(1).pmtPid(0x1000)
-            .addVideo(0x1011, VideoCodec.H264)
-            .build();
-    }
 }

@@ -138,12 +138,12 @@ mod tests {
         s
     }
 
-    // Golden byte-level tests: pin the exact m3u8 the renderer produces so any
-    // drift in `render()`/`PlaylistModel` is caught. (The old differential test
-    // compared `render()` against the identical `PlaylistModel::from_segmenter
-    // (..).render()` expression — `render()` is literally that call — so it was
-    // tautological and could never fail; its fixture also cut a fresh segmenter
-    // with no open segment, producing zero segments.)
+    // Golden byte-level tests: pin the exact m3u8 `render()` produces so any
+    // drift is caught. (The old differential test compared `render()` against
+    // the identical `PlaylistModel::from_segmenter(..).render()` expression
+    // from the pre-collapse two-type split — `render()` was literally that
+    // call — so it was tautological and could never fail; its fixture also
+    // cut a fresh segmenter with no open segment, producing zero segments.)
 
     #[test]
     fn live_playlist_renders_expected_bytes() {

@@ -83,31 +83,35 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     {
-        // Dual-mbedTLS coexistence (Plan A5a). When BOTH the `srt` feature
-        // (libsrt links the workspace `vendor/mbedtls`) AND the `rist` feature
-        // (librist links its own `contrib/mbedtls`) are active, the two static
-        // mbedTLS copies export the same `mbedtls_*` symbols. The default
-        // linker errors (`multiple definition of mbedtls_sha256_init`); if
-        // force-linked anyway, the two copies' split global state corrupts
-        // SRT loopback at runtime (segfault). `--allow-multiple-definition`
-        // collapses every `mbedtls_*` reference onto the FIRST definition
-        // (libsrt's `vendor/mbedtls`), so the cdylib links AND both libraries
-        // share one consistent mbedTLS at runtime — verified: the full
-        // `--all-features` test suite (incl. SRT loopback + RIST) passes.
+        // Dual-mbedTLS coexistence (Plan A5a). srt-sys and rist-sys each build
+        // their OWN static copy of the SAME shared source tree
+        // (`crates/mbedtls-src/vendor/mbedtls`, reached via
+        // `tstrans_mbedtls_src::source_dir()`) — rist-sys points librist's
+        // meson at that build via CMAKE_PREFIX_PATH rather than letting
+        // librist bundle its own `contrib/mbedtls`. When BOTH the `srt` and
+        // `rist` features are active, those two independent static builds
+        // export the same `mbedtls_*` symbols. The default linker errors
+        // (`multiple definition of mbedtls_sha256_init`); if force-linked
+        // anyway, the two copies' split global state corrupts SRT loopback at
+        // runtime (segfault). `--allow-multiple-definition` collapses every
+        // `mbedtls_*` reference onto the FIRST definition (srt-sys's build),
+        // so the cdylib links AND both libraries share one consistent
+        // mbedTLS at runtime — verified: the full `--all-features` test
+        // suite (incl. SRT loopback + RIST) passes on all four gating
+        // platforms (linux-x86_64/aarch64, macos-arm64, windows-msvc).
         // Scoped to the srt+rist combo so single-transport builds keep strict
-        // duplicate-symbol checking. The clean fix (one shared mbedTLS without
-        // the override) is the cross-crate-reuse v2 follow-up documented in
-        // crates/rist-sys/Cargo.toml. macOS/Windows all-features link parity
-        // is a follow-up (those jobs are non-gating phase-in).
+        // duplicate-symbol checking. The clean fix (one shared BUILD, not
+        // just one shared source tree) is the cross-crate-reuse v2 follow-up
+        // documented in crates/rist-sys/Cargo.toml.
         if std::env::var("CARGO_FEATURE_SRT").is_ok() && std::env::var("CARGO_FEATURE_RIST").is_ok()
         {
             println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
         }
     }
 
-    // MSVC equivalent of the Linux dual-mbedTLS dedup above. libsrt + librist
-    // each link the shared vendor/mbedtls 3.6.x (rist-sys finds it via
-    // pkg-config rather than bundling contrib/mbedtls), so two byte-identical
+    // MSVC equivalent of the Linux dual-mbedTLS dedup above: srt-sys and
+    // rist-sys each build their own static copy of the same shared
+    // `crates/mbedtls-src/vendor/mbedtls` source tree, so two byte-identical
     // static copies export duplicate `mbedtls_*` symbols and link.exe errors
     // (LNK2005/LNK1169) without an override. `/FORCE:MULTIPLE` collapses onto
     // the first definition — the same effect `--allow-multiple-definition`
@@ -133,16 +137,19 @@ fn main() {
 
     #[cfg(target_os = "windows")]
     {
-        // Defer: Windows MSVC linker uses .def files (/DEF:foo.def) or
-        // per-symbol /EXPORT: args; both are mechanically straightforward
-        // but runtime testing is blocked on Windows hardware. When the
-        // plan #65 deferral lifts, ship a tst-c.def and add:
+        // Deferred: Windows MSVC linker uses .def files (/DEF:foo.def) or
+        // per-symbol /EXPORT: args to restrict the dynamic export table the
+        // way -exported_symbols_list does above for macOS; both are
+        // mechanically straightforward but nobody has authored the
+        // tst-c.def symbol list yet. This is NOT blocked on Windows
+        // CI/hardware — windows-msvc has run the full nextest suite
+        // (--all-features, incl. RIST) as a gating platform since
+        // 2026-05-30. When the .def file lands, add:
         //   println!("cargo:rerun-if-changed=tst-c.def");
         //   println!("cargo:rustc-link-arg=/DEF:tst-c.def");
         // For now: compile+link still works (no export-restriction means
         // all symbols remain exported, matching the pre-Plan-B Linux/macOS
-        // behavior — this is the current Windows compile+link-only
-        // status per plan #65).
+        // behavior).
     }
 
     // pkg-config substitution.

@@ -68,30 +68,6 @@ pub enum H266SliceType {
     I,
 }
 
-impl H266SliceType {
-    /// Convert a raw `sh_slice_type` ue(v) value to the typed enum.
-    ///
-    /// Not called by the current sentinel-returning parser; retained for
-    /// forward use when the SPS-driven full extraction is implemented.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CodecParseError::ReservedValue`] for values ≥ 3, which are
-    /// not defined by H.266 V4 §7.4.8.
-    #[allow(dead_code)]
-    fn from_raw(v: u32) -> Result<Self, CodecParseError> {
-        match v {
-            0 => Ok(Self::B),
-            1 => Ok(Self::P),
-            2 => Ok(Self::I),
-            _ => Err(CodecParseError::ReservedValue {
-                field: "sh_slice_type",
-                value: v,
-            }),
-        }
-    }
-}
-
 /// Returns `true` when `nal_unit_type` is an IDR NAL: IDR_W_RADL (7) or
 /// IDR_N_LP (8) per H.266 V4 Table 5.
 const fn is_idr_nal(nal_unit_type: u8) -> bool {

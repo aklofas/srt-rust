@@ -26,7 +26,7 @@ use tst_rtp::error::RtspServerError;
 use tst_rtp::rtsp::server::mount::{MountHandle as RustMountHandle, MountKind};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::checked_u8;
+use crate::jutil::{checked_u8, read_bytes};
 use crate::mpegts::muxer::build_muxer_config_from_arrays;
 
 use super::errors::{mount_error_to_jvm, server_error_to_jvm, throw_rtsp};
@@ -473,17 +473,6 @@ fn with_mount_poisoning<R>(
         Some(r) => Some(r),
         None => {
             crate::error::throw_closed(env, "MountHandle");
-            None
-        }
-    }
-}
-
-/// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
-fn read_bytes(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
-    match env.convert_byte_array(arr) {
-        Ok(b) => Some(b),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
             None
         }
     }

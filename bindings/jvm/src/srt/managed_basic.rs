@@ -36,9 +36,9 @@ use tst_pipeline::{
 use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use super::JniCancel;
-use super::stats::{build_managed_transport_stats, build_socket_stats};
+use super::stats::build_managed_transport_stats;
 use crate::handle::HandleRegistry;
-use crate::jutil::join_host_port;
+use crate::jutil::{build_socket_stats, join_host_port};
 
 // -----------------------------------------------------------------------
 // Factory helpers — rebuild a fresh SrtTransport from a URL string.
@@ -326,7 +326,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSocketStats<'local>(
         }) else {
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }
@@ -603,7 +603,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nSocketStats<'local>
         }) else {
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }

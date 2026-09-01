@@ -7,7 +7,6 @@ pub(crate) mod end_reason;
 pub(crate) mod h264_receiver;
 mod mux_sender;
 mod server;
-mod stats;
 mod transport;
 
 use std::sync::Arc;

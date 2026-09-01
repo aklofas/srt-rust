@@ -31,8 +31,9 @@ use super::JniCancel;
 use super::errors::{
     accept_error, bind_error, connect_error, io_error, transport_error, url_error,
 };
-use super::stats::{build_socket_stats, build_srt_stats};
+use super::stats::build_srt_stats;
 use crate::handle::HandleRegistry;
+use crate::jutil::build_socket_stats;
 
 /// Per-type leased-handle registries for `org.tstrans.srt.Sender` / `Receiver`.
 /// `pub(crate)` so `srt::lowlevel::nIntoSender`/`nIntoReceiver` can register the
@@ -213,7 +214,7 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSocketStats<'local>(
         }) else {
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }
@@ -435,7 +436,7 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nSocketStats<'local>(
         }) else {
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }

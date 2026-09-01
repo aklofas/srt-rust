@@ -34,13 +34,14 @@ use tst_pipeline::{
 use tst_srt::{Listener, ListenerConfig, Socket, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::join_host_port;
-use crate::mpegts::{build_demux_config_from_args, convert_event, throw_demux_error};
+use crate::jutil::{build_socket_stats, join_host_port};
+use crate::mpegts::{
+    build_demux_config_from_args, build_muxer_stats, convert_event, throw_demux_error,
+};
 
 use super::JniCancel;
 use super::errors::{accept_error, bind_error, throw_srt, transport_error, url_error};
-use super::mux_sender::{build_muxer_stats, build_transport_stats};
-use super::stats::build_socket_stats;
+use super::mux_sender::build_transport_stats;
 
 /// Native backing for `org.tstrans.srt.DemuxReceiver`. Single-threaded per the
 /// `Receiver` model (spec §3.4) — `inner` is accessed under the registry's
@@ -383,7 +384,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nSocketStats<'local>(
             crate::error::throw_closed(env, "DemuxReceiver");
             return JObject::null();
         };
-        match build_socket_stats(env, &stats) {
+        match build_socket_stats(env, "org/tstrans/srt/SocketStats", &stats) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
         }
@@ -413,7 +414,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nStats<'local>(
         sock.bytes_received = combined.bytes_received;
         sock.packets_received = combined.packets_received;
 
-        let sock_obj = match build_socket_stats(env, &sock) {
+        let sock_obj = match build_socket_stats(env, "org/tstrans/srt/SocketStats", &sock) {
             Ok(o) => o,
             Err(_) => return JObject::null(),
         };

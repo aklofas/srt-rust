@@ -2,9 +2,8 @@
 //! each connected client. Drains the mount's broadcast channel and
 //! writes RTP frames to the peer over UDP or TCP-interleaved.
 //!
-//! Per [[feedback-wire-primitives-at-call-site-as-explicit-task]] this
-//! module ships the primitive (`spawn_peer_fanout`); the call site is
-//! `rtsp::server::handlers::handle_play`.
+//! This module ships the primitive (`spawn_peer_fanout`); the call
+//! site is `rtsp::server::handlers::handle_play`.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

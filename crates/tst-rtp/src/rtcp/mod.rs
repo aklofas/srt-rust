@@ -690,7 +690,8 @@ mod tests {
         assert_eq!(decoded.report_blocks[0].cumulative_lost, -10);
     }
 
-    /// Spec-byte verification per [[feedback-closed-loop-roundtrip-insufficient-for-wire-spec]].
+    /// Hand-built spec-byte vectors — round-trip tests alone can't catch
+    /// wire-format bugs.
     ///
     /// Roundtrip tests only confirm encode/decode are mutually consistent —
     /// they don't catch a case where both sides have the same bug. This test

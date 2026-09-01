@@ -4,6 +4,7 @@
 
 use std::io::Write;
 
+#[allow(deprecated)] // DemuxFromFile is deprecated in favor of TryDemuxFromFile; still tested
 use tst_core::io_file::{
     DemuxFromFile, TryDemuxFromFile, demux_file, try_demux_from_file_with_config, write_mux_to_file,
 };
@@ -42,6 +43,7 @@ fn demux_file_round_trip() {
 }
 
 #[test]
+#[allow(deprecated)] // DemuxFromFile is deprecated in favor of TryDemuxFromFile; still tested
 fn demux_from_file_streaming() {
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
 
@@ -56,6 +58,7 @@ fn demux_from_file_streaming() {
 }
 
 #[test]
+#[allow(deprecated)] // DemuxFromFile is deprecated in favor of TryDemuxFromFile; still tested
 fn try_demux_from_file_matches_lossy_on_clean_input() {
     // Same setup as `demux_from_file_streaming`, but compare event counts
     // across both iterator flavors. On a clean valid file the fallible

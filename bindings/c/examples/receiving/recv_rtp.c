@@ -27,11 +27,10 @@
  * What it doesn't show (see the listed examples for those):
  *   - KLV hex-dump or typed ST 0601 decode → recv_klv_to_stdout.c
  *   - Stats polling                         → operations/poll_socket_stats.c
- *   - Raw TS bytes without demux            → rtp_recv_raw.c (planned)
  *
  * How to run:
  *   1. Sender side (push multicast RTP to group 239.1.2.3:5000):
- *        cargo run -p tst-examples --example rtp_mux_sender -- \
+ *        cargo run -p tst-examples --example send_rtp -- \
  *          rtp://239.1.2.3:5000?iface=eth0
  *      (or any MPEG-TS-over-RTP multicast source in the same LAN segment)
  *

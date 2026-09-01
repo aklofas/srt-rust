@@ -19,8 +19,10 @@
  * How to run:
  *   1. In one terminal (receiver first, so the port is ready):
  *        ./recv_raw_to_file out.ts
- *   2. In another terminal (any sender targeting srt://127.0.0.1:7000):
- *        cargo run -p tst-examples --example raw_sender_loopback
+ *   2. In another terminal (any sender targeting srt://127.0.0.1:7000 —
+ *      tst_raw_receiver_recv treats every inbound message opaquely, so
+ *      any caller-mode sender works, e.g.):
+ *        cargo run -p tst-examples --example ts_relay_from_file -- input.ts 127.0.0.1:7000
  *   3. When the sender disconnects, recv_raw_to_file exits automatically.
  *   4. Inspect the output:
  *        ffprobe out.ts

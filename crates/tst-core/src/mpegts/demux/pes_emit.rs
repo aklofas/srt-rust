@@ -15,7 +15,6 @@
 //!
 //! All items are `pub(super)`.
 
-use super::pmt_classify::stream_type_from_kind;
 use crate::mpegts::common::{Pts90khz, StreamTypeCode, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, MetadataKind, NonConformantIssue, SamplePayload,
@@ -211,20 +210,18 @@ impl super::demuxer::Demuxer {
                 let raw = SharedBytes::from_slice(&pes.payload);
                 let raw_len = raw.len();
 
-                let entry = self.stream_stats_entry(
-                    stream.pid,
-                    stream_type_from_kind(&stream.kind),
-                    program_number,
-                );
-                entry.items += 1;
-                entry.touch_last_seen();
-                entry.bytes += raw_len as u64;
+                self.record_item(&stream, program_number, raw_len);
                 // `nals_or_obus` is no longer counted here (it required the
                 // split the demuxer no longer performs). The `random_access_aus`
                 // counter still increments from the PES_start RAI bit.
                 let ra_count = if rai { 1 } else { 0 };
                 if ra_count > 0 {
-                    self.bump_video_counters(stream.pid, 0, ra_count);
+                    crate::mpegts::stats::bump_video_counters(
+                        &mut self.stream_codec_counters,
+                        stream.pid,
+                        0,
+                        ra_count,
+                    );
                 }
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
@@ -258,15 +255,12 @@ impl super::demuxer::Demuxer {
                         );
                     }
                     let meta_len = klv.len();
-                    let entry = self.stream_stats_entry(
+                    self.record_item(&stream, program_number, meta_len);
+                    crate::mpegts::stats::bump_klv_counters(
+                        &mut self.stream_codec_counters,
                         stream.pid,
-                        stream_type_from_kind(&stream.kind),
-                        program_number,
+                        1,
                     );
-                    entry.items += 1;
-                    entry.touch_last_seen();
-                    entry.bytes += meta_len as u64;
-                    self.bump_klv_counters(stream.pid, 1);
                     self.queue.push_back(DemuxEvent::Metadata {
                         stream,
                         pts,
@@ -281,14 +275,7 @@ impl super::demuxer::Demuxer {
                 if matches!(shape, KlvShape::Other) {
                     let payload_len = pes.payload.len();
                     let raw = pes.payload;
-                    let entry = self.stream_stats_entry(
-                        stream.pid,
-                        stream_type_from_kind(&stream.kind),
-                        program_number,
-                    );
-                    entry.items += 1;
-                    entry.touch_last_seen();
-                    entry.bytes += payload_len as u64;
+                    self.record_item(&stream, program_number, payload_len);
                     self.queue.push_back(DemuxEvent::Sample {
                         stream,
                         pts,
@@ -361,15 +348,12 @@ impl super::demuxer::Demuxer {
                                     self.au_reassembler.clear_after_emit(pes.pid);
                                 }
                                 let meta_len = payload_vec.len();
-                                let entry = self.stream_stats_entry(
+                                self.record_item(&stream, program_number, meta_len);
+                                crate::mpegts::stats::bump_klv_counters(
+                                    &mut self.stream_codec_counters,
                                     stream.pid,
-                                    stream_type_from_kind(&stream.kind),
-                                    program_number,
+                                    1,
                                 );
-                                entry.items += 1;
-                                entry.touch_last_seen();
-                                entry.bytes += meta_len as u64;
-                                self.bump_klv_counters(stream.pid, 1);
                                 self.queue.push_back(DemuxEvent::Metadata {
                                     stream,
                                     // PES PTS reused for every AU emitted
@@ -429,15 +413,12 @@ impl super::demuxer::Demuxer {
                                 if tolerated {
                                     let payload_vec = current_inner.to_vec();
                                     let meta_len = payload_vec.len();
-                                    let entry = self.stream_stats_entry(
+                                    self.record_item(&stream, program_number, meta_len);
+                                    crate::mpegts::stats::bump_klv_counters(
+                                        &mut self.stream_codec_counters,
                                         stream.pid,
-                                        stream_type_from_kind(&stream.kind),
-                                        program_number,
+                                        1,
                                     );
-                                    entry.items += 1;
-                                    entry.touch_last_seen();
-                                    entry.bytes += meta_len as u64;
-                                    self.bump_klv_counters(stream.pid, 1);
                                     self.queue.push_back(DemuxEvent::Metadata {
                                         stream,
                                         pts,
@@ -495,10 +476,7 @@ impl super::demuxer::Demuxer {
             }
             StreamKind::Unknown(stream_type) => {
                 let payload_len = pes.payload.len();
-                let entry = self.stream_stats_entry(stream.pid, stream_type, program_number);
-                entry.items += 1;
-                entry.touch_last_seen();
-                entry.bytes += payload_len as u64;
+                self.record_item(&stream, program_number, payload_len);
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
@@ -511,14 +489,7 @@ impl super::demuxer::Demuxer {
             }
             StreamKind::Audio(codec) => {
                 let payload_len = pes.payload.len();
-                let entry = self.stream_stats_entry(
-                    stream.pid,
-                    stream_type_from_kind(&stream.kind),
-                    program_number,
-                );
-                entry.items += 1;
-                entry.touch_last_seen();
-                entry.bytes += payload_len as u64;
+                self.record_item(&stream, program_number, payload_len);
                 // C11 — for AAC-LATM (stream_type 0x11) validate the LOAS
                 // syncword at the start of the PES payload. Pre-C11 we
                 // advertised LATM without any framing check, so malformed
@@ -566,7 +537,11 @@ impl super::demuxer::Demuxer {
                     _ => 0, // AacLatm / Ac3 — no iterator yet
                 };
                 if frames_delta > 0 {
-                    self.bump_audio_counters(stream.pid, frames_delta);
+                    crate::mpegts::stats::bump_audio_counters(
+                        &mut self.stream_codec_counters,
+                        stream.pid,
+                        frames_delta,
+                    );
                 }
                 // C12 — AC-3 syncframe alignment enforcement.
                 //
@@ -605,17 +580,10 @@ impl super::demuxer::Demuxer {
                 if self.subtitle_pids_seen.insert(stream.pid) {
                     self.subtitle_streams_seen_count += 1;
                 }
-                let entry = self.stream_stats_entry(
-                    stream.pid,
-                    stream_type_from_kind(&stream.kind),
-                    program_number,
-                );
+                let entry = self.record_item(&stream, program_number, payload_len);
                 entry.label.get_or_insert_with(|| {
                     crate::mpegts::stats::demux_subtitle_codec_label(codec).to_string()
                 });
-                entry.items += 1;
-                entry.touch_last_seen();
-                entry.bytes += payload_len as u64;
                 // B6 — EN 300 743 §6.2 (DVB-sub) + EN 300 472 §4.2
                 // (teletext) mandate `data_alignment_indicator = 1`.
                 // CEA-708 standalone and WebVTT-in-TS don't formally

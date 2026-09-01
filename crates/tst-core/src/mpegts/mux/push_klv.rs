@@ -272,7 +272,7 @@ impl Muxer {
         // One push = one KLV record (muxer contract: caller passes a single
         // KLV LS per call). Wire-format records-per-PES > 1 are not
         // possible through this API.
-        self.bump_klv_counters(klv_pid, 1);
+        crate::mpegts::stats::bump_klv_counters(&mut self.stream_codec_counters, klv_pid, 1);
         if is_sync {
             self.klv_streams[prog_idx][within_idx].au_cell_sequence_number =
                 seq_num.wrapping_add(1);

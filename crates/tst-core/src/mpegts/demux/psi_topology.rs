@@ -467,7 +467,7 @@ impl super::demuxer::Demuxer {
         let mut subtitle_ambiguous: Vec<(u16, StreamKind, Vec<u8>)> = Vec::new();
 
         for s in &pmt.streams {
-            let (kind, _declared_link) = self.get_stream_kind(s.elementary_pid, s);
+            let kind = self.get_stream_kind(s.elementary_pid, s);
 
             // Cross-program PID collision check: scan all other programs'
             // stream lists. First-program-wins — skip this PID if already owned.

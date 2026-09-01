@@ -192,29 +192,9 @@ pub(crate) enum CodecKind {
 }
 
 impl StreamCodecCounters {
-    pub(crate) fn new_video() -> Self {
+    pub(crate) fn new(kind: CodecKind) -> Self {
         Self {
-            kind: CodecKind::Video,
-            nals_or_obus: 0,
-            random_access_aus: 0,
-            records: 0,
-            frames: 0,
-        }
-    }
-
-    pub(crate) fn new_klv() -> Self {
-        Self {
-            kind: CodecKind::Klv,
-            nals_or_obus: 0,
-            random_access_aus: 0,
-            records: 0,
-            frames: 0,
-        }
-    }
-
-    pub(crate) fn new_audio() -> Self {
-        Self {
-            kind: CodecKind::Audio,
+            kind,
             nals_or_obus: 0,
             random_access_aus: 0,
             records: 0,
@@ -236,6 +216,48 @@ impl StreamCodecCounters {
             },
         }
     }
+}
+
+/// Lazily creates a video [`StreamCodecCounters`] entry for `pid` and
+/// accumulates the given deltas. Shared by `Muxer` and `Demuxer`, which
+/// each keep their own `stream_codec_counters` map.
+pub(crate) fn bump_video_counters(
+    counters: &mut alloc::collections::BTreeMap<u16, StreamCodecCounters>,
+    pid: u16,
+    nals_or_obus_delta: u64,
+    ra_delta: u64,
+) {
+    let c = counters
+        .entry(pid)
+        .or_insert_with(|| StreamCodecCounters::new(CodecKind::Video));
+    c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
+    c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
+}
+
+/// Lazily creates a KLV [`StreamCodecCounters`] entry for `pid` and
+/// accumulates `records_delta`. Shared by `Muxer` and `Demuxer`.
+pub(crate) fn bump_klv_counters(
+    counters: &mut alloc::collections::BTreeMap<u16, StreamCodecCounters>,
+    pid: u16,
+    records_delta: u64,
+) {
+    let c = counters
+        .entry(pid)
+        .or_insert_with(|| StreamCodecCounters::new(CodecKind::Klv));
+    c.records = c.records.saturating_add(records_delta);
+}
+
+/// Lazily creates an audio [`StreamCodecCounters`] entry for `pid` and
+/// accumulates `frames_delta`. Shared by `Muxer` and `Demuxer`.
+pub(crate) fn bump_audio_counters(
+    counters: &mut alloc::collections::BTreeMap<u16, StreamCodecCounters>,
+    pid: u16,
+    frames_delta: u64,
+) {
+    let c = counters
+        .entry(pid)
+        .or_insert_with(|| StreamCodecCounters::new(CodecKind::Audio));
+    c.frames = c.frames.saturating_add(frames_delta);
 }
 
 #[cfg(test)]
@@ -280,7 +302,7 @@ mod tests {
 
     #[test]
     fn counters_video_to_public_roundtrip() {
-        let mut c = StreamCodecCounters::new_video();
+        let mut c = StreamCodecCounters::new(CodecKind::Video);
         c.nals_or_obus = 7;
         c.random_access_aus = 1;
         assert_eq!(
@@ -294,15 +316,42 @@ mod tests {
 
     #[test]
     fn counters_klv_to_public_roundtrip() {
-        let mut c = StreamCodecCounters::new_klv();
+        let mut c = StreamCodecCounters::new(CodecKind::Klv);
         c.records = 42;
         assert_eq!(c.to_public(), StreamCodecStats::Klv { records: 42 });
     }
 
     #[test]
     fn counters_audio_to_public_roundtrip() {
-        let mut c = StreamCodecCounters::new_audio();
+        let mut c = StreamCodecCounters::new(CodecKind::Audio);
         c.frames = 100;
         assert_eq!(c.to_public(), StreamCodecStats::Audio { frames: 100 });
+    }
+
+    #[test]
+    fn bump_video_counters_accumulates_and_lazily_creates() {
+        let mut counters = alloc::collections::BTreeMap::new();
+        bump_video_counters(&mut counters, 0x100, 2, 1);
+        bump_video_counters(&mut counters, 0x100, 3, 0);
+        let c = counters[&0x100];
+        assert_eq!(c.kind, CodecKind::Video);
+        assert_eq!(c.nals_or_obus, 5);
+        assert_eq!(c.random_access_aus, 1);
+    }
+
+    #[test]
+    fn bump_klv_counters_accumulates_and_lazily_creates() {
+        let mut counters = alloc::collections::BTreeMap::new();
+        bump_klv_counters(&mut counters, 0x200, 1);
+        bump_klv_counters(&mut counters, 0x200, 1);
+        assert_eq!(counters[&0x200].records, 2);
+    }
+
+    #[test]
+    fn bump_audio_counters_accumulates_and_lazily_creates() {
+        let mut counters = alloc::collections::BTreeMap::new();
+        bump_audio_counters(&mut counters, 0x300, 4);
+        bump_audio_counters(&mut counters, 0x300, 6);
+        assert_eq!(counters[&0x300].frames, 10);
     }
 }

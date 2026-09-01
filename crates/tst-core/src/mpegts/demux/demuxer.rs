@@ -1036,7 +1036,7 @@ mod tests {
     #[test]
     fn bump_video_counters_increments_existing_entry() {
         let mut demux = Demuxer::new();
-        demux.bump_video_counters(0x100, 2, 1);
+        crate::mpegts::stats::bump_video_counters(&mut demux.stream_codec_counters, 0x100, 2, 1);
         match demux.stream_codec_stats(0x100) {
             Some(crate::mpegts::stats::StreamCodecStats::Video {
                 nals_or_obus: 2,
@@ -1045,7 +1045,7 @@ mod tests {
             }) => {}
             other => panic!("expected Video {{2,1}}, got {:?}", other),
         }
-        demux.bump_video_counters(0x100, 3, 0);
+        crate::mpegts::stats::bump_video_counters(&mut demux.stream_codec_counters, 0x100, 3, 0);
         match demux.stream_codec_stats(0x100) {
             Some(crate::mpegts::stats::StreamCodecStats::Video {
                 nals_or_obus: 5,

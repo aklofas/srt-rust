@@ -2,11 +2,11 @@
 //! from PMT entries, plus utility functions for stream-type-byte mapping
 //! and descriptor recognition.
 //!
-//! Hosts 2 helper methods on `Demuxer` (`derive_stream_kind`,
-//! `get_stream_kind`) and module-level free functions consumed across
-//! the demux module tree. All items are `pub(super)` — invisible outside
-//! `mpegts::demux` — except `classify_pmt_stream`, which is `pub(crate)`
-//! so the mux-side `StreamSpec::Data` acceptance rule can call it.
+//! Hosts one helper method on `Demuxer` (`get_stream_kind`) and
+//! module-level free functions consumed across the demux module tree.
+//! All items are `pub(super)` — invisible outside `mpegts::demux` —
+//! except `classify_pmt_stream`, which is `pub(crate)` so the mux-side
+//! `StreamSpec::Data` acceptance rule can call it.
 //!
 //! Per Wave 6.B Decision DB6, free functions stay as free functions (not
 //! wrapped in a struct). The audit's recommended `stream_classifier.rs`
@@ -20,26 +20,16 @@ use crate::mpegts::descriptors::RawDescriptor;
 use alloc::vec::Vec;
 
 impl super::demuxer::Demuxer {
-    pub(super) fn derive_stream_kind(
-        &self,
-        s: &crate::mpegts::demux::psi::PmtStream,
-    ) -> (StreamKind, Option<u16>) {
-        let declared_link = extract_metadata_link(&s.descriptors);
-        let kind = classify_pmt_stream(s.stream_type, &s.descriptors);
-        (kind, declared_link)
-    }
-
     pub(super) fn get_stream_kind(
         &self,
         pid: u16,
         s: &crate::mpegts::demux::psi::PmtStream,
-    ) -> (StreamKind, Option<u16>) {
+    ) -> StreamKind {
         // Caller override wins over PMT classification.
         if let Some(&kind) = self.options.stream_kind_overrides.get(&pid) {
-            let declared_link = extract_metadata_link(&s.descriptors);
-            (kind, declared_link)
+            kind
         } else {
-            self.derive_stream_kind(s)
+            classify_pmt_stream(s.stream_type, &s.descriptors)
         }
     }
 }
@@ -47,7 +37,7 @@ impl super::demuxer::Demuxer {
 // ─── Free functions ────────────────────────────────────────────────────────
 
 /// Classify a PMT entry's `(stream_type, descriptors)` pair under the
-/// standard cascade — the shared core of `derive_stream_kind` (demux) and
+/// standard cascade — the shared core of `get_stream_kind` (demux) and
 /// the mux-side `StreamSpec::Data` acceptance rule, which requires the
 /// result to be `StreamKind::Unknown` so a Data stream re-demuxes as
 /// Unknown (rejects typed stream_type bytes and 0x06 descriptor

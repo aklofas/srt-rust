@@ -2,9 +2,7 @@
 //! lenient/strict/compliance lineage.
 
 use crate::error::{KlvDecodeError, KlvFieldError};
-use crate::klv::length::{
-    read_ber, read_ber_oid_strict, read_ber_strict, read_var_int, read_var_uint,
-};
+use crate::klv::length::{read_ber, read_ber_strict, read_strict_tlv, read_var_int, read_var_uint};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::universal_label::UniversalLabel;
 use alloc::borrow::ToOwned;
@@ -112,9 +110,9 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
 /// - ST 0107.5 §6.3.1 / §6.3.2: BER-OID tag bytes and BER length
 ///   bytes must use canonical (fewest-bytes) encoding both for the
 ///   outer total-length and for every per-item TLV inside the body.
-///   The strict walker uses [`read_ber_oid_strict`] +
-///   [`read_ber_strict`] so a non-canonical encoding anywhere
-///   inside the body trips
+///   The strict walker uses [`crate::klv::length::read_ber_oid_strict`] +
+///   [`crate::klv::length::read_ber_strict`] so a non-canonical encoding
+///   anywhere inside the body trips
 ///   [`KlvDecodeError::NonCanonicalTag`] / [`KlvDecodeError::NonCanonicalLength`].
 ///
 /// Use this only when validating compliance against published
@@ -201,44 +199,11 @@ fn strict_body_walk(body: &[u8], body_offset_in_buf: usize) -> Result<Vec<u32>, 
     while offset < body.len() {
         let item_start = offset;
         let rest = &body[item_start..];
-        // Strict BER-OID tag.
-        let (tag, after_tag) = match read_ber_oid_strict(rest) {
-            Ok(v) => v,
-            Err(mut e) => {
-                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
-                    *o += body_offset_in_buf + item_start;
-                }
-                if let KlvDecodeError::NonCanonicalTag { offset: o } = &mut e {
-                    *o += body_offset_in_buf + item_start;
-                }
-                if let KlvDecodeError::MalformedTag { offset: o } = &mut e {
-                    *o += body_offset_in_buf + item_start;
-                }
-                return Err(e);
-            }
-        };
-        let consumed_tag = rest.len() - after_tag.len();
-        // Strict BER length.
-        let (len, after_len) = match read_ber_strict(after_tag) {
-            Ok(v) => v,
-            Err(mut e) => {
-                let inner_off = body_offset_in_buf + item_start + consumed_tag;
-                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
-                    *o += inner_off;
-                }
-                if let KlvDecodeError::NonCanonicalLength { offset: o } = &mut e {
-                    *o += inner_off;
-                }
-                if let KlvDecodeError::MalformedLength { offset: o } = &mut e {
-                    *o += inner_off;
-                }
-                return Err(e);
-            }
-        };
-        let consumed_len = after_tag.len() - after_len.len();
+        let (tag, len, consumed, after_len) =
+            read_strict_tlv(rest, body_offset_in_buf + item_start)?;
         if after_len.len() < len {
             return Err(KlvDecodeError::Truncated {
-                offset: body_offset_in_buf + item_start + consumed_tag + consumed_len,
+                offset: body_offset_in_buf + item_start + consumed,
                 needed: len,
                 have: after_len.len(),
             });
@@ -263,7 +228,7 @@ fn strict_body_walk(body: &[u8], body_offset_in_buf: usize) -> Result<Vec<u32>, 
             }
         }
         tag_order.push(tag);
-        offset = item_start + consumed_tag + consumed_len + len;
+        offset = item_start + consumed + len;
     }
     Ok(tag_order)
 }

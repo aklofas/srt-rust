@@ -2085,7 +2085,6 @@ dependencies = [
  "tracing",
  "tst-core",
  "tst-pipeline",
- "tst-test-helpers",
  "tstrans-rist-sys",
 ]
 
@@ -2117,7 +2116,6 @@ dependencies = [
  "tracing",
  "tst-core",
  "tst-pipeline",
- "tst-test-helpers",
 ]
 
 [[package]]
@@ -2170,7 +2168,6 @@ dependencies = [
  "tracing",
  "tst-core",
  "tst-pipeline",
- "tst-test-helpers",
 ]
 
 [[package]]

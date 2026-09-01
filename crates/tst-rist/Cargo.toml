@@ -24,7 +24,6 @@ tracing   = { workspace = true }
 
 [dev-dependencies]
 tst-pipeline = { path = "../tst-pipeline" }
-tst-test-helpers = { path = "../tst-test-helpers" }
 
 [features]
 default = ["mbedtls"]

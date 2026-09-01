@@ -4,18 +4,19 @@
 //! Wraps `tst_rtp::RtspServerBuilder`, `tst_rtp::RtspServer`, and
 //! `tst_rtp::MountHandle` with a sync C ABI.
 //!
-//! Task breakdown:
-//! - T7 (Wave B): `tst_rtsp_server_builder_new` + setter chain
+//! Module layout:
+//! - `builder`: `tst_rtsp_server_builder_new` + setter chain
 //!   (`_bind`, `_auth_basic`, `_auth_digest_md5`, `_auth_digest_sha256`,
 //!    `_max_sessions`, `_session_timeout`, `_fanout_capacity`,
 //!    `_graceful_shutdown_drain_ms`, `_tls_cert_pem`) + `_free`.
-//! - T8 (Wave B): `tst_rtsp_server_builder_start` + mount creation
-//!   (`_add_unicast_mount`, `_add_multicast_mount`, `_mount_handle_free`)
-//!   + opaque `TstRtspServer` / `TstRtspMountHandle` scaffolds.
-//! - T9 (Wave C): push methods on `TstRtspMountHandle`
-//!   (`push_video`, `push_video_to`, `push_klv`, `push_klv_to`,
-//!    `push_audio`, `push_audio_to`, `push_subtitle`, `push_subtitle_to`).
-//! - T10 (Wave C): server-level stats, stop, cancel, free.
+//! - `start`: `tst_rtsp_server_builder_start` + the opaque `TstRtspServer`
+//!   scaffold.
+//! - `mount` / `mount_getters`: mount creation (`_add_unicast_mount`,
+//!   `_add_multicast_mount`, `_mount_handle_free`), the opaque
+//!   `TstRtspMountHandle` scaffold, and push methods on it (`push_video`,
+//!   `push_video_to`, `push_klv`, `push_klv_to`, `push_audio`,
+//!   `push_audio_to`, `push_subtitle`, `push_subtitle_to`).
+//! - `stop`: server-level stats, stop, cancel, free.
 
 pub(crate) mod builder;
 pub(crate) mod mount;

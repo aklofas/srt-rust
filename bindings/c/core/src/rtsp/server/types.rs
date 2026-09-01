@@ -2,7 +2,8 @@
 //!
 //! `TstRtspServer` — owns the live `RtspServer` Rust value behind a `Mutex`.
 //! `TstRtspMountHandle` — owns a `MountHandle` returned from
-//! `RtspServer::add_mount` / `add_multicast_mount`; push methods land in T9.
+//! `RtspServer::add_mount` / `add_multicast_mount`; push methods live in
+//! `mount.rs`.
 //!
 //! Both types are opaque from the C caller's perspective. The naming follows
 //! the `tst_rtsp_server_t` / `tst_rtsp_mount_handle_t` C type names emitted
@@ -11,16 +12,16 @@
 //! # Lifecycle
 //!
 //! ```text
-//! tst_rtsp_server_builder_new()  →  TstRtspServerBuilder (Task 7)
-//!      ↓  (setter calls — Task 7)
-//! tst_rtsp_server_builder_start()  →  TstRtspServer  (Task 8)
+//! tst_rtsp_server_builder_new()  →  TstRtspServerBuilder
+//!      ↓  (setter calls)
+//! tst_rtsp_server_builder_start()  →  TstRtspServer
 //!      ↓
-//! tst_rtsp_server_add_unicast_mount()    →  TstRtspMountHandle  (Task 8)
-//! tst_rtsp_server_add_multicast_mount()  →  TstRtspMountHandle  (Task 8)
+//! tst_rtsp_server_add_unicast_mount()    →  TstRtspMountHandle
+//! tst_rtsp_server_add_multicast_mount()  →  TstRtspMountHandle
 //!      ↓
-//! push_video / push_klv / … on TstRtspMountHandle  (Task 9)
+//! push_video / push_klv / … on TstRtspMountHandle
 //!      ↓
-//! tst_rtsp_server_stop() / tst_rtsp_server_free()  (Task 10)
+//! tst_rtsp_server_stop() / tst_rtsp_server_free()
 //! ```
 
 use std::sync::Mutex;

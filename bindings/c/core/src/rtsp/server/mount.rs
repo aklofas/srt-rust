@@ -2,7 +2,7 @@
 //!
 //! Both entry points register a new mount on a started `TstRtspServer` and
 //! return an opaque `TstRtspMountHandle*`. Push methods on the mount handle
-//! land in Task 9; stats, stop, and server-level free land in Task 10.
+//! live in this file, below; server-level stats/stop/free live in `stop.rs`.
 //!
 //! # Mount registration pattern
 //!
@@ -989,10 +989,7 @@ mod tests {
             unsafe { tst_rtsp_server_add_unicast_mount(server, std::ptr::null(), cfg as *const _) };
         assert!(h.is_null());
         unsafe { crate::config::tst_mux_config_free(cfg) };
-        // Drop server directly (Task 10 adds tst_rtsp_server_free).
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1003,9 +1000,7 @@ mod tests {
         let h =
             unsafe { tst_rtsp_server_add_unicast_mount(server, path.as_ptr(), std::ptr::null()) };
         assert!(h.is_null());
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1026,9 +1021,7 @@ mod tests {
         );
         unsafe { tst_rtsp_mount_handle_free(mount) };
         unsafe { crate::config::tst_mux_config_free(cfg) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1077,9 +1070,7 @@ mod tests {
         );
         unsafe { tst_rtsp_mount_handle_free(mount) };
         unsafe { crate::config::tst_mux_config_free(cfg) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1178,9 +1169,7 @@ mod tests {
         let rc = unsafe { tst_rtsp_mount_push_video(mount, nal.as_ptr(), nal.len(), 0, true) };
         assert_eq!(rc, 0, "push_video should succeed on a fresh unicast mount");
         unsafe { tst_rtsp_mount_handle_free(mount) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1196,9 +1185,7 @@ mod tests {
             "push after cancel should return TST_E_CLOSED"
         );
         unsafe { tst_rtsp_mount_handle_free(mount) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1207,9 +1194,7 @@ mod tests {
         let rc = unsafe { tst_rtsp_mount_flush(mount) };
         assert_eq!(rc, 0);
         unsafe { tst_rtsp_mount_handle_free(mount) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1218,9 +1203,7 @@ mod tests {
         let rc = unsafe { tst_rtsp_mount_reset_stats(mount) };
         assert_eq!(rc, 0);
         unsafe { tst_rtsp_mount_handle_free(mount) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 
     #[test]
@@ -1239,8 +1222,6 @@ mod tests {
         unsafe { tst_rtsp_mount_handle_free(m1) };
         unsafe { crate::config::tst_mux_config_free(cfg1) };
         unsafe { crate::config::tst_mux_config_free(cfg2) };
-        unsafe {
-            let _ = Box::from_raw(server);
-        }
+        unsafe { crate::rtsp::server::stop::tst_rtsp_server_free(server) };
     }
 }

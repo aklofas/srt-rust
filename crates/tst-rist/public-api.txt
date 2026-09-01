@@ -123,25 +123,16 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::config::RistSecret
 impl core::panic::unwind_safe::UnwindSafe for tst_rist::config::RistSecret
 pub mod tst_rist::error
 #[non_exhaustive] pub enum tst_rist::error::RistError
-pub tst_rist::error::RistError::Closed
 pub tst_rist::error::RistError::ContextCreateFailed
 pub tst_rist::error::RistError::EncryptionDisabled
 pub tst_rist::error::RistError::Ffi
 pub tst_rist::error::RistError::Ffi::code: i32
 pub tst_rist::error::RistError::Ffi::function: &'static str
 pub tst_rist::error::RistError::InvalidConfig(alloc::string::String)
-pub tst_rist::error::RistError::Io(core::io::error::Error)
-pub tst_rist::error::RistError::PayloadTooLarge
-pub tst_rist::error::RistError::PayloadTooLarge::len: usize
-pub tst_rist::error::RistError::PayloadTooLarge::max: usize
 pub tst_rist::error::RistError::PeerCreateFailed
-pub tst_rist::error::RistError::RecvTimeout
-pub tst_rist::error::RistError::RecvTimeout::timeout_ms: u32
 pub tst_rist::error::RistError::Url(tst_rist::url::RistUrlError)
 impl tst_rist::error::RistError
 pub fn tst_rist::error::RistError::kind(&self) -> tst_rist::error::RistErrorKind
-impl core::convert::From<core::io::error::Error> for tst_rist::error::RistError
-pub fn tst_rist::error::RistError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_rist::url::RistUrlError> for tst_rist::error::RistError
 pub fn tst_rist::error::RistError::from(tst_rist::url::RistUrlError) -> Self
 impl core::error::Error for tst_rist::error::RistError
@@ -155,18 +146,14 @@ impl core::marker::Send for tst_rist::error::RistError
 impl core::marker::Sync for tst_rist::error::RistError
 impl core::marker::Unpin for tst_rist::error::RistError
 impl core::marker::UnsafeUnpin for tst_rist::error::RistError
-impl !core::panic::unwind_safe::RefUnwindSafe for tst_rist::error::RistError
-impl !core::panic::unwind_safe::UnwindSafe for tst_rist::error::RistError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::error::RistError
+impl core::panic::unwind_safe::UnwindSafe for tst_rist::error::RistError
 #[non_exhaustive] #[repr(u32)] pub enum tst_rist::error::RistErrorKind
-pub tst_rist::error::RistErrorKind::Closed = 4
 pub tst_rist::error::RistErrorKind::ContextCreateFailed = 7
 pub tst_rist::error::RistErrorKind::EncryptionDisabled = 6
 pub tst_rist::error::RistErrorKind::Ffi = 2
 pub tst_rist::error::RistErrorKind::InvalidConfig = 5
-pub tst_rist::error::RistErrorKind::Io = 10
-pub tst_rist::error::RistErrorKind::PayloadTooLarge = 3
 pub tst_rist::error::RistErrorKind::PeerCreateFailed = 8
-pub tst_rist::error::RistErrorKind::RecvTimeout = 9
 pub tst_rist::error::RistErrorKind::Url = 1
 impl core::clone::Clone for tst_rist::error::RistErrorKind
 pub fn tst_rist::error::RistErrorKind::clone(&self) -> tst_rist::error::RistErrorKind
@@ -312,25 +299,16 @@ impl core::marker::UnsafeUnpin for tst_rist::url::RistUrl
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::url::RistUrl
 impl core::panic::unwind_safe::UnwindSafe for tst_rist::url::RistUrl
 #[non_exhaustive] pub enum tst_rist::RistError
-pub tst_rist::RistError::Closed
 pub tst_rist::RistError::ContextCreateFailed
 pub tst_rist::RistError::EncryptionDisabled
 pub tst_rist::RistError::Ffi
 pub tst_rist::RistError::Ffi::code: i32
 pub tst_rist::RistError::Ffi::function: &'static str
 pub tst_rist::RistError::InvalidConfig(alloc::string::String)
-pub tst_rist::RistError::Io(core::io::error::Error)
-pub tst_rist::RistError::PayloadTooLarge
-pub tst_rist::RistError::PayloadTooLarge::len: usize
-pub tst_rist::RistError::PayloadTooLarge::max: usize
 pub tst_rist::RistError::PeerCreateFailed
-pub tst_rist::RistError::RecvTimeout
-pub tst_rist::RistError::RecvTimeout::timeout_ms: u32
 pub tst_rist::RistError::Url(tst_rist::url::RistUrlError)
 impl tst_rist::error::RistError
 pub fn tst_rist::error::RistError::kind(&self) -> tst_rist::error::RistErrorKind
-impl core::convert::From<core::io::error::Error> for tst_rist::error::RistError
-pub fn tst_rist::error::RistError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_rist::url::RistUrlError> for tst_rist::error::RistError
 pub fn tst_rist::error::RistError::from(tst_rist::url::RistUrlError) -> Self
 impl core::error::Error for tst_rist::error::RistError
@@ -344,18 +322,14 @@ impl core::marker::Send for tst_rist::error::RistError
 impl core::marker::Sync for tst_rist::error::RistError
 impl core::marker::Unpin for tst_rist::error::RistError
 impl core::marker::UnsafeUnpin for tst_rist::error::RistError
-impl !core::panic::unwind_safe::RefUnwindSafe for tst_rist::error::RistError
-impl !core::panic::unwind_safe::UnwindSafe for tst_rist::error::RistError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::error::RistError
+impl core::panic::unwind_safe::UnwindSafe for tst_rist::error::RistError
 #[non_exhaustive] #[repr(u32)] pub enum tst_rist::RistErrorKind
-pub tst_rist::RistErrorKind::Closed = 4
 pub tst_rist::RistErrorKind::ContextCreateFailed = 7
 pub tst_rist::RistErrorKind::EncryptionDisabled = 6
 pub tst_rist::RistErrorKind::Ffi = 2
 pub tst_rist::RistErrorKind::InvalidConfig = 5
-pub tst_rist::RistErrorKind::Io = 10
-pub tst_rist::RistErrorKind::PayloadTooLarge = 3
 pub tst_rist::RistErrorKind::PeerCreateFailed = 8
-pub tst_rist::RistErrorKind::RecvTimeout = 9
 pub tst_rist::RistErrorKind::Url = 1
 impl core::clone::Clone for tst_rist::error::RistErrorKind
 pub fn tst_rist::error::RistErrorKind::clone(&self) -> tst_rist::error::RistErrorKind

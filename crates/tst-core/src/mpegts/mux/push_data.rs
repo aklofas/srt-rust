@@ -78,11 +78,7 @@ impl Muxer {
     /// Handle for the i-th data stream in `programs[0]`, or `None` if out of
     /// range. Convenience for single-program callers.
     pub fn data_stream_handle(&self, index: usize) -> Option<DataStreamHandle> {
-        if !self.data_streams.is_empty() && index < self.data_streams[0].len() {
-            Some(DataStreamHandle::pack(0, index))
-        } else {
-            None
-        }
+        super::first_program_handle(&self.data_streams, index, DataStreamHandle::pack)
     }
 
     /// Data stream handles for the named program, in declaration order.
@@ -93,15 +89,12 @@ impl Muxer {
         &self,
         program_number: u16,
     ) -> Result<Vec<DataStreamHandle>, MuxError> {
-        let prog_idx = self
-            .config
-            .programs
-            .iter()
-            .position(|p| p.program_number == program_number)
-            .ok_or(MuxError::ProgramNotFound { program_number })?;
-        Ok((0..self.data_streams[prog_idx].len())
-            .map(|s_idx| DataStreamHandle::pack(prog_idx, s_idx))
-            .collect())
+        super::handles_for_program(
+            &self.config.programs,
+            &self.data_streams,
+            program_number,
+            DataStreamHandle::pack,
+        )
     }
 
     /// Push one data payload on a specific data stream.

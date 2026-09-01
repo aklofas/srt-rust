@@ -303,6 +303,19 @@ impl MuxerConfig {
             if drop.contains(&s.kind.tag()) {
                 continue;
             }
+            // Descriptor→TLV conversion is identical across every arm below
+            // (only the builder method + kind-scoped index differ); compute
+            // it once here rather than repeating it per arm.
+            let tlvs = if s.raw_descriptors.is_empty() {
+                None
+            } else {
+                Some(
+                    s.raw_descriptors
+                        .iter()
+                        .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            };
             match &s.kind {
                 DemuxKind::Video(c) => {
                     let codec = match c {
@@ -312,12 +325,7 @@ impl MuxerConfig {
                         DemuxVideo::Av1 => VideoCodec::Av1,
                     };
                     prog.add_video(s.pid, codec);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_video(video_idx, tlvs)?;
                     }
                     video_idx += 1;
@@ -338,12 +346,7 @@ impl MuxerConfig {
                     // only fires when language: Some(_), so there is no
                     // duplicate when the caller supplies their own 0x0A.
                     prog.add_audio(s.pid, codec);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_audio(audio_idx, tlvs)?;
                     }
                     audio_idx += 1;
@@ -351,12 +354,7 @@ impl MuxerConfig {
                 }
                 DemuxKind::KlvSync { .. } => {
                     prog.add_klv(s.pid, KlvStreamType::SynchronousMetadata, true);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_klv(klv_idx, tlvs)?;
                     }
                     klv_idx += 1;
@@ -367,12 +365,7 @@ impl MuxerConfig {
                     // true is the STANAG 4609 norm. Callers needing false build
                     // the config by hand.
                     prog.add_klv(s.pid, KlvStreamType::PrivateData, true);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_klv(klv_idx, tlvs)?;
                     }
                     klv_idx += 1;
@@ -380,12 +373,7 @@ impl MuxerConfig {
                 }
                 DemuxKind::Subtitle(DemuxSub::Cea708Standalone) => {
                     prog.add_subtitle(s.pid, SubtitleCodec::Cea708Standalone);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_subtitle(subtitle_idx, tlvs)?;
                     }
                     subtitle_idx += 1;
@@ -395,12 +383,7 @@ impl MuxerConfig {
                 }
                 DemuxKind::Subtitle(DemuxSub::WebVttInTs) => {
                     prog.add_subtitle(s.pid, SubtitleCodec::WebVttInTs);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_subtitle(subtitle_idx, tlvs)?;
                     }
                     subtitle_idx += 1;
@@ -418,12 +401,7 @@ impl MuxerConfig {
                     // (mirrors the KLV arms). Callers needing false build
                     // the config by hand.
                     prog.add_data(s.pid, *st, true);
-                    if !s.raw_descriptors.is_empty() {
-                        let tlvs = s
-                            .raw_descriptors
-                            .iter()
-                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
-                            .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(tlvs) = tlvs {
                         prog.stream_descriptors_for_data(data_idx, tlvs)?;
                     }
                     data_idx += 1;

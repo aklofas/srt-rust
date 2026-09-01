@@ -398,6 +398,46 @@ fn all_handles<T, H>(streams: &[Vec<T>], pack: fn(usize, usize) -> H) -> Vec<H> 
         .collect()
 }
 
+/// Stream handles for the named program, in declaration order.
+///
+/// `programs` is `self.config.programs` (to resolve `program_number` to an
+/// index); `streams` and `pack` are as in [`all_handles`]. Shared body of
+/// the five `*_handles_for_program` methods in the `push_*.rs` submodules.
+///
+/// Returns `Err(MuxError::ProgramNotFound)` if no program with the given
+/// number exists.
+fn handles_for_program<T, H>(
+    programs: &[MuxerProgramConfig],
+    streams: &[Vec<T>],
+    program_number: u16,
+    pack: fn(usize, usize) -> H,
+) -> Result<Vec<H>, crate::error::MuxError> {
+    let prog_idx = programs
+        .iter()
+        .position(|p| p.program_number == program_number)
+        .ok_or(crate::error::MuxError::ProgramNotFound { program_number })?;
+    Ok((0..streams[prog_idx].len())
+        .map(|s_idx| pack(prog_idx, s_idx))
+        .collect())
+}
+
+/// Handle for the i-th stream in `streams[0]` (the first program's
+/// declaration order), or `None` if `streams` has no programs or `index`
+/// is out of range. Shared body of `video_stream_handle` /
+/// `klv_stream_handle` / `data_stream_handle` — convenience lookups for
+/// single-program callers.
+fn first_program_handle<T, H>(
+    streams: &[Vec<T>],
+    index: usize,
+    pack: fn(usize, usize) -> H,
+) -> Option<H> {
+    if !streams.is_empty() && index < streams[0].len() {
+        Some(pack(0, index))
+    } else {
+        None
+    }
+}
+
 /// Return the program index of the sole non-empty stream list in `streams`.
 ///
 /// Precondition: caller has verified that exactly one program has a non-empty

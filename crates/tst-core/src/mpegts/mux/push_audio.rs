@@ -189,14 +189,11 @@ impl Muxer {
         &self,
         program_number: u16,
     ) -> Result<Vec<AudioStreamHandle>, MuxError> {
-        let prog_idx = self
-            .config
-            .programs
-            .iter()
-            .position(|p| p.program_number == program_number)
-            .ok_or(MuxError::ProgramNotFound { program_number })?;
-        Ok((0..self.audio_streams[prog_idx].len())
-            .map(|s_idx| AudioStreamHandle::pack(prog_idx, s_idx))
-            .collect())
+        super::handles_for_program(
+            &self.config.programs,
+            &self.audio_streams,
+            program_number,
+            AudioStreamHandle::pack,
+        )
     }
 }

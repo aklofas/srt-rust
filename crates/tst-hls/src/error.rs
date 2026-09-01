@@ -38,7 +38,7 @@ pub enum HlsError {
     Internal(String),
 }
 
-/// Flat error-variant projection for C-ABI mapping (future A5/W3).
+/// Flat error-variant projection for C-ABI and Python error mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 #[repr(u32)]

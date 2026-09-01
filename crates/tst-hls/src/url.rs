@@ -5,7 +5,8 @@
 //! - Query params: `output_dir`, `segment_duration`, `playlist_window`,
 //!   `mode` (live/event/vod), `auth_user`, `auth_pass`, `cert`, `key`
 //!
-//! `output_dir` is required (no sensible default for filesystem layout).
+//! `output_dir` is optional — see [`crate::config::HlsConfig::output_dir`]
+//! for the default when omitted.
 
 use std::net::IpAddr;
 use std::time::Duration;

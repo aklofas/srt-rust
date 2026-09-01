@@ -23,8 +23,8 @@
 //! mapping uses enum *names* so there's no off-by-one.
 //!
 //! Two ratchets back this module:
-//! - `scripts/check-py-hls-error-mapping-coverage.sh` — every
-//!   `HlsErrorKind` variant has a `make_hls_error(py, "<KIND>", ...)`
+//! - the consolidated `scripts/check/python/error-mapping-coverage.sh` —
+//!   every `HlsErrorKind` variant has a `make_hls_error(py, "<KIND>", ...)`
 //!   call site.
 //! - `scripts/check/python/publisher-class-mirror.sh` — the Python
 //!   `Publisher` ABC's abstract methods mirror the Rust
@@ -52,8 +52,8 @@ pub(crate) mod publisher_abc;
 ///
 /// Exhaustive over the 9 `HlsErrorKind` variants; the wildcard arm routes
 /// any future `#[non_exhaustive]` addition to `INTERNAL` so this fn never
-/// panics on a Rust-side enum growth. The
-/// `check-py-hls-error-mapping-coverage.sh` ratchet surfaces an
+/// panics on a Rust-side enum growth. The consolidated
+/// `scripts/check/python/error-mapping-coverage.sh` ratchet surfaces an
 /// unmapped variant in CI.
 pub(crate) fn map_hls_error(py: Python<'_>, e: &HlsError) -> PyErr {
     let msg = e.to_string();

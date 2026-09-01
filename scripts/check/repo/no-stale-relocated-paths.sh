@@ -8,6 +8,7 @@
 #   bindings/c/tst-c, bindings/c/tst-c-core          -> bindings/c{,/core} (Option-B flatten)
 #   crates/baremetal-qemu, crates/baremetal-qemu-c   -> embedded/ (embedded move)
 #   vendor/{srt,mbedtls,librist} (workspace root)    -> crates/{srt-sys,mbedtls-src,rist-sys}/vendor/... (crates-io-packaging move)
+#   scripts/check-<name>.sh (flat)                   -> scripts/check/<group>/<name>.sh (2026-06-03 ratchet reorg)
 #
 # This rail exists because the moves above are path-coupled and the literal
 # grep used during each move is BLIND to a few forms (slashless `cd crates/tst-c`,
@@ -73,6 +74,16 @@ PATTERN_VEND='vendor/(freertos-kernel|freertos-plus-posix|lwip)'
 # embedded class filters `embedded/vendor/` above.
 PATTERN_VEND_NATIVE='vendor/(srt|mbedtls|librist)([/")`, .]|$)'
 
+# 2026-06-03 bash-ratchet reorg: the flat `scripts/check-<name>.sh` scripts
+# moved into per-group subdirectories (`scripts/check/<group>/<name>.sh`).
+# This class rotted silently for months (18 stale hits found across
+# bindings/python alone during the 2026-09-01 simplification audit) because
+# no rail caught the flat form once every script moved — this closes that
+# gap. `scripts/check-[a-z-]+\.sh` cannot collide with a current path: every
+# live rail script lives under `scripts/check/<group>/`, one path segment
+# deeper, so the flat form is unambiguously dead once matched.
+PATTERN_RATCHET='scripts/check-[a-z-]+\.sh'
+
 # Exempt: CHANGELOG (history) and this script (it names the forbidden paths).
 hits=$(git ls-files \
   | grep -vE '^(CHANGELOG\.md|scripts/check/repo/no-stale-relocated-paths\.sh)$' \
@@ -96,12 +107,18 @@ hits_vend_native=$(git ls-files docs/ README.md embedded/README.md \
   | xargs -0 grep -InE "$PATTERN_VEND_NATIVE" 2>/dev/null \
   | grep -vE 'crates/(srt-sys|mbedtls-src|rist-sys)/vendor/' || true)
 
-if [ -n "$hits$hits_emb$hits_vend$hits_vend_native" ]; then
+hits_ratchet=$(git ls-files \
+  | grep -vE '^(CHANGELOG\.md|scripts/check/repo/no-stale-relocated-paths\.sh)$' \
+  | tr '\n' '\0' \
+  | xargs -0 grep -InE "$PATTERN_RATCHET" 2>/dev/null || true)
+
+if [ -n "$hits$hits_emb$hits_vend$hits_vend_native$hits_ratchet" ]; then
   echo "FAIL: references to relocated-away package directories found (these dirs no longer exist):" >&2
   [ -n "$hits" ] && echo "$hits" >&2
   [ -n "$hits_emb" ] && echo "$hits_emb" >&2
   [ -n "$hits_vend" ] && echo "$hits_vend" >&2
   [ -n "$hits_vend_native" ] && echo "$hits_vend_native" >&2
+  [ -n "$hits_ratchet" ] && echo "$hits_ratchet" >&2
   echo "" >&2
   echo "Update each to its current location:" >&2
   echo "  crates/tst-c, crates/tst-c-core, crates/tst-py  -> bindings/c, bindings/c/core, bindings/python" >&2
@@ -113,6 +130,7 @@ if [ -n "$hits$hits_emb$hits_vend$hits_vend_native" ]; then
   echo "  vendor/srt      -> crates/srt-sys/vendor/srt" >&2
   echo "  vendor/mbedtls  -> crates/mbedtls-src/vendor/mbedtls" >&2
   echo "  vendor/librist  -> crates/rist-sys/vendor/librist  (.gitmodules submodule NAMES exempt)" >&2
+  echo "  scripts/check-<name>.sh -> scripts/check/<group>/<name>.sh" >&2
   echo "(CHANGELOG.md is exempt as historical record.)" >&2
   exit 1
 fi

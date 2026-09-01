@@ -52,8 +52,9 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Map an [`tst_rtp::error::RtspServerError`] to a Python `RtspError`.
 ///
 /// Each variant gets its own `make_rtsp_error(py, "<KIND>", ...)` arm so
-/// the `check-py-rtsp-error-mapping-coverage.sh` ratchet sees a literal
-/// call site per kind. The kinds not emitted from this module —
+/// the consolidated `scripts/check/python/error-mapping-coverage.sh`
+/// ratchet sees a literal call site per kind. The kinds not emitted from
+/// this module —
 /// `AUTH_FAILED`, `AUTH_REQUIRED`, `NOT_FOUND`, `TIMEOUT`,
 /// `UNSUPPORTED_TRANSPORT` — are covered naturally by T21's client surface
 /// (`bindings/python/src/rtp/client.rs::rtsp_error_to_pyerr`), so the

@@ -28,9 +28,9 @@
 //! Python `UdpErrorKind` enum is 0-indexed — the mapping uses enum
 //! *names*, not numeric codes, so there is no off-by-one issue.
 //!
-//! The 27th bash ratchet `scripts/check-py-udp-error-mapping-coverage.sh`
-//! enforces that every `UdpErrorKind` variant has at least one literal
-//! `make_udp_error(py, "<VARIANT>", ...)` call site in this crate.
+//! The consolidated `scripts/check/python/error-mapping-coverage.sh`
+//! ratchet enforces that every `UdpErrorKind` variant has at least one
+//! literal `make_udp_error(py, "<VARIANT>", ...)` call site in this crate.
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
@@ -55,10 +55,10 @@ use crate::errors::make_udp_error;
 /// enum addition. The bash ratchet will surface the omission in CI.
 ///
 /// Each of `UdpErrorKind`'s Rust-enum variants gets a literal call site
-/// below so the `check-py-udp-error-mapping-coverage.sh` ratchet stays
-/// green. `transport_error_to_pyerr` below maps the remaining observable
-/// kinds (`CLOSED`, `PAYLOAD_TOO_LARGE`) from `TransportError` instead —
-/// those never reach this function.
+/// below so the consolidated `scripts/check/python/error-mapping-coverage.sh`
+/// ratchet stays green. `transport_error_to_pyerr` below maps the remaining
+/// observable kinds (`CLOSED`, `PAYLOAD_TOO_LARGE`) from `TransportError`
+/// instead — those never reach this function.
 fn map_udp_error(py: Python<'_>, e: UdpError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {

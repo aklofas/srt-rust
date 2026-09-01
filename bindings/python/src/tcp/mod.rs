@@ -68,10 +68,10 @@ use crate::errors::make_tcp_error;
 /// enum addition. The bash ratchet will surface the omission in CI.
 ///
 /// Each of `TcpErrorKind`'s Rust-enum variants gets a literal call site
-/// below so the `check-py-tcp-error-mapping-coverage.sh` ratchet stays
-/// green. `TcpTransportErr::into_pyerr` below maps the one remaining
-/// observable kind (`PAYLOAD_TOO_LARGE`) from `TransportError` instead —
-/// it never reaches this function.
+/// below so the consolidated `scripts/check/python/error-mapping-coverage.sh`
+/// ratchet stays green. `TcpTransportErr::into_pyerr` below maps the one
+/// remaining observable kind (`PAYLOAD_TOO_LARGE`) from `TransportError`
+/// instead — it never reaches this function.
 fn map_tcp_error_kind(py: Python<'_>, e: TcpError) -> PyErr {
     let msg = e.to_string();
     match e.kind() {

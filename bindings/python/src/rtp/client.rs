@@ -1067,8 +1067,8 @@ fn rtsp_error_kind_str(e: &RustRtspError) -> &'static str {
 // Server-side variant call-site anchors for the ratchet
 // ---------------------------------------------------------------------------
 //
-// The bash ratchet `scripts/check-py-rtsp-error-mapping-coverage.sh`
-// scans `bindings/python/src/` for at least one literal
+// The consolidated `scripts/check/python/error-mapping-coverage.sh`
+// ratchet scans `bindings/python/src/` for at least one literal
 // `make_rtsp_error(<py>, "KIND", ...)` call site per
 // `RtspErrorKind` variant. Wave A's natural call sites cover most
 // kinds via `rtsp_error_kind_str`, but `SERVER` and `MOUNT` (mostly

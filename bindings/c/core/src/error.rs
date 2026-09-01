@@ -623,8 +623,8 @@ pub(crate) fn record_not_found(msg: &str) -> i32 {
 
 /// Map a [`tst_rtp::RtspError`] to the appropriate `TstError` variant.
 ///
-/// Explicit arms cover all 15 variants from Phase 2 closeout. The wildcard
-/// fallback is required by `#[non_exhaustive]` and maps future variants to
+/// Explicit arms cover every `RtspError` variant. The wildcard fallback is
+/// required by `#[non_exhaustive]` and maps future variants to
 /// `TstError::RtspProtocol` (the most generic RTSP failure bucket).
 ///
 /// CI ratchet `scripts/check/rust/rtsp-error-mapping-coverage.sh` verifies every
@@ -701,18 +701,18 @@ pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstErro
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Plan A5a — per-protocol error converters. Bootstrap ships these as
-// placeholder stubs returning the family-default code; each protocol
-// wave's first task (Wave A T5 / Wave B T10 / Wave C T15 / Wave D T20)
-// replaces the body with an exhaustive `match e.kind() { ... }` and the
-// matching `scripts/check-<proto>-error-mapping-coverage.sh` ratchet.
+// Plan A5a — per-protocol error converters. Each is an exhaustive
+// `match e.kind() { ... }`; coverage is enforced by the TSV-driven rail
+// at scripts/check/rust/rust-error-mapping-coverage.sh (data in
+// scripts/ratchets/error-mapping.tsv, driver at
+// scripts/ratchets/run-rust-coverage.sh).
 // ─────────────────────────────────────────────────────────────────────
 
 #[cfg(feature = "udp")]
 pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
     use tst_udp::UdpErrorKind;
     // Exhaustive match — every UdpErrorKind variant maps to a single
-    // TstError code. CI ratchet scripts/check-udp-error-mapping-coverage.sh
+    // TstError code. CI ratchet scripts/check/rust/rust-error-mapping-coverage.sh
     // enforces this completeness.
     match e.kind() {
         UdpErrorKind::Url => TstError::UdpConfig,
@@ -729,7 +729,7 @@ pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
 pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
     use tst_tcp::error::TcpErrorKind;
     // Exhaustive match — every TcpErrorKind variant maps to a single
-    // TstError code. CI ratchet scripts/check-tcp-error-mapping-coverage.sh
+    // TstError code. CI ratchet scripts/check/rust/rust-error-mapping-coverage.sh
     // enforces this completeness.
     match e.kind() {
         TcpErrorKind::Url => TstError::TcpConfig,
@@ -750,7 +750,7 @@ pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
 pub(crate) fn hls_error_to_code(e: &tst_hls::HlsError) -> TstError {
     use tst_hls::HlsErrorKind;
     // Exhaustive match — every HlsErrorKind variant maps to a single TstError
-    // code. CI ratchet scripts/check-hls-error-mapping-coverage.sh enforces
+    // code. CI ratchet scripts/check/rust/rust-error-mapping-coverage.sh enforces
     // this completeness.
     match e.kind() {
         HlsErrorKind::Url => TstError::HlsConfig,
@@ -773,7 +773,7 @@ pub(crate) fn hls_error_to_code(e: &tst_hls::HlsError) -> TstError {
 pub(crate) fn rist_error_to_code(e: &tst_rist::RistError) -> TstError {
     use tst_rist::RistErrorKind;
     // Exhaustive match — every RistErrorKind variant maps to a single
-    // TstError code. CI ratchet scripts/check-rist-error-mapping-coverage.sh
+    // TstError code. CI ratchet scripts/check/rust/rust-error-mapping-coverage.sh
     // enforces this completeness.
     match e.kind() {
         RistErrorKind::Url => TstError::RistConfig,

@@ -11,6 +11,12 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Every job either builds a crate that links vendored libsrt/librist (where
+  # these force the vendored-cmake/meson path over the pkg-config probe) or
+  # doesn't touch srt-sys/rist-sys at all (where the vars are simply inert) —
+  # verified per-job before hoisting here from 17 duplicated step-level blocks.
+  SRT_FORCE_VENDORED: "1"
+  RIST_FORCE_VENDORED: "1"
 
 jobs:
   build:
@@ -102,9 +108,10 @@ jobs:
         run: |
           set -euo pipefail
           # pkgconfiglite provides pkg-config so librist's meson can find the
-          # shared vendor/mbedtls 3.6.x via PKG_CONFIG_PATH (rist-sys build.rs)
-          # instead of falling back to its bundled contrib/mbedtls 2.26.0 — a
-          # version mismatch with libsrt's mbedTLS would corrupt shared state.
+          # shared crates/mbedtls-src/vendor/mbedtls 3.6.x tree via
+          # PKG_CONFIG_PATH (rist-sys build.rs) instead of falling back to its
+          # bundled contrib/mbedtls 2.26.0 — a version mismatch with libsrt's
+          # mbedTLS would corrupt shared state.
           choco install -y --no-progress ninja ripgrep pkgconfiglite
           python -m pip install --upgrade meson
           # Verify each prerequisite is actually on PATH — choco can return 0
@@ -392,9 +399,6 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Install nightly toolchain (for doc lints)
@@ -419,8 +423,6 @@ jobs:
         # job depends on it), so no new toolchain commitment.
         if: matrix.name == 'linux-x86_64'
         env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
           RUSTDOCFLAGS: "-D warnings"
         run: cargo +nightly doc --workspace --no-deps --all-features
 
@@ -432,18 +434,12 @@ jobs:
         # bounds any residual hang (windows-msvc is gating as of 2026-05-30
         # after a multi-run green streak).
         timeout-minutes: 15
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo test --doc --workspace --no-fail-fast
 
       # `cargo test` only builds the rlib of crates with multiple crate-types.
       # tst-c's smoke test asserts on target/debug/libtstrans.so, so we need an
       # explicit `cargo build` to produce the cdylib + staticlib first.
       - name: cargo build (all crate types, with mbedtls)
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace
 
       - name: cargo test (default features, with mbedtls)
@@ -453,23 +449,14 @@ jobs:
         # `network` test-group serialises loopback tests so they don't contend.
         # --no-fail-fast = run all tests. timeout-minutes is a coarse backstop.
         timeout-minutes: 20
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo nextest run --workspace --no-fail-fast
 
       - name: cargo build (all crate types, no-default-features)
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --no-default-features
 
       - name: cargo test (no-default-features, no encryption)
         # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
         timeout-minutes: 20
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo nextest run --workspace --no-default-features --no-fail-fast
 
       - name: Build tst-c per-feature (srt/rtp/udp/tcp/hls/rist) — catch single-feature breakage
@@ -490,9 +477,6 @@ jobs:
         # against the stripped cdylib and fails with `undefined reference to
         # tst_muxer_open`. Keeping the all-features build last re-syncs the
         # cdylib to the test's feature set.
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: |
           cargo build -p tst-c --no-default-features --features srt
           cargo build -p tst-c --no-default-features --features rtp
@@ -513,9 +497,6 @@ jobs:
         # Surfaced 2026-05-26 on macos-arm64 (`26479673047`) and 2026-05-28
         # across the whole matrix after A5a added the per-feature step. This
         # build MUST stay the last cdylib-producing build before the test step.
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --all-features
 
       - name: cargo test (all features)
@@ -527,9 +508,6 @@ jobs:
         # transport-less cdylib. This is the canonical "everything on" gate.
         # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
         timeout-minutes: 20
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: C scenario adapter (cross-binding parity check)
@@ -551,9 +529,6 @@ jobs:
         # The cross-binding signal (byte-level parity) is platform-independent —
         # one platform run is sufficient.
         if: matrix.name == 'linux-x86_64'
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: |
           gcc \
             -I bindings/c/include \
@@ -944,17 +919,11 @@ jobs:
       # marginal coverage. Theme O of the Rust quality refactor audit
       # called out "no fuzz smoke" as a gap.
       - name: Compile-check tst-core fuzz targets
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: |
           cd crates/tst-core/fuzz
           cargo +nightly fuzz check
 
       - name: Compile-check tst-srt fuzz targets
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: |
           cd crates/tst-srt/fuzz
           cargo +nightly fuzz check
@@ -972,9 +941,10 @@ jobs:
     # this job (added via audit #1, 2026-05-24) closes the gap by running
     # the broader default-marker suite that exercises Demuxer, Muxer,
     # KLV typed decode/encode, codec parsers, and io helpers. Wires
-    # scripts/check/python/codec-error-mapping-coverage.sh (the 12th bash
-    # ratchet) as a fast-fail step so future CodecParseError variants
-    # cannot silently miss Python exception mapping.
+    # scripts/check/python/error-mapping-coverage.sh as a fast-fail step
+    # (before the expensive maturin build) so future CodecParseError /
+    # DemuxError / KlvDecodeError / KlvEncodeError variants cannot
+    # silently miss Python exception mapping.
     env:
       # Same `RUSTUP_TOOLCHAIN` pin as `build` and `python-pandas-extra` —
       # avoids the pre-installed clippy / rustup-sync clash on
@@ -986,28 +956,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: check-py-codec-error-mapping-coverage
-        # Cheap grep over Rust source — run before the expensive maturin
-        # build so a missing exception-mapping arm fails CI fast.
-        run: bash scripts/check/python/codec-error-mapping-coverage.sh
-
-      - name: check-py-demux-error-mapping-coverage
-        # Plan #96 Wave G (Finding 12): every DemuxError variant must be
-        # mapped explicitly in `demux_error_to_pyerr` instead of routing
-        # silently to INTERNAL through the non_exhaustive wildcard.
-        run: bash scripts/check/python/demux-error-mapping-coverage.sh
-
-      - name: check-py-klv-decode-error-mapping-coverage
-        # Plan #96 Wave G (Finding 12): same guardrail for KlvDecodeError
-        # — every variant maps to a specific KlvErrorKind, not INTERNAL.
-        run: bash scripts/check/python/klv-decode-error-mapping-coverage.sh
-
-      - name: check-py-klv-encode-error-mapping-coverage
-        # Plan #96 Wave G (Finding 12): same guardrail for KlvEncodeError
-        # — every variant maps to a specific KlvEncodeErrorKind, not the
-        # BUFFER_TOO_SMALL wildcard fallback.
-        run: bash scripts/check/python/klv-encode-error-mapping-coverage.sh
-
       - name: check-py-non-conformant-kind-coverage
         # Plan #96 Wave G (Finding 12): NonConformantKind is the public
         # analytics surface. Verify every Rust NonConformantIssue variant
@@ -1016,11 +964,16 @@ jobs:
         run: bash scripts/check/python/non-conformant-kind-coverage.sh
 
       - name: check-py-error-mapping-coverage
-        # Consolidated: every <Proto>ErrorKind in tstrans.exceptions
-        # (srt/udp/tcp/rtp/rtsp/hls/rist) has a make_<proto>_error call site
-        # under bindings/python/src/. Driven by scripts/ratchets/error-mapping.tsv
-        # (replaces the former per-protocol check-py-*-error-mapping clones;
-        # also brings rtp/rtsp under CI, which were previously local-only).
+        # Consolidated: `py` rows assert every <Proto>ErrorKind in
+        # tstrans.exceptions (srt/udp/tcp/rtp/rtsp/hls/rist) has a
+        # make_<proto>_error call site under bindings/python/src/; `pyarm`
+        # rows assert every CodecParseError / DemuxError / KlvDecodeError /
+        # KlvEncodeError variant (Plan #96 Wave G, Finding 12) has an
+        # explicit arm in its Python-binding mapper fn, instead of silently
+        # routing to a wildcard fallback. Driven by
+        # scripts/ratchets/error-mapping.tsv (replaces the former
+        # per-protocol check-py-*-error-mapping clones; also brings
+        # rtp/rtsp under CI, which were previously local-only).
         run: bash scripts/check/python/error-mapping-coverage.sh
 
       - name: check-py-publisher-class-mirror
@@ -1066,9 +1019,6 @@ jobs:
           .venv/bin/pip install maturin pytest pytest-timeout mypy
 
       - name: Build tst-py (maturin develop --release)
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: |
           cd bindings/python
           source .venv/bin/activate
@@ -1145,9 +1095,6 @@ jobs:
           .venv/bin/pip install maturin pytest pytest-timeout 'numpy>=1.24' 'pandas>=2.0'
 
       - name: Build tst-py (maturin develop --release)
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: |
           cd bindings/python
           source .venv/bin/activate
@@ -1237,9 +1184,6 @@ jobs:
         # Build tst-c with the feature combination under test. Explicit build
         # step produces the cdylib + staticlib (cargo test alone only builds
         # the rlib when multiple crate-types are present).
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo build -p tst-c ${{ matrix.cargo_flags }}
 
       - name: cargo test feature_matrix_compile (${{ matrix.name }})
@@ -1249,7 +1193,4 @@ jobs:
         # feature_matrix_compile now lives in the consolidated `abi` test
         # binary (see bindings/c/tests/MOVEMENT_MAP.md); build that binary
         # and filter to its tests — the per-mode counts above are unchanged.
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
         run: cargo test -p tst-c ${{ matrix.cargo_flags }} --test abi feature_matrix_compile

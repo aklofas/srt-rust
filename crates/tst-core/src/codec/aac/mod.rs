@@ -12,10 +12,10 @@
 //! - Per-frame: profile, sample_rate, channel_configuration, channel_layout,
 //!   frame_length, samples_per_frame, num_raw_data_blocks, has_crc.
 //!
-//! Validate-1 C11 adds a LATM/LOAS sync validator at [`latm`] for the
-//! AAC-LATM PES path (stream_type 0x11). The validator is consumed by
-//! the demuxer's PES emission layer and surfaces non-conformant framing
-//! to [`crate::mpegts::demux::NonConformantIssue::LatmFraming`].
+//! A LATM/LOAS sync validator at [`latm`] covers the AAC-LATM PES path
+//! (stream_type 0x11). The validator is consumed by the demuxer's PES
+//! emission layer and surfaces non-conformant framing to
+//! [`crate::mpegts::demux::NonConformantIssue::LatmFraming`].
 //!
 //! ## Not parsed (deferred)
 //!
@@ -78,7 +78,7 @@ pub enum MpegVersion {
 /// `#[non_exhaustive]` — future variants (e.g. a `Pce` variant carrying
 /// the walked PCE details) can be added without breaking matchers.
 ///
-/// Validate-1 C7 — prior to this enum `decode_channels(0)` returned
+/// Prior to this enum `decode_channels(0)` returned
 /// `CodecParseError::ReservedValue`, which terminated the ADTS iterator
 /// and dropped every subsequent frame on streams using PCE-defined
 /// channel layouts.

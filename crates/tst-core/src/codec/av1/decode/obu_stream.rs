@@ -72,8 +72,8 @@ mod tests {
         vec![0, 0, 0, 4, 60, 255, 188, 0, 0, 0]
     }
 
-    /// From Task 24: show_existing_frame=0, frame_type=KEY_FRAME(0),
-    /// show_frame=1 → 4 bits 0001 in the high nibble = 0x10.
+    /// show_existing_frame=0, frame_type=KEY_FRAME(0), show_frame=1 →
+    /// 4 bits 0001 in the high nibble = 0x10.
     fn keyframe_body() -> Vec<u8> {
         vec![0x10]
     }

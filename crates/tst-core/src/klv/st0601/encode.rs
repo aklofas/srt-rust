@@ -243,7 +243,7 @@ fn sentinel_field_len(record: &UasDatalinkLs, tag: u32) -> usize {
 /// Return the TLV byte size that an IMAPB special entry for `tag`
 /// contributes, or 0 if the tag is not IMAPB-encoded, is unrecognized, or
 /// its typed field is already populated (value wins over the special).
-/// Sibling of `sentinel_field_len` for the WP-B IMAPB fields.
+/// Sibling of `sentinel_field_len` for the IMAPB fields.
 fn imapb_special_field_len(record: &UasDatalinkLs, tag: u32) -> usize {
     let Ok(tag_u8) = u8::try_from(tag) else {
         return 0;
@@ -794,7 +794,7 @@ fn write_sentinel_tags(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(),
 /// `record.imapb_specials` whose typed field is currently `None`. If the
 /// typed field is `Some(v)`, `encode_tag_value` has already emitted it
 /// above (value wins over the special entry) — mirror of
-/// `write_sentinel_tags` for the WP-B IMAPB fields.
+/// `write_sentinel_tags` for the IMAPB fields.
 fn write_imapb_specials(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     for &(tag, special) in &record.imapb_specials {
         let Ok(tag_u8) = u8::try_from(tag) else {
@@ -852,7 +852,7 @@ fn encode_ranged(
     Ok(Some(scratch[..r.byte_length].to_vec()))
 }
 
-/// Encode one WP-B ST 1201.5 IMAPB extended-range field — the IMAPB
+/// Encode one ST 1201.5 IMAPB extended-range field — the IMAPB
 /// sibling of `encode_ranged`. In-range values encode normally at
 /// `default_len`; out-of-range values either error (default policy) or,
 /// under [`OutOfRangePolicy::Indicator`], emit the tag's `BelowMin` /

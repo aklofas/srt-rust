@@ -26,11 +26,8 @@
 //! introspection).
 //!
 //! **All 142 active ST 0601.19 items are typed or structured** (Item 66
-//! deprecated: unknown-passthrough) — up from 52 pre-WP-A, 103 after
-//! WP-A, 128 after WP-B, 134 after WP-C Task C2's simple packs, 141
-//! after WP-C Task C3's VLP packs, 142 after WP-C Task C4's Tag 102
-//! SDCC-FLP capture — see `CHANGELOG.md` `[Unreleased]` for the
-//! work-package history. Grouped by [`UasDatalinkLs`] field section:
+//! deprecated: unknown-passthrough). Grouped by [`UasDatalinkLs`] field
+//! section:
 //!
 //! - **Identity / time:** tags 1–4, 10–12, 59, 65 (checksum, UTF-8
 //!   identity strings, version, timestamp).
@@ -57,7 +54,7 @@
 //!   129, 135 (I8/U16/U64 raw values + 6 UTF-8 strings; 129 and 135
 //!   are the first typed tags whose own tag number is 2-byte BER-OID
 //!   encoded).
-//! - **Extended-range items (ST 1201.5 IMAPB, WP-B):** tags 96,
+//! - **Extended-range items (ST 1201.5 IMAPB):** tags 96,
 //!   103–105, 109, 112–114, 117–120, 132, 134 (14 fields: four are
 //!   wider-range twins of existing restricted items 22, 38, 75, 76;
 //!   the remaining ten are new standalone items — see the field docs
@@ -66,14 +63,14 @@
 //!   any producer-supplied special value (`+/-Infinity`, NaN families)
 //!   round-trip through [`UasDatalinkLs::imapb_specials`], the IMAPB
 //!   counterpart of [`UasDatalinkLs::sentinel_tags`].
-//! - **Var-length int/enum items (WP-B):** tags 110–111, 123–126, 131,
+//! - **Var-length int/enum items:** tags 110–111, 123–126, 131,
 //!   133, 136–137, 139 (11 fields: navigation/propulsion/positioning
 //!   counters, two new coded enums [`PlatformStatus`] (tag 125) and
 //!   [`SensorControlMode`] (tag 126), take-off time, on-board MI
 //!   storage capacity, leap-seconds, GPS/UTC correction offset, and
 //!   the `active_payloads` bitmask).
 //! - **Misc:** tag 47 (generic flag bitfield).
-//! - **Pack & list items (WP-C Appendix Table C1):** tag 102
+//! - **Pack & list items:** tag 102
 //!   ([`SdccFlpField`], MULTI-INSTANCE, "Refined Source List" positional
 //!   capture — wire-format parser at [`crate::klv::st1010`]), tags 81
 //!   ([`ImageHorizonPixels`]), 115 ([`ControlCommand`],

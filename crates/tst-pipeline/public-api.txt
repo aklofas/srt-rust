@@ -1185,7 +1185,7 @@ impl tst_pipeline::sender::TsFraming
 pub fn tst_pipeline::sender::TsFraming::flush(&mut self) -> alloc::vec::Vec<alloc::vec::Vec<u8>>
 pub fn tst_pipeline::sender::TsFraming::is_synced(&self) -> bool
 pub fn tst_pipeline::sender::TsFraming::new(usize) -> Self
-pub fn tst_pipeline::sender::TsFraming::push(&mut self, &[u8]) -> (alloc::vec::Vec<alloc::vec::Vec<u8>>, &tst_pipeline::SenderStats)
+pub fn tst_pipeline::sender::TsFraming::push(&mut self, &[u8]) -> core::result::Result<(alloc::vec::Vec<alloc::vec::Vec<u8>>, &tst_pipeline::SenderStats), tst_pipeline::sender::TsFramingError>
 pub fn tst_pipeline::sender::TsFraming::push_strict(&mut self, &[u8]) -> core::result::Result<alloc::vec::Vec<alloc::vec::Vec<u8>>, tst_pipeline::sender::TsFramingError>
 pub fn tst_pipeline::sender::TsFraming::reset_stats(&mut self)
 pub fn tst_pipeline::sender::TsFraming::stats(&self) -> tst_pipeline::SenderStats

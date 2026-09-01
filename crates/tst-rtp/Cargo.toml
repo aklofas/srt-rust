@@ -111,7 +111,6 @@ features         = ["ring"]
 
 [dev-dependencies]
 tst-pipeline     = { path = "../tst-pipeline" }
-tst-test-helpers = { path = "../tst-test-helpers" }
 proptest         = { workspace = true }
 # Used by server::tls unit tests (negative-path cert loading); matches the
 # `tempfile = "3"` pattern from tst-core.

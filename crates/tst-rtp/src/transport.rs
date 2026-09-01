@@ -201,91 +201,62 @@ impl RtpTransport {
         // Spawn the SR-emitter thread when RTCP is enabled. The closure
         // grabs its own clone of the rtcp socket FD + the stats handle;
         // both live for the reporter thread's lifetime via Arc/`try_clone`.
-        let rtcp_reporter = match rtcp_socket.as_ref() {
-            Some(sock) => {
-                // try_clone gives the reporter its own FD ref; close
-                // semantics on the original FD stay intact.
-                let sock_clone = match sock.try_clone() {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
-                        return Self {
-                            socket: Some(socket),
-                            max_payload: pkt_size,
-                            clock: RtpClock::new(start_ticks),
-                            ssrc,
-                            next_seq,
-                            cancel: RtpCancelHandle::new(),
-                            bytes_sent: 0,
-                            packets_sent: 0,
-                            rtcp_socket,
-                            rtcp_stats,
-                            rtcp_reporter: None,
-                            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + pkt_size),
-                        };
-                    }
+        let rtcp_reporter = rtcp_socket.as_ref().and_then(|sock| {
+            // try_clone gives the reporter its own FD ref; close
+            // semantics on the original FD stay intact.
+            let sock_clone = match sock.try_clone() {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
+                    return None;
+                }
+            };
+            let stats_clone = rtcp_stats.clone();
+            // Guard: port 65535 has no valid RTCP companion port
+            // (65536 overflows u16). Skip the reporter in that case,
+            // mirroring the guard in `bind_server_udp_pair` in rtsp/server/handlers.rs.
+            let Some(rtcp_companion_port) = peer.port().checked_add(1) else {
+                tracing::warn!("peer port 65535 has no RTCP companion; skipping SR reporter");
+                return None;
+            };
+            let rtcp_target = SocketAddr::new(peer.ip(), rtcp_companion_port);
+            Some(RtcpReporterHandle::spawn(move || {
+                // Phase 2 v1: SR carries running totals snapshot.
+                // Real bytes_sent / packets_sent live on the
+                // transport — for the v1 reporter we emit a
+                // minimal SR (counters zero) + SDES CNAME. Full
+                // SR counter wire-up happens in Phase 2 Task 14
+                // (integration). The reporter thread + socket
+                // pair are what Task 10 retrofits — the SR's
+                // counters are a follow-up.
+                let sr = crate::rtcp::SenderReport {
+                    ssrc,
+                    ntp_timestamp: 0,
+                    rtp_timestamp: 0,
+                    sender_packet_count: 0,
+                    sender_octet_count: 0,
+                    report_blocks: Vec::new(),
                 };
-                let stats_clone = rtcp_stats.clone();
-                // Guard: port 65535 has no valid RTCP companion port
-                // (65536 overflows u16). Skip the reporter in that case,
-                // mirroring the guard in `bind_server_udp_pair` in rtsp/server/handlers.rs.
-                let Some(rtcp_companion_port) = peer.port().checked_add(1) else {
-                    tracing::warn!("peer port 65535 has no RTCP companion; skipping SR reporter");
-                    return Self {
-                        socket: Some(socket),
-                        max_payload: pkt_size,
-                        clock: RtpClock::new(start_ticks),
-                        ssrc,
-                        next_seq,
-                        cancel: RtpCancelHandle::new(),
-                        bytes_sent: 0,
-                        packets_sent: 0,
-                        rtcp_socket,
-                        rtcp_stats,
-                        rtcp_reporter: None,
-                        send_scratch: Vec::with_capacity(RTP_HEADER_LEN + pkt_size),
-                    };
+                let cname = format!("tst-rtp-{ssrc:08x}");
+                let sdes = SdesPacket { ssrc, cname };
+                // These are locally-built, well-formed packets (no report
+                // blocks, short CNAME) so encode never fails — but the
+                // encoders are fallible now; skip the send on the
+                // (unreachable) validation error rather than unwrapping.
+                let (Ok(mut compound), Ok(sdes_bytes)) = (sr.encode(), sdes.encode()) else {
+                    tracing::error!(
+                        "internal: locally-built RTCP SR/SDES failed to encode; skipping send"
+                    );
+                    debug_assert!(false, "locally-built RTCP SR/SDES must always encode");
+                    return;
                 };
-                let rtcp_target = SocketAddr::new(peer.ip(), rtcp_companion_port);
-                Some(RtcpReporterHandle::spawn(move || {
-                    // Phase 2 v1: SR carries running totals snapshot.
-                    // Real bytes_sent / packets_sent live on the
-                    // transport — for the v1 reporter we emit a
-                    // minimal SR (counters zero) + SDES CNAME. Full
-                    // SR counter wire-up happens in Phase 2 Task 14
-                    // (integration). The reporter thread + socket
-                    // pair are what Task 10 retrofits — the SR's
-                    // counters are a follow-up.
-                    let sr = crate::rtcp::SenderReport {
-                        ssrc,
-                        ntp_timestamp: 0,
-                        rtp_timestamp: 0,
-                        sender_packet_count: 0,
-                        sender_octet_count: 0,
-                        report_blocks: Vec::new(),
-                    };
-                    let cname = format!("tst-rtp-{ssrc:08x}");
-                    let sdes = SdesPacket { ssrc, cname };
-                    // These are locally-built, well-formed packets (no report
-                    // blocks, short CNAME) so encode never fails — but the
-                    // encoders are fallible now; skip the send on the
-                    // (unreachable) validation error rather than unwrapping.
-                    let (Ok(mut compound), Ok(sdes_bytes)) = (sr.encode(), sdes.encode()) else {
-                        tracing::error!(
-                            "internal: locally-built RTCP SR/SDES failed to encode; skipping send"
-                        );
-                        debug_assert!(false, "locally-built RTCP SR/SDES must always encode");
-                        return;
-                    };
-                    compound.extend_from_slice(&sdes_bytes);
-                    let _ = sock_clone.send_to(&compound, rtcp_target);
-                    if let Ok(mut g) = stats_clone.lock() {
-                        g.sr_packets_sent = g.sr_packets_sent.saturating_add(1);
-                    }
-                }))
-            }
-            None => None,
-        };
+                compound.extend_from_slice(&sdes_bytes);
+                let _ = sock_clone.send_to(&compound, rtcp_target);
+                if let Ok(mut g) = stats_clone.lock() {
+                    g.sr_packets_sent = g.sr_packets_sent.saturating_add(1);
+                }
+            }))
+        });
         Self {
             socket: Some(socket),
             max_payload: pkt_size,
@@ -648,9 +619,8 @@ pub struct RtpRecvTransport {
     rtcp_reporter: Option<RtcpReporterHandle>,
     /// Local SSRC used in the RR sender field — defaults to a random
     /// value generated at listen time; matches the RTP send-side
-    /// pattern. Captured by the reporter closure; field retained for
-    /// reflection by Task 8 ingest paths.
-    #[allow(dead_code)]
+    /// pattern. Captured by the reporter closure and read by
+    /// [`Self::from_mpsc_with_rtcp`] to seed the RTCP-ingest thread.
     ssrc: u32,
     /// Persistent deadline applied by the blocking
     /// [`RecvTransport::recv_bytes`] path. `None` (the default) blocks
@@ -813,85 +783,56 @@ impl RtpRecvTransport {
         // is symmetric — RTP-port + 1 of the peer we last received
         // from. With no peer seen yet, target the URL's host:port+1
         // (the symmetric assumption for a known-destination receiver).
-        let rtcp_reporter = match rtcp_socket.as_ref() {
-            Some(sock) => {
-                let sock_clone = match sock.try_clone() {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
-                        return Ok(Self {
-                            source: Some(Source::Udp(socket)),
-                            cancel: RtpCancelHandle::new(),
-                            bytes_received: 0,
-                            packets_received: 0,
-                            malformed_packets: 0,
-                            scratch: vec![0u8; RECV_SCRATCH_LEN],
-                            rtcp_socket,
-                            rtcp_stats,
-                            rtcp_reporter: None,
-                            ssrc,
-                            recv_timeout: url.recv_timeout,
-                            end_reason: EndReasonSlot::default(),
-                        });
-                    }
+        let rtcp_reporter = rtcp_socket.as_ref().and_then(|sock| {
+            let sock_clone = match sock.try_clone() {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
+                    return None;
+                }
+            };
+            let stats_clone = rtcp_stats.clone();
+            // For non-multicast, the URL host is the address we
+            // bound to — so the symmetric RTCP target is host:port+1.
+            // For multicast, there's no per-peer notion here; v1
+            // doesn't emit RR until a peer is observed (Task 8's
+            // ingest path lands that wiring). For now we still
+            // spawn the thread so the rr_packets_sent counter
+            // ticks deterministically against the URL host.
+            //
+            // Guard: url.port 65535 has no valid companion port.
+            // The RTCP socket is already None in that case (guarded
+            // above), so this arm is unreachable at 65535 — the
+            // checked_add is a belt-and-suspenders defence.
+            let Some(rtcp_companion_port) = url.port.checked_add(1) else {
+                tracing::warn!("url port 65535 has no RTCP companion; skipping RR reporter");
+                return None;
+            };
+            let rtcp_target = SocketAddr::new(ip, rtcp_companion_port);
+            Some(RtcpReporterHandle::spawn(move || {
+                let rr = ReceiverReport {
+                    ssrc,
+                    report_blocks: Vec::new(),
                 };
-                let stats_clone = rtcp_stats.clone();
-                // For non-multicast, the URL host is the address we
-                // bound to — so the symmetric RTCP target is host:port+1.
-                // For multicast, there's no per-peer notion here; v1
-                // doesn't emit RR until a peer is observed (Task 8's
-                // ingest path lands that wiring). For now we still
-                // spawn the thread so the rr_packets_sent counter
-                // ticks deterministically against the URL host.
-                //
-                // Guard: url.port 65535 has no valid companion port.
-                // The RTCP socket is already None in that case (guarded
-                // above), so this arm is unreachable at 65535 — the
-                // checked_add is a belt-and-suspenders defence.
-                let Some(rtcp_companion_port) = url.port.checked_add(1) else {
-                    tracing::warn!("url port 65535 has no RTCP companion; skipping RR reporter");
-                    return Ok(Self {
-                        source: Some(Source::Udp(socket)),
-                        cancel: RtpCancelHandle::new(),
-                        bytes_received: 0,
-                        packets_received: 0,
-                        malformed_packets: 0,
-                        scratch: vec![0u8; RECV_SCRATCH_LEN],
-                        rtcp_socket,
-                        rtcp_stats,
-                        rtcp_reporter: None,
-                        ssrc,
-                        recv_timeout: url.recv_timeout,
-                        end_reason: EndReasonSlot::default(),
-                    });
+                let cname = format!("tst-rtp-{ssrc:08x}");
+                let sdes = SdesPacket { ssrc, cname };
+                // Locally-built, well-formed packets (no report blocks,
+                // short CNAME) — encode is fallible now but never fails
+                // here; skip the send on the (unreachable) error.
+                let (Ok(mut compound), Ok(sdes_bytes)) = (rr.encode(), sdes.encode()) else {
+                    tracing::error!(
+                        "internal: locally-built RTCP RR/SDES failed to encode; skipping send"
+                    );
+                    debug_assert!(false, "locally-built RTCP RR/SDES must always encode");
+                    return;
                 };
-                let rtcp_target = SocketAddr::new(ip, rtcp_companion_port);
-                Some(RtcpReporterHandle::spawn(move || {
-                    let rr = ReceiverReport {
-                        ssrc,
-                        report_blocks: Vec::new(),
-                    };
-                    let cname = format!("tst-rtp-{ssrc:08x}");
-                    let sdes = SdesPacket { ssrc, cname };
-                    // Locally-built, well-formed packets (no report blocks,
-                    // short CNAME) — encode is fallible now but never fails
-                    // here; skip the send on the (unreachable) error.
-                    let (Ok(mut compound), Ok(sdes_bytes)) = (rr.encode(), sdes.encode()) else {
-                        tracing::error!(
-                            "internal: locally-built RTCP RR/SDES failed to encode; skipping send"
-                        );
-                        debug_assert!(false, "locally-built RTCP RR/SDES must always encode");
-                        return;
-                    };
-                    compound.extend_from_slice(&sdes_bytes);
-                    let _ = sock_clone.send_to(&compound, rtcp_target);
-                    if let Ok(mut g) = stats_clone.lock() {
-                        g.rr_packets_sent = g.rr_packets_sent.saturating_add(1);
-                    }
-                }))
-            }
-            None => None,
-        };
+                compound.extend_from_slice(&sdes_bytes);
+                let _ = sock_clone.send_to(&compound, rtcp_target);
+                if let Ok(mut g) = stats_clone.lock() {
+                    g.rr_packets_sent = g.rr_packets_sent.saturating_add(1);
+                }
+            }))
+        });
         Ok(Self {
             source: Some(Source::Udp(socket)),
             cancel: RtpCancelHandle::new(),

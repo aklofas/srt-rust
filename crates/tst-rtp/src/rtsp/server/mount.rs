@@ -49,7 +49,6 @@ pub enum MountKind {
 /// - Task 13 (fanout) drives `fanout` subscribers.
 /// - Task 14 (multicast) constructs `MountKind::Multicast` variants.
 /// - Task 15 (push) makes `muxer` + `stats` write-through.
-#[allow(dead_code)]
 pub(crate) struct MountState {
     pub(crate) path: String,
     pub(crate) kind: MountKind,
@@ -69,7 +68,6 @@ pub(crate) struct MountState {
 }
 
 /// Internal stats accumulator. Public `MountStats` snapshot derived from this.
-#[allow(dead_code)]
 #[derive(Default)]
 pub(crate) struct MountStatsInner {
     pub(crate) bytes_pushed: u64,
@@ -100,12 +98,6 @@ impl MountState {
             stats: Mutex::new(MountStatsInner::default()),
             frames_dropped: Arc::new(AtomicU64::new(0)),
         }))
-    }
-
-    /// True if this mount is unicast.
-    #[allow(dead_code)]
-    pub(crate) fn is_unicast(&self) -> bool {
-        matches!(self.kind, MountKind::Unicast)
     }
 }
 
@@ -551,7 +543,6 @@ mod tests {
     fn mount_state_constructs() {
         let state = mock_unicast_mount_state();
         assert_eq!(state.path, "/test");
-        assert!(state.is_unicast());
     }
 
     #[test]

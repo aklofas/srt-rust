@@ -27,7 +27,6 @@ use std::time::Duration;
 use bytes::Bytes;
 
 use crate::error::RtspError;
-use crate::rtsp::client::interleaved_pump::PumpStats;
 use crate::url::{RtspScheme, RtspUrl, RtspVersion};
 
 /// The control-plane byte stream — plain TCP for `rtsp://`, or
@@ -289,11 +288,6 @@ pub(crate) struct InterleavedPumpState {
     pub(crate) ctrl_rx: mpsc::Receiver<Bytes>,
     /// Pump-thread handle; joined in `Drop` after `cancel` is flipped.
     pub(crate) thread: Option<std::thread::JoinHandle<()>>,
-    /// Observable counters from the pump. Held here so a future
-    /// diagnostic accessor (e.g. `RtspClient::pump_stats()`) can read
-    /// them without racing the pump thread. Not yet exposed publicly.
-    #[allow(dead_code)]
-    pub(crate) stats: Arc<PumpStats>,
 }
 
 /// Cancel handle for the RTSP client. Covers the control plane; the
@@ -645,7 +639,7 @@ impl RtspClient {
             // `Some` iff the keepalive was spawned (its death flag) — the
             // pump flips it on a 454 keepalive response.
             self.session_dead.clone(),
-            stats.clone(),
+            stats,
             self.end_reason.clone(),
         )
         .map_err(|e| RtspError::Io(e.kind()))?;
@@ -655,7 +649,6 @@ impl RtspClient {
             write_gate,
             ctrl_rx,
             thread: Some(thread),
-            stats,
         });
 
         Ok((data_rx, rtcp_rx))

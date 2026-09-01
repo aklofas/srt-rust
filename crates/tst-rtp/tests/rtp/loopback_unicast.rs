@@ -410,7 +410,7 @@ fn send_url_pkt_size_still_drives_send_budget() {
     // RTP header is 12 bytes; max_payload() returns pkt_size - 12.
     let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004?pkt_size=376")
         .expect("send URL with ?pkt_size= must still parse");
-    let t = b.connect().expect("unicast connect");
+    let t = b.build().expect("unicast connect");
     assert_eq!(
         t.max_payload(),
         376 - 12,
@@ -418,7 +418,7 @@ fn send_url_pkt_size_still_drives_send_budget() {
     );
 
     let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004").expect("bare send URL");
-    let t = b.connect().expect("unicast connect");
+    let t = b.build().expect("unicast connect");
     assert_eq!(
         t.max_payload(),
         1316 - 12,

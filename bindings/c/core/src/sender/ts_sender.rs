@@ -4,12 +4,9 @@
 //! STRICT mode per `tst_sender_config_t::framing_mode`).
 
 use crate::config::{TstReconnectPolicy, TstSenderConfig};
-use crate::error::{
-    TstError, record_not_available, record_shell_error, record_transport_error, set_last_error,
-};
+use crate::error::{TstError, record_shell_error, record_transport_error, set_last_error};
 use crate::handle::Handle;
 use crate::sender::mux_sender::parse_c_srt_url;
-use crate::stats::TstSenderStats;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tst_pipeline::{ManagedTransport, Sender, TransportCancel};
@@ -112,21 +109,13 @@ pub unsafe extern "C" fn tst_sender_flush(p: *mut TstSender) -> libc::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_get_stats(
     p: *mut TstSender,
-    out: *mut TstSenderStats,
+    out: *mut crate::stats::TstSenderStats,
 ) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|s| {
-        let stats = TstSenderStats::from(&s.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::sender_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying libsrt socket.
@@ -146,20 +135,13 @@ pub unsafe extern "C" fn tst_sender_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|s| match s.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::sender_get_socket_stats(
+            &handle.inner,
+            out,
             "ts sender socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -168,10 +150,7 @@ pub unsafe extern "C" fn tst_sender_reset_stats(p: *mut TstSender) -> libc::c_in
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|s| {
-        s.reset_stats();
-        0
-    })
+    crate::transport_impls::sender_reset_stats(&handle.inner)
 }
 
 /// Close and free a `tst_sender_t`.
@@ -334,21 +313,13 @@ pub unsafe extern "C" fn tst_managed_sender_flush(p: *mut TstManagedSender) -> l
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_sender_get_stats(
     p: *mut TstManagedSender,
-    out: *mut TstSenderStats,
+    out: *mut crate::stats::TstSenderStats,
 ) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|s| {
-        let stats = TstSenderStats::from(&s.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::sender_get_stats(&handle.inner, out) }
 }
 
 /// Managed sibling of [`tst_sender_get_socket_stats`]. Returns
@@ -369,20 +340,13 @@ pub unsafe extern "C" fn tst_managed_sender_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|s| match s.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::sender_get_socket_stats(
+            &handle.inner,
+            out,
             "ts sender socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Snapshot reconnect/gap telemetry for a `tst_managed_sender_t` into
@@ -431,10 +395,7 @@ pub unsafe extern "C" fn tst_managed_sender_reset_stats(p: *mut TstManagedSender
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|s| {
-        s.reset_stats();
-        0
-    })
+    crate::transport_impls::sender_reset_stats(&handle.inner)
 }
 
 /// Close and free a `tst_managed_sender_t`.

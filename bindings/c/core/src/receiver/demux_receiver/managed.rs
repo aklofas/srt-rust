@@ -18,8 +18,7 @@
 use crate::config::TstReconnectPolicy;
 use crate::demux_config::TstDemuxConfig;
 use crate::error::{
-    TstError, record_eos, record_not_available, record_not_found, record_shell_error,
-    record_transport_error, set_last_error,
+    TstError, record_eos, record_shell_error, record_transport_error, set_last_error,
 };
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
@@ -316,15 +315,7 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::managed_demux_receiver_get_stats(&handle.inner, out) }
 }
 
 /// Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`](super::stats::tst_demux_receiver_get_stream_codec_stats).
@@ -353,21 +344,16 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_codec_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle
-        .inner
-        .with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
-            Some(stats) => {
-                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
-                0
-            }
-            None => record_not_found(&format!(
+    unsafe {
+        crate::transport_impls::managed_demux_receiver_get_stream_codec_stats(
+            &handle.inner,
+            pid,
+            out,
+            &format!(
                 "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this demux receiver)"
-            )),
-        })
+            ),
+        )
+    }
 }
 
 /// Managed sibling of [`tst_demux_receiver_get_socket_stats`](super::stats::tst_demux_receiver_get_socket_stats). Returns
@@ -388,20 +374,13 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::managed_demux_receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "managed demux receiver socket stats unavailable (transport reconnecting or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Managed sibling of [`tst_demux_receiver_get_stream_last_seen_micros`](super::stats::tst_demux_receiver_get_stream_last_seen_micros).
@@ -417,20 +396,13 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_last_seen_micros(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out_epoch_micros.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out_epoch_micros pointer");
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::managed_demux_receiver_get_stream_last_seen_micros(
+            &handle.inner,
+            pid,
+            out_epoch_micros,
+        )
     }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = rx.stats();
-        let micros = stats
-            .per_stream
-            .get(&pid)
-            .map(|ss| crate::stats::last_seen_epoch_micros(ss.last_seen))
-            .unwrap_or(0);
-        unsafe { *out_epoch_micros = micros };
-        0
-    })
 }
 
 #[unsafe(no_mangle)]
@@ -441,13 +413,7 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_reset_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if let Ok(mut buf) = handle.stream_stats_buf.lock() {
-        buf.clear();
-    }
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::managed_demux_receiver_reset_stats(&handle.inner, &handle.stream_stats_buf)
 }
 
 #[unsafe(no_mangle)]
@@ -460,33 +426,12 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out_array.is_null() || out_count.is_null() {
-        set_last_error(
-            TstError::InvalidConfig,
-            "null out_array or out_count pointer",
-        );
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::managed_demux_receiver_get_stream_stats(
+            &handle.inner,
+            &handle.stream_stats_buf,
+            out_array,
+            out_count,
+        )
     }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = rx.stats();
-        let mut buf = handle
-            .stream_stats_buf
-            .lock()
-            .expect("stream_stats_buf Mutex poisoned");
-        buf.clear();
-        let cap = crate::stats::TST_STATS_MAX_STREAMS;
-        for (pid, ss) in stats.per_stream.iter().take(cap) {
-            let mut c_ss = crate::stats::TstStreamStats {
-                pid: *pid,
-                ..Default::default()
-            };
-            crate::stats::fill_stream_stats(&mut c_ss, ss);
-            buf.push(c_ss);
-        }
-        unsafe {
-            *out_array = buf.as_ptr();
-            *out_count = buf.len();
-        }
-        0
-    })
 }

@@ -14,8 +14,7 @@
 
 use crate::config::TstReconnectPolicy;
 use crate::error::{
-    TstError, record_eos, record_not_available, record_shell_error, record_transport_error,
-    set_last_error,
+    TstError, record_eos, record_shell_error, record_transport_error, set_last_error,
 };
 use crate::handle::Handle;
 use crate::sender::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
@@ -258,16 +257,7 @@ pub unsafe extern "C" fn tst_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstReceiverStats::from(&rx.stats());
-        // SAFETY: out non-null per guard above.
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::receiver_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying libsrt socket.
@@ -287,20 +277,13 @@ pub unsafe extern "C" fn tst_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "ts receiver socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Reset stats counters for a `tst_receiver_t` to zero. Does not
@@ -314,10 +297,7 @@ pub unsafe extern "C" fn tst_receiver_reset_stats(p: *mut TstReceiver) -> libc::
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::receiver_reset_stats(&handle.inner)
 }
 
 // ------------------------------------------------------------------
@@ -555,16 +535,7 @@ pub unsafe extern "C" fn tst_managed_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstReceiverStats::from(&rx.stats());
-        // SAFETY: out non-null per guard above.
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::receiver_get_stats(&handle.inner, out) }
 }
 
 /// Managed sibling of [`tst_receiver_get_socket_stats`]. Returns
@@ -585,20 +556,13 @@ pub unsafe extern "C" fn tst_managed_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "ts receiver socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Reset stats counters for a `tst_managed_receiver_t` to zero.
@@ -613,10 +577,7 @@ pub unsafe extern "C" fn tst_managed_receiver_reset_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::receiver_reset_stats(&handle.inner)
 }
 
 #[cfg(test)]

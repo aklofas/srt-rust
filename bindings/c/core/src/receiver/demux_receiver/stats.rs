@@ -7,7 +7,7 @@
 //! `managed.rs`.
 
 use super::TstDemuxReceiver;
-use crate::error::{TstError, record_not_available, record_not_found, set_last_error};
+use crate::error::{TstError, set_last_error};
 
 /// Snapshot stats for a `tst_demux_receiver_t` into `*out`.
 ///
@@ -25,15 +25,7 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::demux_receiver_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying libsrt socket.
@@ -54,20 +46,13 @@ pub unsafe extern "C" fn tst_demux_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::demux_receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "demux receiver socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Snapshot codec-specific stats for one PID on a `tst_demux_receiver_t`
@@ -99,21 +84,16 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stream_codec_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle
-        .inner
-        .with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
-            Some(stats) => {
-                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
-                0
-            }
-            None => record_not_found(&format!(
+    unsafe {
+        crate::transport_impls::demux_receiver_get_stream_codec_stats(
+            &handle.inner,
+            pid,
+            out,
+            &format!(
                 "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this demux receiver)"
-            )),
-        })
+            ),
+        )
+    }
 }
 
 /// Read the Unix-epoch microsecond timestamp of the last item observed
@@ -160,16 +140,7 @@ pub unsafe extern "C" fn tst_demux_receiver_reset_stats(p: *mut TstDemuxReceiver
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    // Clear the stream_stats_buf so any borrowed snapshot becomes
-    // a dangling pointer — caller contract documents this as the
-    // invalidation moment.
-    if let Ok(mut buf) = handle.stream_stats_buf.lock() {
-        buf.clear();
-    }
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::demux_receiver_reset_stats(&handle.inner, &handle.stream_stats_buf)
 }
 
 /// Snapshot per-PID stats for a `tst_demux_receiver_t` into the
@@ -198,37 +169,12 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stream_stats(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out_array.is_null() || out_count.is_null() {
-        set_last_error(
-            TstError::InvalidConfig,
-            "null out_array or out_count pointer",
-        );
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::demux_receiver_get_stream_stats(
+            &handle.inner,
+            &handle.stream_stats_buf,
+            out_array,
+            out_count,
+        )
     }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = rx.stats();
-        let mut buf = handle
-            .stream_stats_buf
-            .lock()
-            .expect("stream_stats_buf Mutex poisoned");
-        buf.clear();
-        let cap = crate::stats::TST_STATS_MAX_STREAMS;
-        for (pid, ss) in stats.per_stream.iter().take(cap) {
-            let mut c_ss = crate::stats::TstStreamStats {
-                pid: *pid,
-                ..Default::default()
-            };
-            crate::stats::fill_stream_stats(&mut c_ss, ss);
-            buf.push(c_ss);
-        }
-        // SAFETY: out_array / out_count non-null per guard above.
-        // The returned pointer borrows from buf, which lives on the
-        // handle until the next _get_stream_stats / _reset_stats /
-        // _close call (caller contract per design §4.5).
-        unsafe {
-            *out_array = buf.as_ptr();
-            *out_count = buf.len();
-        }
-        0
-    })
 }

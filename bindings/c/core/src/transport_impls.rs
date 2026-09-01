@@ -27,7 +27,10 @@ use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_core::transport::{RecvTransport, Transport};
-use tst_pipeline::{DemuxReceiver, MuxSender, Receiver, Sender, ShellErrorKind};
+use tst_pipeline::{
+    DemuxReceiver, ManagedDemuxReceiver, MuxSender, RawReceiver, RawSender, Receiver, Sender,
+    ShellErrorKind,
+};
 
 use crate::error::{
     TstError, record_eos, record_internal, record_mux_error, record_not_available,
@@ -476,6 +479,63 @@ pub(crate) fn sender_reset_stats<T: Transport>(h: &Handle<Sender<T>>) -> i32 {
 }
 
 // ============================================================================
+// RawSender<T> generic impls
+// ============================================================================
+
+/// Generic body for `tst_*_sender_get_stats` on a `RawSender<T>` handle.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstRawSendStats` when non-null.
+pub(crate) unsafe fn raw_sender_get_stats<T: Transport>(
+    h: &Handle<RawSender<T>>,
+    out: *mut crate::stats::TstRawSendStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|s| {
+        let stats = crate::stats::TstRawSendStats::from(&s.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Generic body for `tst_*_sender_get_socket_stats` on a `RawSender<T>` handle.
+///
+/// Reaches through `RawSender::transport()` — unlike `Sender<T>`, `RawSender`
+/// exposes no `socket_stats()` shell passthrough.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn raw_sender_get_socket_stats<T: Transport>(
+    h: &Handle<RawSender<T>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|s| match s.transport().socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_*_sender_reset_stats` on a `RawSender<T>` handle.
+pub(crate) fn raw_sender_reset_stats<T: Transport>(h: &Handle<RawSender<T>>) -> i32 {
+    h.with_inner_mut(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+// ============================================================================
 // Receiver<R> (raw TS recv) generic impls
 // ============================================================================
 
@@ -569,6 +629,60 @@ pub(crate) unsafe fn receiver_get_socket_stats<R: RecvTransport>(
 
 /// Generic body for `tst_*_receiver_reset_stats`.
 pub(crate) fn receiver_reset_stats<R: RecvTransport>(h: &Handle<Receiver<R>>) -> i32 {
+    h.with_inner_mut(|rx| {
+        rx.reset_stats();
+        0
+    })
+}
+
+// ============================================================================
+// RawReceiver<R> generic impls
+// ============================================================================
+
+/// Generic body for `tst_*_receiver_get_stats` on a `RawReceiver<R>` handle.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstRawRecvStats` when non-null.
+pub(crate) unsafe fn raw_receiver_get_stats<R: RecvTransport>(
+    h: &Handle<RawReceiver<R>>,
+    out: *mut crate::stats::TstRawRecvStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| {
+        let stats = crate::stats::TstRawRecvStats::from(&rx.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Generic body for `tst_*_receiver_get_socket_stats` on a `RawReceiver<R>` handle.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn raw_receiver_get_socket_stats<R: RecvTransport>(
+    h: &Handle<RawReceiver<R>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|rx| match rx.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_*_receiver_reset_stats` on a `RawReceiver<R>` handle.
+pub(crate) fn raw_receiver_reset_stats<R: RecvTransport>(h: &Handle<RawReceiver<R>>) -> i32 {
     h.with_inner_mut(|rx| {
         rx.reset_stats();
         0
@@ -738,6 +852,170 @@ pub(crate) fn demux_receiver_reset_stats<R: RecvTransport>(
 /// `out_array` and `out_count` must be valid non-null pointers.
 pub(crate) unsafe fn demux_receiver_get_stream_stats<R: RecvTransport>(
     inner: &Handle<DemuxReceiver<R>>,
+    stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,
+    out_array: *mut *const crate::stats::TstStreamStats,
+    out_count: *mut libc::size_t,
+) -> i32 {
+    if out_array.is_null() || out_count.is_null() {
+        set_last_error(
+            TstError::InvalidConfig,
+            "null out_array or out_count pointer",
+        );
+        return TstError::InvalidConfig as i32;
+    }
+    inner.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let mut buf = stream_stats_buf
+            .lock()
+            .expect("stream_stats_buf Mutex poisoned");
+        buf.clear();
+        let cap = crate::stats::TST_STATS_MAX_STREAMS;
+        for (pid, ss) in stats.per_stream.iter().take(cap) {
+            let mut c_ss = crate::stats::TstStreamStats {
+                pid: *pid,
+                ..Default::default()
+            };
+            crate::stats::fill_stream_stats(&mut c_ss, ss);
+            buf.push(c_ss);
+        }
+        // SAFETY: out_array / out_count non-null per guard above. The returned
+        // pointer borrows from buf which lives on the handle until the next
+        // _get_stream_stats / _reset_stats / _close call.
+        unsafe {
+            *out_array = buf.as_ptr();
+            *out_count = buf.len();
+        }
+        0
+    })
+}
+
+// ============================================================================
+// ManagedDemuxReceiver<R> generic impls
+// ============================================================================
+//
+// `tst_pipeline::ManagedDemuxReceiver<R>` is a distinct shell struct from
+// `DemuxReceiver<R>` (it owns its own `Receiver<ManagedRecvTransport<R>>` +
+// `Demuxer` pair for per-reconnect discontinuity handling), not a type alias
+// or a wrapper generic over `DemuxReceiver` — so it needs its own set of
+// generic bodies even though the method surface (`stats`/`socket_stats`/
+// `stream_codec_stats`/`reset_stats`) is identical in shape to the plain
+// receiver's. `recv_event`/`cancel` stay family-local in `managed.rs` (same
+// reasoning as the plain receiver's cancel-aware `_recv_*` bodies).
+
+/// Generic body for `tst_managed_*_demux_receiver_get_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstDemuxReceiverStats` when non-null.
+pub(crate) unsafe fn managed_demux_receiver_get_stats<R: RecvTransport>(
+    h: &Handle<ManagedDemuxReceiver<R>>,
+    out: *mut crate::stats::TstDemuxReceiverStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| {
+        let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Generic body for `tst_managed_*_demux_receiver_get_socket_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn managed_demux_receiver_get_socket_stats<R: RecvTransport>(
+    h: &Handle<ManagedDemuxReceiver<R>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|rx| match rx.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_managed_*_demux_receiver_get_stream_codec_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstStreamCodecStats` when non-null.
+pub(crate) unsafe fn managed_demux_receiver_get_stream_codec_stats<R: RecvTransport>(
+    h: &Handle<ManagedDemuxReceiver<R>>,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+    not_found_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
+        Some(stats) => {
+            unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+            0
+        }
+        None => record_not_found(not_found_msg),
+    })
+}
+
+/// Generic body for `tst_managed_*_demux_receiver_get_stream_last_seen_micros`.
+///
+/// # Safety
+/// `out_epoch_micros` must be a valid writable `*mut u64` when non-null.
+pub(crate) unsafe fn managed_demux_receiver_get_stream_last_seen_micros<R: RecvTransport>(
+    h: &Handle<ManagedDemuxReceiver<R>>,
+    pid: u16,
+    out_epoch_micros: *mut u64,
+) -> i32 {
+    if out_epoch_micros.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_epoch_micros pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let micros = stats
+            .per_stream
+            .get(&pid)
+            .map(|ss| crate::stats::last_seen_epoch_micros(ss.last_seen))
+            .unwrap_or(0);
+        unsafe { *out_epoch_micros = micros };
+        0
+    })
+}
+
+/// Generic body for `tst_managed_*_demux_receiver_reset_stats`.
+///
+/// Clears the borrowed `stream_stats_buf` snapshot before resetting, same
+/// invalidation contract as the plain receiver's `demux_receiver_reset_stats`.
+pub(crate) fn managed_demux_receiver_reset_stats<R: RecvTransport>(
+    inner: &Handle<ManagedDemuxReceiver<R>>,
+    stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,
+) -> i32 {
+    if let Ok(mut buf) = stream_stats_buf.lock() {
+        buf.clear();
+    }
+    inner.with_inner_mut(|rx| {
+        rx.reset_stats();
+        0
+    })
+}
+
+/// Generic body for `tst_managed_*_demux_receiver_get_stream_stats`
+/// (borrowed-buffer design §4.5).
+///
+/// # Safety
+/// `out_array` and `out_count` must be valid non-null pointers.
+pub(crate) unsafe fn managed_demux_receiver_get_stream_stats<R: RecvTransport>(
+    inner: &Handle<ManagedDemuxReceiver<R>>,
     stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,
     out_array: *mut *const crate::stats::TstStreamStats,
     out_count: *mut libc::size_t,

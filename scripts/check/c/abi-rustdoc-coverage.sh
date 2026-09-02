@@ -561,6 +561,19 @@ ALLOWLIST=(
     "tst_rtsp_mount_klv_handle"
     "tst_rtsp_mount_audio_handle"
     "tst_rtsp_mount_subtitle_handle"
+
+    # --- Task 8: Annex B <-> length-prefixed + parameter-set extraction
+    #     (ABI 21). tst_annexb_to_length_prefixed has a real 1:1 cross-ref
+    #     on nal_framing::annexb_to_length_prefixed, and
+    #     tst_param_sets_extract on nal_framing::extract_parameter_sets
+    #     (both in crates/tst-core/src/codec/nal_framing.rs) — neither
+    #     needs an allowlist entry. The other three are tst-c-only
+    #     accessor/lifecycle logic over the ParameterSets struct's Vec
+    #     fields (bucket selection + Box lifecycle) with no single Rust
+    #     method to cross-ref. ---
+    "tst_param_sets_count"
+    "tst_param_sets_get"
+    "tst_param_sets_free"
 )
 
 # Step 1: enumerate C exports

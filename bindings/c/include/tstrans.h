@@ -250,6 +250,18 @@
  *   structural ST 0601 decode failure). See
  *   `bindings/c/core/src/klv_st0601.rs` for the tag table and the
  *   corner-geometry fallback contract.
+ *
+ *   Task 8 (same arc, additive within `21` — no further bump):
+ *   `tst_annexb_to_length_prefixed` (Annex B → AVCC/HVCC length-prefixed
+ *   NAL conversion, two-call sizing idiom) and the parameter-set
+ *   extraction trio `tst_param_sets_extract` / `_count` / `_get` behind
+ *   a new opaque handle `tst_param_sets_t` (freed via
+ *   `tst_param_sets_free`). Both wrap
+ *   `tst_core::codec::nal_framing::{annexb_to_length_prefixed,
+ *   extract_parameter_sets}`. No new error codes — reuses
+ *   `TST_E_BUFFER_FULL` / `TST_E_INVALID_CONFIG` / `TST_E_TOO_LARGE` /
+ *   `TST_E_NOT_FOUND`. Unconditional module, matching Task 7. See
+ *   `bindings/c/core/src/codec_framing.rs`.
  */
 #define TST_ABI_VERSION_MINOR 21
 
@@ -1331,6 +1343,14 @@ typedef struct tst_mux_sender_t tst_mux_sender_t;
 #endif
 
 typedef struct tst_muxer_t tst_muxer_t;
+
+/**
+ * Opaque handle wrapping the parameter-set NALs extracted by
+ * [`tst_param_sets_extract`] — see [`nal_framing::extract_parameter_sets`].
+ * Immutable once built; no separate `_close`, only
+ * [`tst_param_sets_free`].
+ */
+typedef struct tst_param_sets_t tst_param_sets_t;
 
 #if defined(TST_HAS_HLS)
 /**
@@ -5886,6 +5906,24 @@ void tst_hls_server_handle_free(struct TstHlsServerHandle *h);
 void tst_mux_publisher_free(struct TstMuxPublisher *p);
 #endif
 
+/**
+ * Free a handle obtained from [`tst_param_sets_extract`]. Invalidates
+ * every view previously returned by [`tst_param_sets_get`] on this
+ * pointer. NULL-safe; freeing twice is undefined behavior (matches
+ * every other `tst_*_free` in this crate).
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstParamSets` from
+ * [`tst_param_sets_extract`], or NULL. Must not be called more than
+ * once on the same pointer.
+ *
+ * # C ABI
+ *
+ * `tst_param_sets_free` — see `bindings/c/include/tstrans.h`.
+ */
+void tst_param_sets_free(struct tst_param_sets_t *p);
+
 #if defined(TST_HAS_HLS)
 /**
  * Close and free a `tst_publisher_t`.
@@ -6426,6 +6464,44 @@ void tst_udp_sender_close(struct TstUdpSender *p);
 #endif
 
 // ─── OTHER ─────────────────────────────────────────────────
+
+/**
+ * Convert an Annex-B-framed NAL buffer into length-prefixed (AVCC/HVCC)
+ * framing — see [`nal_framing::annexb_to_length_prefixed`].
+ *
+ * **Two-call idiom.** Pass `out = NULL` (any `out_cap`) to learn the
+ * required size: this always returns `TST_E_BUFFER_FULL` (-4) with the
+ * required byte count in `*out_len`, without writing to `out`, even
+ * when the required size happens to be 0 — call again with any
+ * non-null `out` once `*out_len` reads back. With a non-null `out` and
+ * `out_cap >= *out_len` from the query call, the conversion is written
+ * into `out`, `*out_len` is set to the actual byte count written (equal
+ * to the previously-queried size), and this returns 0.
+ *
+ * Returns `TST_E_INVALID_CONFIG` (-1) without touching `*out_len` if
+ * `out_len` is NULL, `annexb` is NULL with `annexb_len > 0`, or
+ * `length_size` is not 1, 2, or 4. Returns `TST_E_TOO_LARGE` (-6)
+ * without touching `*out_len` if a single NAL's byte length exceeds
+ * what `length_size` bytes can encode.
+ *
+ * # Safety
+ *
+ * `annexb` must be valid for reads of `annexb_len` bytes (or NULL with
+ * `annexb_len == 0`). `out_len` must be a valid writable `size_t`
+ * pointer. When `out` is non-null, it must be valid for writes of
+ * `out_cap` bytes.
+ *
+ * # C ABI
+ *
+ * `tst_annexb_to_length_prefixed` — see `bindings/c/include/tstrans.h`.
+ */
+
+int tst_annexb_to_length_prefixed(const uint8_t *annexb,
+                                  size_t annexb_len,
+                                  uint8_t length_size,
+                                  uint8_t *out,
+                                  size_t out_cap,
+                                  size_t *out_len);
 
 #if defined(TST_HAS_HLS)
 /**
@@ -6991,6 +7067,80 @@ int tst_mux_publisher_send_video(struct TstMuxPublisher *p,
 struct TstMuxPublisher *tst_mux_publisher_with_config_hls(struct TstPublisher *hls,
                                                           const struct tst_mux_config_t *program_cfg);
 #endif
+
+/**
+ * Number of NALs in the `which` bucket (`0` = VPS, `1` = SPS,
+ * `2` = PPS). Returns 0 for a NULL `p` or an out-of-range `which` — a
+ * side-channel query with no failure signal beyond the count itself
+ * (matches [`crate::klv_st0601::tst_st0601_state`]'s convention); it
+ * never touches the last-error channel.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*const TstParamSets` from
+ * [`tst_param_sets_extract`], or NULL.
+ *
+ * # C ABI
+ *
+ * `tst_param_sets_count` — see `bindings/c/include/tstrans.h`.
+ */
+size_t tst_param_sets_count(const struct tst_param_sets_t *p, int which);
+
+/**
+ * Extract VPS/SPS/PPS NALs from an Annex-B access unit — see
+ * [`nal_framing::extract_parameter_sets`]. Each returned NAL (via
+ * [`tst_param_sets_get`]) is complete: header byte(s) included, no
+ * start code, no length prefix — ready for
+ * `CMVideoFormatDescriptionCreateFrom{H264,HEVC}ParameterSets`.
+ *
+ * Non-fallible on the Rust side: an `annexb` buffer with no parameter
+ * sets (or a codec with no parameter-set NALs at all — H.266 and AV1
+ * today, see [`nal_framing::extract_parameter_sets`]'s doc) still
+ * returns a non-null handle with every bucket count at 0. NULL is
+ * returned only for a caller-side argument error: an unrecognized
+ * `codec` value (anything outside the four `TST_VIDEO_CODEC_*`
+ * constants in the generated header), with `TST_E_INVALID_CONFIG`
+ * recorded on the last-error channel.
+ *
+ * # Safety
+ *
+ * `annexb` must be valid for reads of `len` bytes (or NULL with
+ * `len == 0`).
+ *
+ * # C ABI
+ *
+ * `tst_param_sets_extract` — see `bindings/c/include/tstrans.h`.
+ */
+struct tst_param_sets_t *tst_param_sets_extract(const uint8_t *annexb, size_t len, int codec);
+
+/**
+ * Write a view `(*out_ptr, *out_len)` onto the `idx`-th NAL in the
+ * `which` bucket (`0` = VPS, `1` = SPS, `2` = PPS) — a complete NAL,
+ * header byte(s) included, no start code, no length prefix. The view
+ * aliases memory owned by `p`; it is valid only until
+ * [`tst_param_sets_free`] is called on the same pointer — do not
+ * retain it past that call.
+ *
+ * Returns 0 on success. Returns `TST_E_NOT_FOUND` (-14) without
+ * writing either output if `idx` is out of range for `which`. Returns
+ * `TST_E_INVALID_CONFIG` (-1) without writing either output if `p`,
+ * `out_ptr`, or `out_len` is NULL, or if `which` is out of range.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*const TstParamSets`. `out_ptr` and
+ * `out_len` must be valid writable pointers.
+ *
+ * # C ABI
+ *
+ * `tst_param_sets_get` — see `bindings/c/include/tstrans.h`.
+ */
+
+int tst_param_sets_get(const struct tst_param_sets_t *p,
+                       int which,
+                       size_t idx,
+                       const uint8_t **out_ptr,
+                       size_t *out_len);
 
 #if defined(TST_HAS_HLS)
 /**

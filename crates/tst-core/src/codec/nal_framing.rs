@@ -89,6 +89,10 @@ fn max_encodable_len(length_size: u8) -> Result<u32, CodecParseError> {
 /// any NAL and are dropped, matching how [`crate::mpegts::demux`] itself
 /// scans Annex B. An `annexb` with no start code at all yields an empty
 /// `Vec`.
+///
+/// # C ABI
+///
+/// `tst_annexb_to_length_prefixed` — see `bindings/c/include/tstrans.h`.
 pub fn annexb_to_length_prefixed(
     annexb: &[u8],
     length_size: u8,
@@ -223,6 +227,10 @@ pub struct ParameterSets {
 ///   consumer.)
 /// - **AV1**: OBU-framed, not NAL-framed — always returns an empty
 ///   [`ParameterSets`].
+///
+/// # C ABI
+///
+/// `tst_param_sets_extract` — see `bindings/c/include/tstrans.h`.
 pub fn extract_parameter_sets(annexb: &[u8], codec: VideoCodec) -> ParameterSets {
     let mut sets = ParameterSets::default();
     match codec {

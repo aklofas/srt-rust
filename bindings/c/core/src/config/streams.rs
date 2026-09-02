@@ -624,6 +624,38 @@ impl TstVideoCodec {
             VideoCodec::Av1 => Self::Av1,
         }
     }
+
+    /// Inverse of [`Self::from_core`].
+    pub(crate) fn to_core(self) -> tst_core::mpegts::demux::VideoCodec {
+        use tst_core::mpegts::demux::VideoCodec;
+        match self {
+            Self::H264 => VideoCodec::H264,
+            Self::H265 => VideoCodec::H265,
+            Self::H266 => VideoCodec::H266,
+            Self::Av1 => VideoCodec::Av1,
+        }
+    }
+
+    /// Validate a raw C `int` against the four known discriminants.
+    ///
+    /// Needed because [`Self`] is received directly (by value) as a
+    /// parameter on some entry points (e.g.
+    /// `tst_mux_config_add_video_stream`) but that shape cannot reject an
+    /// out-of-range caller value — by the time Rust code could inspect
+    /// it, materializing the invalid discriminant is already undefined
+    /// behavior. Entry points that need to report a bad codec value
+    /// (rather than accept that risk) take a raw `c_int` and parse it
+    /// through this method first — same pattern as
+    /// [`crate::demux_config::TstAv1CarriageMode::from_c_int`].
+    pub(crate) fn from_c_int(v: crate::c_types::c_int) -> Option<Self> {
+        match v {
+            0 => Some(Self::H264),
+            1 => Some(Self::H265),
+            2 => Some(Self::H266),
+            3 => Some(Self::Av1),
+            _ => None,
+        }
+    }
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.

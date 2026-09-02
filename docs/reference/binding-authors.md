@@ -439,13 +439,18 @@ string after a successful call see stale data from the previous call.
 `tst_managed_demux_receiver_*` mirrors the Rust `ManagedDemuxReceiver`
 shell. When the underlying transport reconnects, the next
 `tst_managed_demux_receiver_recv_event` emits a
-`TST_EVENT_RECONNECT_DISCONTINUITY` event (kind = 6) so the language
+`TST_EVENT_KIND_RECONNECT_DISCONTINUITY` event (kind = 6) so the language
 binding can mark a hard discontinuity in any downstream state
 (timestamp resets, PSI cache invalidation, decoder reset, etc.) instead
 of guessing from the byte stream. The demuxer's `reset_sync()` is
-called transparently before the next packet hits the syncer; reassembly
-tables (PAT/PMT, per-PID CC, last PTS) are preserved across the
-reconnect.
+called transparently before the next packet hits the syncer, and that
+call **clears** the reassembly state — PAT/PMT, per-PID continuity
+counters, last PCR/PTS, PES reassembly partials, and the dedupe sets
+that gate `NonConformant` re-emission — rather than preserving it. Only
+aggregate stats counters and the `DemuxerConfig` survive the reconnect.
+The binding (and any downstream consumer) must treat post-reconnect PSI
+and timestamp state as absent and rebuild it from the next PAT/PMT
+cycle on the reconnected stream.
 
 ## Muxer push surface parity matrix
 

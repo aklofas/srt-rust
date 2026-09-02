@@ -368,19 +368,25 @@ See the full runnable form at
 
 ## Decoder replay — reconstituting Annex B bytes
 
-The `raw_rbsp` field on each parsed struct preserves the input bytes verbatim,
-including emulation-prevention bytes, exactly as received from the demuxer.
-To reconstitute Annex-B-framed parameter set bytes for passing to a decoder
-initialization sequence:
+The `raw_rbsp` field on each parsed struct preserves the RBSP body bytes
+verbatim, including emulation-prevention bytes, exactly as handed to the
+parser. **It does not include the NAL header byte(s)** — the demuxer strips
+those before parsing (H.264: 1 header byte; H.265/H.266: 2 header bytes),
+same as `NalUnit::{H264,H265,H266}.payload`. To reconstitute Annex-B-framed
+parameter set bytes for a decoder initialization sequence, the header must be
+rebuilt from the NAL's type/ref_idc (H.264) or type/layer_id/temporal_id_plus1
+(H.265) fields before the RBSP is appended:
 
 **H.264 SPS / PPS:**
 
 ```rust,no_run
-fn to_annex_b_h264(rbsp: &[u8]) -> Vec<u8> {
-    // H.264 NAL units use a 4-byte start code followed by the RBSP.
-    // The NAL header byte is the first byte of the RBSP as returned
-    // by the demuxer (NalUnit::H264.payload includes the header byte).
-    let mut out = vec![0x00, 0x00, 0x00, 0x01];
+fn to_annex_b_h264(nal_type: u8, ref_idc: u8, rbsp: &[u8]) -> Vec<u8> {
+    // H.264 NAL units use a 4-byte start code, then a 1-byte header
+    // rebuilt from nal_type/ref_idc (H.264 §7.3.1), then the RBSP.
+    // The demuxer strips this header byte before handing back
+    // `NalUnit::H264.payload` / `raw_rbsp` — it is not part of either.
+    let header = ((ref_idc & 0x03) << 5) | (nal_type & 0x1F);
+    let mut out = vec![0x00, 0x00, 0x00, 0x01, header];
     out.extend_from_slice(rbsp);
     out
 }
@@ -389,19 +395,31 @@ fn to_annex_b_h264(rbsp: &[u8]) -> Vec<u8> {
 **H.265 VPS / SPS / PPS:**
 
 ```rust,no_run
-fn to_annex_b_h265(rbsp: &[u8]) -> Vec<u8> {
-    // H.265 NAL units have a 2-byte NAL header before the RBSP.
-    // NalUnit::H265.payload already includes the 2-byte header.
-    let mut out = vec![0x00, 0x00, 0x00, 0x01];
+fn to_annex_b_h265(nal_type: u8, layer_id: u8, temporal_id_plus1: u8, rbsp: &[u8]) -> Vec<u8> {
+    // H.265 NAL units have a 2-byte header (H.265 §7.3.1.2), also
+    // stripped by the demuxer before handing back `NalUnit::H265.payload`
+    // / `raw_rbsp`.
+    let h0 = ((nal_type & 0x3F) << 1) | ((layer_id >> 5) & 0x01);
+    let h1 = ((layer_id & 0x1F) << 3) | (temporal_id_plus1 & 0x07);
+    let mut out = vec![0x00, 0x00, 0x00, 0x01, h0, h1];
     out.extend_from_slice(rbsp);
     out
 }
 ```
 
-Both are the same in practice — prepend the 4-byte start code to the raw
-RBSP bytes from the demuxer. The difference is that H.265 NAL units have
-a 2-byte header (nal_unit_type + layer_id + temporal_id_plus1) as part of
-the payload, while H.264 has a 1-byte header.
+Both prepend a 4-byte start code, but H.264 rebuilds a 1-byte header while
+H.265 rebuilds a 2-byte header (nal_unit_type + layer_id + temporal_id_plus1).
+See the full worked version — reconstructing Annex B for every `NalUnit`
+variant (H.264/H.265/H.266) coming out of `split_video` — at
+[`examples/codec-parsing/extract_video_au.rs`](/examples/codec-parsing/extract_video_au.rs).
+
+**Skip the manual reconstruction:** if all you need is parameter-set NALs for
+a decoder init call (e.g. Apple VideoToolbox's
+`CMVideoFormatDescriptionCreateFrom{H264,HEVC}ParameterSets`),
+`tst_core::codec::nal_framing::extract_parameter_sets(annexb: &[u8], codec: VideoCodec) -> ParameterSets`
+scans a `Sample`'s raw Annex-B bytes directly — the same `raw` field passed to
+`split_video`, no need to call it first — and returns VPS/SPS/PPS as complete
+NALs with the header byte(s) already included.
 
 ## Shared types
 

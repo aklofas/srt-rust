@@ -561,6 +561,22 @@ ALLOWLIST=(
     "tst_rtsp_mount_klv_handle"
     "tst_rtsp_mount_audio_handle"
     "tst_rtsp_mount_subtitle_handle"
+
+    # --- Task 7: ST 0601 KLV decode surface (ABI 21) ---
+    #     tst_st0601_decode has a real 1:1 cross-ref on
+    #     tst_core::klv::st0601::decode (crates/tst-core/src/klv/st0601/decode.rs)
+    #     and does NOT need an allowlist entry. The other four are tst-c-only
+    #     field-projection logic over UasDatalinkLs's public struct fields —
+    #     no single Rust method maps 1:1 to the curated geometry struct, the
+    #     per-tag typed getters, or the state-derivation logic (all defined
+    #     in bindings/c/core/src/klv_st0601.rs itself). tst_st0601_free
+    #     mirrors tst_demuxer_close (Box::from_raw + Handle::close + drop,
+    #     no Demuxer::close/UasDatalinkLs::close method to cross-ref).
+    "tst_st0601_geometry"
+    "tst_st0601_get_f64"
+    "tst_st0601_get_u64"
+    "tst_st0601_state"
+    "tst_st0601_free"
 )
 
 # Step 1: enumerate C exports

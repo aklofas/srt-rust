@@ -57,6 +57,10 @@ use super::tags::{Encoding, lookup};
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # C ABI
+///
+/// `tst_st0601_decode` — see `bindings/c/include/tstrans.h`.
 pub fn decode(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     decode_inner(
         buf, /* verify_checksum */ true, /* strict_ul */ false,

@@ -234,8 +234,24 @@
  *     existing `TST_E_BUFFER_FULL` (-4), retryable, exactly like SRT's
  *     recv-deadline expiry already does. Documented on
  *     `tst_rtp_receiver_recv_ts` / `tst_rtp_demux_receiver_next_event`.
+ * - `21` (Apple-PoC C ABI arc, Task 7): C-callable MISB ST 0601 KLV
+ *   decode surface — the first PR-2 addition, unconditional (no
+ *   feature gate; `tst-core` is a non-optional dependency). New
+ *   opaque handle `tst_st0601_t` (`tst_st0601_decode` /
+ *   `tst_st0601_free`), the `tst_st0601_field_state` enum
+ *   (`TST_ST0601_FIELD_STATE_PRESENT` = 0 / `_ABSENT` = 1 /
+ *   `_SENTINEL` = 2 / `_IMAPB_SPECIAL` = 3 / `_WRONG_TYPE` = 4,
+ *   preserving the MISB three-way-`None` distinction end-to-end), a
+ *   24-tag curated `tst_st0601_geometry_t` struct + one-call getter
+ *   (`tst_st0601_geometry`), and per-tag typed accessors
+ *   (`tst_st0601_get_f64` / `_get_u64` / `_state`). Two new error
+ *   codes: `TST_E_WRONG_TYPE` (-47, a getter's native type doesn't
+ *   match the mapped field) and `TST_E_KLV_DECODE` (-48, hard
+ *   structural ST 0601 decode failure). See
+ *   `bindings/c/core/src/klv_st0601.rs` for the tag table and the
+ *   corner-geometry fallback contract.
  */
-#define TST_ABI_VERSION_MINOR 20
+#define TST_ABI_VERSION_MINOR 21
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -254,6 +270,52 @@
  * `tst_get_last_error()` for the negative `TST_E_*` code.
  */
 #define TST_INVALID_STREAM_HANDLE UINT32_MAX
+
+#define TST_ST0601_TAG_CORNER_LAT_P1 82
+
+#define TST_ST0601_TAG_CORNER_LAT_P2 84
+
+#define TST_ST0601_TAG_CORNER_LAT_P3 86
+
+#define TST_ST0601_TAG_CORNER_LAT_P4 88
+
+#define TST_ST0601_TAG_CORNER_LON_P1 83
+
+#define TST_ST0601_TAG_CORNER_LON_P2 85
+
+#define TST_ST0601_TAG_CORNER_LON_P3 87
+
+#define TST_ST0601_TAG_CORNER_LON_P4 89
+
+#define TST_ST0601_TAG_FRAME_CENTER_ELEVATION 25
+
+#define TST_ST0601_TAG_FRAME_CENTER_LATITUDE 23
+
+#define TST_ST0601_TAG_FRAME_CENTER_LONGITUDE 24
+
+#define TST_ST0601_TAG_PLATFORM_HEADING 5
+
+#define TST_ST0601_TAG_PLATFORM_PITCH 6
+
+#define TST_ST0601_TAG_PLATFORM_ROLL 7
+
+#define TST_ST0601_TAG_PRECISION_TIMESTAMP 2
+
+#define TST_ST0601_TAG_SENSOR_HORIZONTAL_FOV 16
+
+#define TST_ST0601_TAG_SENSOR_LATITUDE 13
+
+#define TST_ST0601_TAG_SENSOR_LONGITUDE 14
+
+#define TST_ST0601_TAG_SENSOR_REL_AZIMUTH 18
+
+#define TST_ST0601_TAG_SENSOR_REL_ELEVATION 19
+
+#define TST_ST0601_TAG_SENSOR_REL_ROLL 20
+
+#define TST_ST0601_TAG_SENSOR_TRUE_ALTITUDE 15
+
+#define TST_ST0601_TAG_SENSOR_VERTICAL_FOV 17
 
 /**
  * Maximum number of per-stream entries in any stats struct exposed at
@@ -390,6 +452,45 @@ typedef enum tst_ts_framing_mode {
   TST_TS_FRAMING_MODE_RECOVER = 0,
   TST_TS_FRAMING_MODE_STRICT = 1,
 } tst_ts_framing_mode;
+
+/**
+ * State of one ST 0601 tag on a decoded record. See the module docs for
+ * why "not present" needs more than a bool.
+ */
+typedef enum tst_st0601_field_state {
+  /**
+   * The mapped field carries a typed value — read it via
+   * [`tst_st0601_get_f64`] / [`tst_st0601_get_u64`] /
+   * [`tst_st0601_geometry`].
+   */
+  TST_ST0601_FIELD_STATE_PRESENT = 0,
+  /**
+   * The tag was not present on the wire (and is not a tag this
+   * module maps — see [`field_kind`]).
+   */
+  TST_ST0601_FIELD_STATE_ABSENT = 1,
+  /**
+   * The tag was present on the wire carrying the MISB spec's
+   * `INT_MIN` absent-value sentinel. See
+   * `UasDatalinkLs::sentinel_tags`.
+   */
+  TST_ST0601_FIELD_STATE_SENTINEL = 2,
+  /**
+   * The tag was present on the wire as an ST 1201.5 IMAPB special
+   * (±infinity / NaN / `BelowMin` / `AboveMax`). See
+   * `UasDatalinkLs::imapb_specials`.
+   */
+  TST_ST0601_FIELD_STATE_IMAPB_SPECIAL = 3,
+  /**
+   * The caller's accessor requested a native type that does not
+   * match the mapped field's actual Rust type (e.g.
+   * [`tst_st0601_get_f64`] on tag 2, which is `u64`-typed). Only
+   * ever returned by the getters themselves via
+   * `TST_E_WRONG_TYPE`, never by [`tst_st0601_state`] (which is
+   * type-agnostic).
+   */
+  TST_ST0601_FIELD_STATE_WRONG_TYPE = 4,
+} tst_st0601_field_state;
 
 /**
  * Negative codes returned by every fallible tst-c entry point.
@@ -638,6 +739,23 @@ enum tst_e
    * Maps from `codec::misp_time::MispTimeExtractError`.
    */
   TST_E_MISP_TIME_MALFORMED = -46,
+  /**
+   * (-47) A `tst_st0601_get_f64` / `tst_st0601_get_u64` accessor was
+   * called for a tag whose corresponding `UasDatalinkLs` field has a
+   * different native Rust type than the accessor requests (e.g.
+   * `tst_st0601_get_f64` on tag 2, whose typed field is `u64`). The
+   * getter refuses to lossily cast; call the correctly-typed accessor
+   * instead.
+   */
+  TST_E_WRONG_TYPE = -47,
+  /**
+   * (-48) `tst_st0601_decode` could not parse the input bytes as a
+   * MISB ST 0601 UAS Datalink Local Set. Maps from
+   * `tst_core::error::KlvDecodeError`; see the message for the
+   * specific structural failure (truncated buffer, malformed BER
+   * length/tag, checksum mismatch, unexpected universal label, ...).
+   */
+  TST_E_KLV_DECODE = -48,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;
@@ -1431,6 +1549,12 @@ typedef struct tst_sender_t tst_sender_t;
 #endif
 
 typedef struct tst_sender_config_t tst_sender_config_t;
+
+/**
+ * Opaque handle wrapping a decoded [`UasDatalinkLs`]. Obtained from
+ * [`tst_st0601_decode`]; freed via [`tst_st0601_free`].
+ */
+typedef struct tst_st0601_t tst_st0601_t;
 
 #if defined(TST_HAS_TCP)
 /**
@@ -2274,6 +2398,70 @@ typedef struct tst_server_stats_t {
   uint64_t total_rtp_packets_sent;
   uint64_t total_rtp_bytes_sent;
 } tst_server_stats_t;
+
+/**
+ * Curated summary of the ST 0601 geometry/attitude fields the
+ * Apple-PoC consumer contract needs — one call instead of 24
+ * individual [`tst_st0601_get_f64`] / [`tst_st0601_get_u64`] round
+ * trips. Every value field is paired with a `uint8_t ..._state`
+ * carrying a [`TstSt0601FieldState`] discriminant (0-4); read the
+ * value only when its state is `Present` (0) — other states leave the
+ * value at `0`/`0.0`, not an undefined bit pattern.
+ *
+ * Deviation from the original sketch: each corner point gets its own
+ * named `..._state` field (`corner_lat_p1_state`, ...) rather than a
+ * packed `uint8_t corner_state[8]` array, matching the (value, state)
+ * pairing used by every other field in this struct — this keeps every
+ * corner state addressable by name instead of a positional index.
+ */
+typedef struct tst_st0601_geometry_t {
+  uint64_t timestamp_us;
+  uint8_t timestamp_state;
+  double platform_heading_deg;
+  uint8_t platform_heading_state;
+  double platform_pitch_deg;
+  uint8_t platform_pitch_state;
+  double platform_roll_deg;
+  uint8_t platform_roll_state;
+  double sensor_lat_deg;
+  uint8_t sensor_lat_state;
+  double sensor_lon_deg;
+  uint8_t sensor_lon_state;
+  double sensor_alt_m;
+  uint8_t sensor_alt_state;
+  double sensor_hfov_deg;
+  uint8_t sensor_hfov_state;
+  double sensor_vfov_deg;
+  uint8_t sensor_vfov_state;
+  double sensor_rel_az_deg;
+  uint8_t sensor_rel_az_state;
+  double sensor_rel_el_deg;
+  uint8_t sensor_rel_el_state;
+  double sensor_rel_roll_deg;
+  uint8_t sensor_rel_roll_state;
+  double frame_center_lat_deg;
+  uint8_t frame_center_lat_state;
+  double frame_center_lon_deg;
+  uint8_t frame_center_lon_state;
+  double frame_center_elev_m;
+  uint8_t frame_center_elev_state;
+  double corner_lat_p1_deg;
+  uint8_t corner_lat_p1_state;
+  double corner_lon_p1_deg;
+  uint8_t corner_lon_p1_state;
+  double corner_lat_p2_deg;
+  uint8_t corner_lat_p2_state;
+  double corner_lon_p2_deg;
+  uint8_t corner_lon_p2_state;
+  double corner_lat_p3_deg;
+  uint8_t corner_lat_p3_state;
+  double corner_lon_p3_deg;
+  uint8_t corner_lon_p3_state;
+  double corner_lat_p4_deg;
+  uint8_t corner_lat_p4_state;
+  double corner_lon_p4_deg;
+  uint8_t corner_lon_p4_state;
+} tst_st0601_geometry_t;
 
 /**
  * Sentinel returned by `tst_mux_config_add_program` on failure (null cfg
@@ -5500,6 +5688,128 @@ int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len
  */
 int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
 #endif
+
+// ─── KLV ───────────────────────────────────────────────────
+
+/**
+ * Decode `bytes[0..len)` as a MISB ST 0601 UAS Datalink Local Set
+ * (lenient decode — see `tst_core::klv::st0601::decode`: unknown tags
+ * are preserved, per-tag value-validation failures are collected
+ * rather than failing the whole record). `bytes` must be the raw KLV
+ * Local Set bytes (as pulled from a `tst_demuxer_*` metadata event or
+ * equivalent) — not TS-framed, not PES-wrapped.
+ *
+ * Returns NULL on a hard structural decode failure (truncated buffer,
+ * malformed BER length/tag, checksum mismatch, unexpected universal
+ * label) with `TST_E_KLV_DECODE` (-48) recorded on the last-error
+ * channel; the message carries the specific failure.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `len` bytes (or NULL with
+ * `len == 0`).
+ *
+ * # C ABI
+ *
+ * `tst_st0601_decode` — see `bindings/c/include/tstrans.h`.
+ */
+struct tst_st0601_t *tst_st0601_decode(const uint8_t *bytes, size_t len);
+
+/**
+ * Free a handle obtained from [`tst_st0601_decode`]. Idempotent-safe
+ * with NULL; freeing twice is undefined behavior (matches every other
+ * `tst_*_free`/`_close` in this crate).
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstSt0601` from [`tst_st0601_decode`], or
+ * NULL. Must not be called more than once on the same pointer.
+ *
+ * # C ABI
+ *
+ * `tst_st0601_free` — see `bindings/c/include/tstrans.h`.
+ */
+void tst_st0601_free(struct tst_st0601_t *p);
+
+/**
+ * Fill `*out` with the curated geometry/attitude summary — see
+ * [`TstSt0601Geometry`]. Returns 0 on success, or a negative `TST_E_*`
+ * code if `p` or `out` is null, or `TST_E_CLOSED` if `p` has already
+ * been freed... (freeing invalidates the pointer itself; a live but
+ * closed handle returns `TST_E_CLOSED`).
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*const TstSt0601` from
+ * [`tst_st0601_decode`]. `out` must point to a writable
+ * [`TstSt0601Geometry`].
+ *
+ * # C ABI
+ *
+ * `tst_st0601_geometry` — see `bindings/c/include/tstrans.h`.
+ */
+int tst_st0601_geometry(const struct tst_st0601_t *p, struct tst_st0601_geometry_t *out);
+
+/**
+ * Read the `f64`-typed field mapped to `tag` (see the
+ * `TST_ST0601_TAG_*` constants). Writes `*out` and returns 0 only when
+ * the field's state is `Present`; query [`tst_st0601_state`]
+ * separately to distinguish `Absent` / `Sentinel` / `ImapbSpecial` —
+ * this getter's return code just says "value available or not".
+ *
+ * Returns `TST_E_WRONG_TYPE` (-47) without writing `*out` if `tag`
+ * maps to a `u64`-typed field (only tag 2, the precision timestamp —
+ * use [`tst_st0601_get_u64`]). Returns `TST_E_NOT_FOUND` (-14) without
+ * writing `*out` if `tag` is not in the contract table, or is in the
+ * table but absent/sentinel/IMAPB-special on this record.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*const TstSt0601`. `out` must point
+ * to a writable `double`.
+ *
+ * # C ABI
+ *
+ * `tst_st0601_get_f64` — see `bindings/c/include/tstrans.h`.
+ */
+int tst_st0601_get_f64(const struct tst_st0601_t *p, uint32_t tag, double *out);
+
+/**
+ * Read the `u64`-typed field mapped to `tag` (only
+ * `TST_ST0601_TAG_PRECISION_TIMESTAMP` = 2 today). Same contract as
+ * [`tst_st0601_get_f64`] with the type check inverted: any `f64`-typed
+ * tag returns `TST_E_WRONG_TYPE` (-47).
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*const TstSt0601`. `out` must point
+ * to a writable `uint64_t`.
+ *
+ * # C ABI
+ *
+ * `tst_st0601_get_u64` — see `bindings/c/include/tstrans.h`.
+ */
+int tst_st0601_get_u64(const struct tst_st0601_t *p, uint32_t tag, uint64_t *out);
+
+/**
+ * Query the three-way state of `tag` on this record — see
+ * [`TstSt0601FieldState`]. Type-agnostic (never returns `WrongType`;
+ * that's only ever produced by the getters).
+ *
+ * A null `p`, a closed handle, or an unmapped `tag` all report
+ * `Absent` — this is a side-channel query with no separate rc, so
+ * there is no failure signal beyond the returned state; it never
+ * touches the last-error channel.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*const TstSt0601`, or NULL.
+ *
+ * # C ABI
+ *
+ * `tst_st0601_state` — see `bindings/c/include/tstrans.h`.
+ */
+enum tst_st0601_field_state tst_st0601_state(const struct tst_st0601_t *p, uint32_t tag);
 
 // ─── LIFETIME ──────────────────────────────────────────────
 

@@ -271,12 +271,12 @@
 /**
  * Minor version.
  */
-#define TST_VERSION_MINOR 5
+#define TST_VERSION_MINOR 6
 
 /**
  * Patch version.
  */
-#define TST_VERSION_PATCH 1
+#define TST_VERSION_PATCH 0
 
 enum tst_video_codec
 #ifdef __cplusplus

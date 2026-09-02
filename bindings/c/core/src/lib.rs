@@ -176,9 +176,9 @@ pub use udp::{tst_udp_mux_sender_open, tst_udp_recv_open, tst_udp_sender_open};
 /// Major version (compile-time macro in the generated header).
 pub const TST_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version.
-pub const TST_VERSION_MINOR: crate::c_types::c_int = 5;
+pub const TST_VERSION_MINOR: crate::c_types::c_int = 6;
 /// Patch version.
-pub const TST_VERSION_PATCH: crate::c_types::c_int = 1;
+pub const TST_VERSION_PATCH: crate::c_types::c_int = 0;
 
 /// Major version of the C ABI contract. Bumped only on **breaking
 /// C-ABI change** — i.e., a change that would force a consumer to

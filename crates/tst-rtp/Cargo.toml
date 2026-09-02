@@ -15,7 +15,7 @@ categories  = ["multimedia::video", "network-programming"]
 crate-type = ["rlib"]
 
 [dependencies]
-tst-core   = { path = "../tst-core", version = "0.5.1" }
+tst-core   = { path = "../tst-core", version = "0.6.0" }
 thiserror  = { workspace = true }
 base64     = { version = "0.22", default-features = false, features = ["std"] }
 bytes      = "1"

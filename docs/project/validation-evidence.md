@@ -82,12 +82,15 @@ local dev-box state, no vendored corpus) via
 weekly on a schedule (Mondays 05:00 UTC), on every `workflow_dispatch`, and
 on any PR touching `crates/tst-interop/`, `scripts/interop/`, or the
 workflow file itself. The verified run cited above is
-[run 32400751057](https://github.com/aklofas/ts-transformer/actions/runs/32400751057)
-(`pull_request` at the gst-play-enablement change, completed `success`
-on 2026-08-20 with the census-completeness assert, the
+[run 33359181955](https://github.com/aklofas/ts-transformer/actions/runs/33359181955)
+(the 2026-08-31 weekly `schedule` run at `73ae1ced`, completed `success`
+with the census-completeness assert, the
 157 / 92 / 0 / 65 / 0 census, and 157 per-cell result records with
 zero `FAIL` and no expectation drift: all 65 documented-gap rows
-reproduced. The 0.5.1 release-gate run
+reproduced. The gst-play-enablement run
+[32400751057](https://github.com/aklofas/ts-transformer/actions/runs/32400751057)
+(`pull_request`, 2026-08-20 — the first 92-PASS census run), the
+0.5.1 release-gate run
 [32106462041](https://github.com/aklofas/ts-transformer/actions/runs/32106462041)
 at `47ceee90` — the last of the 80 / 0 / 65 / 12 predecessor-census
 runs — the ancestor run

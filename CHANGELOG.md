@@ -9,6 +9,72 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.6.0] — 2026-09-01
+
+Post-v0.5.1: the cross-binding parity bundle (receive deadlines,
+background reconnect, structured stream-end reasons, last-activity
+gauges, a tracing bridge — C ABI 0.19 → 0.20, additive), a security
+vendor bump (libsrt 1.5.7, librist 0.2.20), the embedded receiver-path
+arc (no_std receiver shells, a RISC-V runtime gate, on-device SRT
+ingress), and a workspace-wide simplification audit (net −3,339 lines)
+that also fixed two long-standing correctness bugs. Several
+compile-breaking struct-field additions and API removals make this
+0.6.0 — a `"0.5"` requirement will not auto-update into it.
+
+### Release highlights
+
+The integrator-facing changes at a glance (full detail in the sections below):
+
+- **Why this is 0.6.0 (compile-time breaks):** `ReconnectPolicy` gained a
+  `mode` field, `RtpUrl` / `RtspUrl` gained `recv_timeout`, and
+  `StreamStats` gained `last_seen` — full struct literals need the new
+  fields (`..Default::default()` callers are unaffected). `TsFraming::push`
+  is now fallible. Removals: `UdpUrlError::BadHost` completes the
+  deprecation cycle started at 0.5.0 (match `HostResolve` instead), plus
+  nine never-constructed error variants across the transport crates and a
+  set of zero-caller APIs (`klv::pack::encode_pack`, the SRT socket
+  bandwidth setters, `RtspUrl::is_server_bind`, duplicate RTP builder
+  aliases, `MountError::PeerBackpressure`, the unused interleaved-framing
+  module).
+- **Behavior change: clean RTSP server teardown is now a clean end of
+  stream** (`Ok(None)` / `EndOfStream`), not `TransportBroken` — a match
+  arm that conflated "the server ended the session" with "the wire broke"
+  needs an end-of-stream arm; the new `end_reason()` disambiguates why a
+  session ended.
+- **Security:** libsrt 1.5.6 → 1.5.7 — KM message length validation,
+  KMRSP encryption-downgrade prevention, forged-ACK / DROPREQ / FEC
+  hostile-wire hardening, and a bonding use-after-free fix — statically
+  vendored, picked up by rebuilding. And `hlss://` with no
+  `?cert=`/`?key=` now fails validation instead of silently serving
+  plaintext HTTP.
+- **Receive deadlines everywhere:** the `?recv_timeout=<ms>` URL key on
+  `rtp://` / `rtsp(s)://` receivers plus
+  `H264Receiver::set_recv_timeout`. Expiry is a typed, retryable timeout
+  in every binding (`RtpErrorKind.TIMEOUT` in Python,
+  `RtpException.Kind.TIMEOUT` on the JVM, `TST_E_BUFFER_FULL` in C) — a
+  stalled stream can now be detected from any language without an
+  external watchdog thread.
+- **Background reconnect:** opt-in `ReconnectMode::Background` on
+  `ManagedTransport` — send-side enqueue during an outage instead of
+  blocking the producer — with reconnect/gap statistics via
+  `stats_handle()`, exposed across C, Python, and JVM; cancel/close now
+  interrupts a backoff wait promptly in both modes.
+- **Observability parity across C / Python / JVM:** structured
+  `StreamEndReason` (`end_reason()` / `end_detail()`), per-stream
+  `last_seen` wall-clock gauges, and the opt-in `TSTRANS_LOG` stderr
+  tracing bridge.
+- **`Sender`'s `max_unsynced_bytes` watchdog now actually fires** — the
+  released knob was a documented no-op; a persistently non-TS source now
+  errors instead of scanning forever.
+- **Embedded:** the receiver shells (`Receiver` / `DemuxReceiver` /
+  `RawReceiver`) now build `no_std`; RISC-V is promoted from
+  compile-proof to a full QEMU runtime gate; and a new on-device
+  SRT-ingress + demux gate brings the embedded CI surface to 12 gates.
+
 ### Added
 
 - **TCP `SO_KEEPALIVE` knob on the RTSP client control socket** —
@@ -162,7 +228,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `embedded/freertos-srt/README.md` and `docs/languages/embedded.md`.
 - **`ReconnectPolicy` gained a `mode: ReconnectMode` field.** Full
   struct literals (not using `..Default::default()`) need the new
-  field. This is compile-breaking for those callers, so the next
+  field. This is compile-breaking for those callers, so this
   release is 0.6.0.
 - **`RtpUrl` and `RtspUrl` both gained a `recv_timeout: Option<Duration>`
   field.** Full struct literals need the new field — same
@@ -206,7 +272,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Together with `ReconnectPolicy`'s `mode` field, the `RtpUrl` /
 `RtspUrl` / `StreamStats` field adds above are all compile-breaking for
-full-struct-literal callers, confirming the next release is 0.6.0.
+full-struct-literal callers, confirming this release as 0.6.0.
 
 **C ABI minor 19 → 20** (additive; no existing symbol, signature, or
 struct layout changed) brings the C surface most of the way to parity

@@ -1007,6 +1007,9 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::mpegaudio:
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::mpegaudio::Frames<'a>
 pub fn tst_core::codec::mpegaudio::frames(&[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
 pub fn tst_core::codec::mpegaudio::frames_with_resync(&[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
+pub mod tst_core::codec::nal_framing
+pub fn tst_core::codec::nal_framing::annexb_to_length_prefixed(&[u8], u8) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::codec::CodecParseError>
+pub fn tst_core::codec::nal_framing::length_prefixed_to_annexb(&[u8], u8) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::codec::CodecParseError>
 pub mod tst_core::codec::util
 pub fn tst_core::codec::util::count_nal_units(&[u8], tst_core::mpegts::mux::VideoCodec) -> u64
 pub enum tst_core::codec::ChromaFormat
@@ -1045,6 +1048,11 @@ pub tst_core::codec::CodecParseError::InvalidGolomb
 pub tst_core::codec::CodecParseError::InvalidGolomb::offset_bits: u32
 pub tst_core::codec::CodecParseError::InvalidLeb128
 pub tst_core::codec::CodecParseError::InvalidLeb128::offset_bytes: u32
+pub tst_core::codec::CodecParseError::InvalidLengthSize
+pub tst_core::codec::CodecParseError::InvalidLengthSize::got: u8
+pub tst_core::codec::CodecParseError::NalLengthOverflow
+pub tst_core::codec::CodecParseError::NalLengthOverflow::length_size: u8
+pub tst_core::codec::CodecParseError::NalLengthOverflow::nal_len: u32
 pub tst_core::codec::CodecParseError::ReservedValue
 pub tst_core::codec::CodecParseError::ReservedValue::field: &'static str
 pub tst_core::codec::CodecParseError::ReservedValue::value: u32

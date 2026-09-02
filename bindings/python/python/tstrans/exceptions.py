@@ -192,6 +192,8 @@ class CodecErrorKind(enum.IntEnum):
     TRUNCATED = 10
     FORBIDDEN = 11
     UNSUPPORTED_FREE_FORMAT = 12
+    INVALID_LENGTH_SIZE = 13
+    NAL_LENGTH_OVERFLOW = 14
 
 
 class MuxError(TstError):
@@ -466,6 +468,8 @@ class CodecError(TstError):
     - `offset_bytes` on INVALID_LEB128 / TRUNCATED
     - `expected` / `found` on BAD_SYNC_WORD
     - `needed` / `had` on TRUNCATED
+    - `got` on INVALID_LENGTH_SIZE
+    - `nal_len` / `length_size` on NAL_LENGTH_OVERFLOW
     """
 
     def __init__(
@@ -487,6 +491,9 @@ class CodecError(TstError):
         needed: Optional[int] = None,
         had: Optional[int] = None,
         layer: Optional[int] = None,
+        got: Optional[int] = None,
+        nal_len: Optional[int] = None,
+        length_size: Optional[int] = None,
     ) -> None:
         super().__init__(f"{codec}: {message}")
         self.kind = kind
@@ -505,6 +512,9 @@ class CodecError(TstError):
         self.needed = needed
         self.had = had
         self.layer = layer
+        self.got = got
+        self.nal_len = nal_len
+        self.length_size = length_size
 
 
 __all__ = [

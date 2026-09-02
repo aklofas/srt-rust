@@ -73,6 +73,7 @@ its `rtsp` row), the more specific row wins for that path.
 | tst-core | codec::aac | Provisional | audio parser |
 | tst-core | codec::ac3 | Provisional | audio parser |
 | tst-core | codec::mpegaudio | Provisional | audio parser |
+| tst-core | codec::nal_framing | Provisional | new module, Annex B ↔ length-prefixed NAL conversion for VideoToolbox-style consumers |
 | tst-core | transport | Stable | trait contract all transports implement |
 | tst-core | error | Stable | error taxonomy |
 | tst-core | cancel | Stable | cancellation plumbing shared across transports; spec-silent, defaults to tst-core's tier |

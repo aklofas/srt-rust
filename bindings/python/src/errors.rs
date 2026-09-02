@@ -320,6 +320,19 @@ pub(crate) fn codec_parse_error_to_pyerr(
             "UNSUPPORTED_FREE_FORMAT",
             vec![("layer", layer.into_py(py))],
         ),
+        CodecParseError::InvalidLengthSize { got } => {
+            ("INVALID_LENGTH_SIZE", vec![("got", got.into_py(py))])
+        }
+        CodecParseError::NalLengthOverflow {
+            nal_len,
+            length_size,
+        } => (
+            "NAL_LENGTH_OVERFLOW",
+            vec![
+                ("nal_len", nal_len.into_py(py)),
+                ("length_size", length_size.into_py(py)),
+            ],
+        ),
         // Catch-all for #[non_exhaustive] additions not yet mapped:
         _ => ("ENGINE_ERROR", vec![]),
     };

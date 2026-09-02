@@ -26,6 +26,7 @@ pub mod h265;
 pub mod h266;
 pub mod misp_time;
 pub mod mpegaudio;
+pub mod nal_framing;
 pub mod util;
 
 /// Chroma subsampling format. From H.264 / H.265 `chroma_format_idc`.
@@ -330,6 +331,20 @@ pub enum CodecParseError {
     /// `layer` is the decoded MPEG audio layer (1, 2, or 3) for diagnostics.
     #[error("unsupported free-format MPEG audio (layer {layer})")]
     UnsupportedFreeFormat { layer: u8 },
+
+    /// `length_size` argument to Annex B ↔ length-prefixed NAL conversion
+    /// ([`crate::codec::nal_framing`]) must be 1, 2, or 4 (the widths
+    /// ISO/IEC 14496-15 AVCC/HVCC allow for `NALUnitLength`). Any other
+    /// value is a caller programming error.
+    #[error("invalid NAL length-prefix size {got} (must be 1, 2, or 4)")]
+    InvalidLengthSize { got: u8 },
+
+    /// A single NAL's byte length exceeds what `length_size` bytes can
+    /// encode during Annex B → length-prefixed conversion
+    /// ([`crate::codec::nal_framing`]). `nal_len` is saturated to
+    /// `u32::MAX` for display if the true length somehow exceeds it.
+    #[error("NAL length {nal_len} exceeds what a {length_size}-byte length prefix can encode")]
+    NalLengthOverflow { nal_len: u32, length_size: u8 },
 }
 
 /// Read the ITU-T H.273 colour_primaries / transfer_characteristics /
@@ -551,6 +566,18 @@ mod tests {
         assert_eq!(
             CodecParseError::Forbidden { field: "layer" }.to_string(),
             "forbidden value in field 'layer'"
+        );
+        assert_eq!(
+            CodecParseError::InvalidLengthSize { got: 3 }.to_string(),
+            "invalid NAL length-prefix size 3 (must be 1, 2, or 4)"
+        );
+        assert_eq!(
+            CodecParseError::NalLengthOverflow {
+                nal_len: 257,
+                length_size: 1,
+            }
+            .to_string(),
+            "NAL length 257 exceeds what a 1-byte length prefix can encode"
         );
     }
 }

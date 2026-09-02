@@ -98,8 +98,9 @@
 use crate::demux_receiver::DemuxReceiverError;
 use crate::managed_receive::ManagedRecvTransport;
 use crate::receiver::{Receiver, ReceiverConfig, ReceiverErrorSource};
+use crate::reconnect::{RecvEndReason, RecvEndReasonHandle};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tracing::{info, info_span};
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig};
 use tst_core::transport::RecvTransport;
@@ -171,6 +172,17 @@ pub struct ManagedDemuxReceiver<R: RecvTransport> {
     /// is cleared by `reset_sync` and we want the event to survive that
     /// clear.
     pending_reconnect_event: bool,
+    /// Shared flag mirroring the inner [`ManagedRecvTransport`]'s
+    /// "connection currently absent" state. Snapshotted in `new()` /
+    /// `with_demux_options()` the same way as `reconnects` — `Receiver`
+    /// doesn't expose its inner transport publicly, so this is the only
+    /// way to read it after construction. Backs [`Self::reconnecting`].
+    reconnect_in_progress: Arc<AtomicBool>,
+    /// Shared, first-writer-wins record of why this receiver's stream
+    /// ended — see [`RecvEndReason`]. [`Self::end_reason_handle`] hands
+    /// out clones so a caller can poll it independent of this receiver's
+    /// lifetime (e.g. after it's been moved into a C handle, or dropped).
+    end_reason: RecvEndReasonHandle,
     /// Lifetime span, entered only during construction and `Drop` — see
     /// [`crate::shell_error::ShellSpan`] for the unwind-safety rationale.
     _span: crate::shell_error::ShellSpan,
@@ -200,12 +212,15 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
         info!("ManagedDemuxReceiver opened");
         drop(_enter);
         let reconnects = transport.reconnects_handle();
+        let reconnect_in_progress = transport.reconnecting_handle();
         Self {
             ts: Receiver::new(transport, ReceiverConfig::default()),
             demux: Demuxer::new(),
             reconnects,
             last_reconnects: 0,
             pending_reconnect_event: false,
+            reconnect_in_progress,
+            end_reason: RecvEndReasonHandle::default(),
             _span: std::panic::AssertUnwindSafe(span),
         }
     }
@@ -226,12 +241,15 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
         info!("ManagedDemuxReceiver opened");
         drop(_enter);
         let reconnects = transport.reconnects_handle();
+        let reconnect_in_progress = transport.reconnecting_handle();
         Self {
             ts: Receiver::new(transport, ReceiverConfig::default()),
             demux: Demuxer::with_config(options),
             reconnects,
             last_reconnects: 0,
             pending_reconnect_event: false,
+            reconnect_in_progress,
+            end_reason: RecvEndReasonHandle::default(),
             _span: std::panic::AssertUnwindSafe(span),
         }
     }
@@ -285,6 +303,17 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
             let pkt = match self.ts.next_packet() {
                 Ok(p) => p,
                 Err(e) if e.kind == crate::shell_error::ShellErrorKind::EndOfStream => {
+                    // On the managed-SRT path this arises ONLY from
+                    // ManagedRecvTransport's reconnect-budget-exhausted
+                    // `Closed` — the inner SRT transport never emits a
+                    // clean EOS itself (a peer FIN surfaces as `Broken`,
+                    // which the decorator retries). So "the stream ended
+                    // here" == "reconnect gave up"; record accordingly.
+                    // First-writer-wins, so a plain (non-managed) EOS
+                    // path added in the future can still populate
+                    // RecvEndReason::EndOfStream without this site
+                    // needing to change.
+                    self.end_reason.record(RecvEndReason::ReconnectExhausted);
                     // Stream end: same shape as DemuxReceiver — flush
                     // any partial PES then drain remaining events.
                     self.demux.flush();
@@ -294,6 +323,12 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
                     return Ok(None);
                 }
                 Err(e) => {
+                    if e.kind == crate::shell_error::ShellErrorKind::Closed {
+                        // Closed-kind on the receive side means the
+                        // decorator's ExplicitClose — caller-initiated
+                        // close()/cancel(), not a wire-level failure.
+                        self.end_reason.record(RecvEndReason::Cancelled);
+                    }
                     let ReceiverErrorSource::Transport(te) = e.source;
                     return Err(te.into());
                 }
@@ -359,6 +394,31 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     #[must_use]
     pub fn reconnects_count(&self) -> u64 {
         self.reconnects.load(Ordering::Acquire)
+    }
+
+    /// True while the underlying transport's inner connection is
+    /// currently absent — either mid-reconnect-attempt, or permanently
+    /// after the reconnect budget has been exhausted. Check
+    /// [`Self::is_alive`] to distinguish a live retry loop from a
+    /// terminal give-up.
+    #[must_use]
+    pub fn reconnecting(&self) -> bool {
+        self.reconnect_in_progress.load(Ordering::Acquire)
+    }
+
+    /// Shared handle onto this receiver's stream-end reason — see
+    /// [`RecvEndReason`]. Recorded first-writer-wins at whichever
+    /// terminal-condition site actually observed it (reconnect-budget
+    /// exhaustion or caller cancel/close).
+    ///
+    /// Obtain this **before** moving the receiver into an opaque handle
+    /// (e.g. a C binding's box): the returned handle stays readable
+    /// after the receiver itself is dropped, which is what lets a
+    /// watchdog thread poll it independently of the thread driving
+    /// [`Self::recv_event`].
+    #[must_use]
+    pub fn end_reason_handle(&self) -> RecvEndReasonHandle {
+        self.end_reason.clone()
     }
 
     /// Snapshot the current counters. Mirrors

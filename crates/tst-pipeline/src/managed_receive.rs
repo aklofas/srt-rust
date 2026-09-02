@@ -70,7 +70,7 @@
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
 use crate::reconnect::{ReconnectMode, ReconnectPolicy};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 use tst_core::transport::RecvTransport;
@@ -125,6 +125,16 @@ pub struct ManagedRecvTransport<R: RecvTransport> {
     /// observers can hold a handle independent of the decorator's
     /// lifetime.
     reconnects: Arc<AtomicU64>,
+    /// True while `inner` is absent — set the moment a broken/closed
+    /// inner is torn down (before the factory is consulted), cleared the
+    /// moment a fresh inner is successfully installed. Stays `true`
+    /// forever once the reconnect budget is exhausted (there is no
+    /// further attempt to clear it) — callers that need to distinguish
+    /// "still retrying" from "gave up permanently" should pair this with
+    /// [`Self::is_alive`]. Exposed via [`Self::reconnecting_handle`] for
+    /// the same reason `reconnects` is: higher-level shells poll it after
+    /// this decorator has been moved into a `Receiver`.
+    reconnecting: Arc<AtomicBool>,
     /// Deliverable ceiling reported while `inner` is `None`
     /// (mid-reconnect): the most recent live inner's `max_payload()`.
     /// Initialized from the construction-time inner and refreshed on
@@ -173,6 +183,7 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             inner_cancel,
             reconnects: Arc::new(AtomicU64::new(0)),
+            reconnecting: Arc::new(AtomicBool::new(false)),
             last_live_max_payload,
         }
     }
@@ -204,6 +215,18 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
     #[must_use]
     pub fn reconnects_handle(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.reconnects)
+    }
+
+    /// Shared handle to whether `inner` is currently absent (mid-reconnect,
+    /// or permanently after the reconnect budget is exhausted).
+    ///
+    /// Same rationale as [`Self::reconnects_handle`]: a higher-level shell
+    /// that no longer owns `&self` (e.g. after this decorator has been
+    /// moved into a `Receiver`) can still poll the state. Read with
+    /// `.load(Ordering::Acquire)`.
+    #[must_use]
+    pub fn reconnecting_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.reconnecting)
     }
 }
 
@@ -295,6 +318,7 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                         drop(guard);
                         self.last_live_max_payload = t.max_payload();
                         self.inner = Some(t);
+                        self.reconnecting.store(false, Ordering::Release);
                         // Observable post-rebuild — higher-level shells
                         // (`ManagedDemuxReceiver`) read this counter between
                         // `recv_bytes` calls to detect a fresh transport and
@@ -317,6 +341,7 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                     // Transport is dead. Drop it; next loop iteration
                     // reconnects via the factory under the configured backoff.
                     self.inner = None;
+                    self.reconnecting.store(true, Ordering::Release);
                     continue;
                 }
                 Err(e) => return Err(e),

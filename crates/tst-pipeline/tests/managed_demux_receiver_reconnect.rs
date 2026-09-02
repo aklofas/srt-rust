@@ -19,7 +19,7 @@ use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::transport::{RecvTransport, TransportError};
 use tst_pipeline::{
     BackoffStrategy, ManagedDemuxReceiver, ManagedDemuxReceiverConfig, ManagedRecvTransport,
-    ReconnectPolicy,
+    ReconnectPolicy, RecvEndReason,
 };
 
 // ---------------------------------------------------------------------------
@@ -513,4 +513,195 @@ fn clean_reconnect_drops_first_post_reconnect_packet() {
         phase2_count > 0,
         "phase 2 should have emitted some events after re-lock; got 0"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Test 5 — RecvEndReason: reconnect-budget exhaustion, cancel, live, and
+// first-writer-wins under repeated terminal polling.
+// ---------------------------------------------------------------------------
+
+/// A peer that dies and never comes back (factory always fails,
+/// `max_attempts=Some(1)`) budget-exhausts. On the managed-SRT path this
+/// is the ONLY way `recv_event` reaches `Ok(None)` — record accordingly.
+#[test]
+fn end_reason_reconnect_exhausted_on_budget_giveup() {
+    let packets: Vec<[u8; 188]> = (0..5).map(|i| ts_packet(0x0100, i as u8)).collect();
+    let inner = ScriptedInner {
+        chunks: vec![pack_chunk(&packets)].into(),
+        on_exhaust: TransportError::Broken {
+            msg: "peer gone (test)".into(),
+            errno_code: None,
+        },
+    };
+    // Factory never succeeds — with max_attempts=1 the budget exhausts on
+    // the first (and only) reconnect attempt.
+    let factory = Box::new(|| -> Result<ScriptedInner, TransportError> {
+        Err(TransportError::Broken {
+            msg: "peer never returns".into(),
+            errno_code: None,
+        })
+    });
+    let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(1)));
+    let mut rx = ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default());
+
+    assert_eq!(
+        rx.end_reason_handle().get(),
+        None,
+        "must be unset before the stream ends"
+    );
+
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        assert!(iters < 1000, "test loop should bound");
+        match rx.recv_event() {
+            Ok(None) => break,
+            Ok(Some(_)) => {}
+            Err(_) => break,
+        }
+    }
+    assert_eq!(
+        rx.end_reason_handle().get(),
+        Some(RecvEndReason::ReconnectExhausted),
+        "budget give-up must record ReconnectExhausted"
+    );
+}
+
+/// A caller-initiated cancel (via the cross-thread cancel handle) surfaces
+/// as a `Closed`-kind error and must record `Cancelled` — not
+/// `ReconnectExhausted`, even though both terminate the receiver.
+#[test]
+fn end_reason_cancelled_on_caller_cancel() {
+    let packets: Vec<[u8; 188]> = (0..5).map(|i| ts_packet(0x0100, i as u8)).collect();
+    let inner = ScriptedInner {
+        chunks: vec![pack_chunk(&packets)].into(),
+        on_exhaust: TransportError::Broken {
+            msg: "unused (test)".into(),
+            errno_code: None,
+        },
+    };
+    let factory = Box::new(|| -> Result<ScriptedInner, TransportError> {
+        Err(TransportError::Broken {
+            msg: "unused (test)".into(),
+            errno_code: None,
+        })
+    });
+    let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(5)));
+    let mut rx = ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default());
+
+    // Obtain-before-move pattern: grab both handles up front, exactly as
+    // a C binding would before boxing the receiver.
+    let end_reason = rx.end_reason_handle();
+    let cancel = rx
+        .cancel_handle()
+        .expect("managed transport is cancellable");
+
+    // Cancel immediately, before any bytes are pulled — the very first
+    // recv_bytes call inside recv_event must observe ExplicitClose.
+    cancel.cancel();
+
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        assert!(iters < 1000, "test loop should bound");
+        match rx.recv_event() {
+            Ok(None) | Err(_) => break,
+            Ok(Some(_)) => {}
+        }
+    }
+    assert_eq!(
+        end_reason.get(),
+        Some(RecvEndReason::Cancelled),
+        "caller-initiated cancel must record Cancelled"
+    );
+}
+
+/// While the stream is live and flowing, `end_reason_handle().get()` must
+/// stay `None` — no terminal condition has been observed yet.
+#[test]
+fn end_reason_none_while_live() {
+    // TEI packets so each one guarantees a NonConformant event without
+    // needing a PAT/PMT fixture (see `ts_packet_tei`'s doc comment above).
+    // At least 5 packets: the syncer needs 4 confirming sync bytes to
+    // lock before it emits anything (shorter streams yield a silent
+    // clean EOF with zero events).
+    let packets: Vec<[u8; 188]> = (0..6).map(|i| ts_packet_tei(0x0100, i as u8)).collect();
+    let inner = ScriptedInner {
+        chunks: vec![pack_chunk(&packets)].into(),
+        on_exhaust: TransportError::Broken {
+            msg: "unused (test)".into(),
+            errno_code: None,
+        },
+    };
+    let factory = Box::new(|| -> Result<ScriptedInner, TransportError> {
+        Err(TransportError::Broken {
+            msg: "unused (test)".into(),
+            errno_code: None,
+        })
+    });
+    let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(5)));
+    let mut rx = ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default());
+
+    match rx.recv_event() {
+        Ok(Some(_)) => {}
+        other => panic!("expected a live event, got {other:?}"),
+    }
+    assert_eq!(
+        rx.end_reason_handle().get(),
+        None,
+        "no terminal condition has occurred yet"
+    );
+}
+
+/// First-writer-wins under repeated terminal polling: once
+/// `ReconnectExhausted` is latched, further `recv_event` calls on the
+/// already-terminal receiver (each of which re-observes the same
+/// `EndOfStream`-kind condition and attempts to record again) must not
+/// change the recorded reason.
+#[test]
+fn end_reason_first_writer_wins_across_repeated_terminal_calls() {
+    let packets: Vec<[u8; 188]> = (0..5).map(|i| ts_packet(0x0100, i as u8)).collect();
+    let inner = ScriptedInner {
+        chunks: vec![pack_chunk(&packets)].into(),
+        on_exhaust: TransportError::Broken {
+            msg: "peer gone (test)".into(),
+            errno_code: None,
+        },
+    };
+    let factory = Box::new(|| -> Result<ScriptedInner, TransportError> {
+        Err(TransportError::Broken {
+            msg: "peer never returns".into(),
+            errno_code: None,
+        })
+    });
+    let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(1)));
+    let mut rx = ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default());
+
+    // Drive to the first terminal Ok(None).
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        assert!(iters < 1000, "test loop should bound");
+        match rx.recv_event() {
+            Ok(None) => break,
+            Ok(Some(_)) => {}
+            Err(_) => break,
+        }
+    }
+    assert_eq!(
+        rx.end_reason_handle().get(),
+        Some(RecvEndReason::ReconnectExhausted)
+    );
+
+    // Poll several more times on the now-terminally-closed receiver. Each
+    // call re-enters the same EndOfStream-kind branch and calls
+    // `record()` again — the value must stay exactly what it was.
+    for _ in 0..3 {
+        let _ = rx.recv_event();
+        assert_eq!(
+            rx.end_reason_handle().get(),
+            Some(RecvEndReason::ReconnectExhausted),
+            "repeated terminal observation must not change the latched reason"
+        );
+    }
 }

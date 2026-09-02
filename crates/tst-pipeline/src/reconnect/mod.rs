@@ -13,8 +13,10 @@
 
 mod background;
 mod gap_buffer;
+mod recv_end_reason;
 
 pub use gap_buffer::{GapBuffer, OverflowPolicy};
+pub use recv_end_reason::{RecvEndReason, RecvEndReasonHandle};
 
 use background::{ManagedShared, Shutdown};
 

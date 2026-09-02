@@ -6974,6 +6974,64 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::reconnect::ReconnectPolicy::next_delay"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+# c-abi-apple-poc arc, 2026-09-02 — RecvEndReasonHandle is
+# ManagedDemuxReceiver::end_reason_handle()'s cloneable-observer, the recv-side
+# analogue of tst-rtp's StreamEndReasonHandle; owning test is the
+# end_reason_reconnect_exhausted_on_budget_giveup /
+# end_reason_cancelled_on_caller_cancel / end_reason_none_while_live /
+# end_reason_first_writer_wins_across_repeated_terminal_calls battery.
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::reconnect::RecvEndReasonHandle"
+owning_tests = ["crates/tst-pipeline/tests/managed_demux_receiver_reconnect.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::RecvEndReasonHandle"
+owning_tests = ["crates/tst-pipeline/tests/managed_demux_receiver_reconnect.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::RecvEndReasonHandle::get"
+owning_tests = ["crates/tst-pipeline/tests/managed_demux_receiver_reconnect.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_pipeline::RecvEndReasonHandle::clone"
+reason = "derive impl for RecvEndReasonHandle, mirroring ManagedStatsHandle's cloneable-observer contract; exercised internally by ManagedDemuxReceiver::end_reason_handle() but not via a direct in-tree .clone() call site — interim exemption alongside ManagedStatsHandle::clone"
+
+[[exempt]]
+item = "tst_pipeline::RecvEndReasonHandle::default"
+reason = "derive impl backing RecvEndReasonHandle::default(), used to construct the empty handle in ManagedDemuxReceiver::new()/with_demux_options() and throughout recv_end_reason.rs's unit tests"
+
+[[exempt]]
+item = "tst_pipeline::RecvEndReasonHandle::fmt"
+reason = "derive impl for RecvEndReasonHandle; Debug bound required by assert_eq! failure-message formatting in recv_end_reason.rs's unit tests"
+
+[[exempt]]
+item = "tst_pipeline::RecvEndReason::clone"
+reason = "derive impl for RecvEndReason (a Copy type); RecvEndReasonHandle::get() reads via .copied(), not .clone() — no in-tree call site exercises the derived Clone directly"
+
+[[exempt]]
+item = "tst_pipeline::RecvEndReason::eq"
+reason = "derive impl for RecvEndReason; exercised pervasively via assert_eq! across recv_end_reason.rs's unit tests and managed_demux_receiver_reconnect.rs's end_reason_* battery"
+
+[[exempt]]
+item = "tst_pipeline::RecvEndReason::fmt"
+reason = "derive impl for RecvEndReason; Debug bound required by the same assert_eq! call sites as ::eq"
+
 [[exempt]]
 item = "tst_pipeline::sender::BoxedSender"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

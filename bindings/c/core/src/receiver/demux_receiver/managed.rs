@@ -30,6 +30,7 @@ use std::sync::atomic::Ordering;
 use tst_pipeline::ManagedDemuxReceiver;
 use tst_pipeline::ManagedDemuxReceiverConfig;
 use tst_pipeline::ManagedRecvTransport;
+use tst_pipeline::RecvEndReasonHandle;
 use tst_pipeline::ShellErrorKind;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
@@ -37,12 +38,22 @@ use tst_srt::SrtTransport;
 use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
 
+use crate::stream_end_reason::TstStreamEndReason;
+
 pub struct TstManagedDemuxReceiver {
     inner: Handle<ManagedDemuxReceiver<SrtTransport>>,
     arena: Mutex<EventArena>,
     stream_stats_buf: Mutex<Vec<crate::stats::TstStreamStats>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
     was_cancelled: Arc<AtomicBool>,
+    /// End-reason handle snapshotted at open time, same
+    /// capture-before-move timing as `cancel` — obtained from the
+    /// `ManagedDemuxReceiver` BEFORE it is moved into `Handle::new(...)`
+    /// in `finish_managed_open`. Stays readable after the receiver is
+    /// closed, which is what lets `tst_managed_demux_receiver_end_reason`
+    /// be polled from a watchdog thread side-channel, without acquiring
+    /// `inner`'s Mutex. Read by `tst_managed_demux_receiver_end_reason`.
+    end_reason: RecvEndReasonHandle,
 }
 
 /// Open a `tst_managed_demux_receiver_t` with default demux options.
@@ -192,6 +203,7 @@ fn finish_managed_open(
         None => ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default()),
     };
     let cancel = rx.cancel_handle();
+    let end_reason = rx.end_reason_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
     Box::into_raw(Box::new(TstManagedDemuxReceiver {
         inner: Handle::new(rx),
@@ -199,6 +211,7 @@ fn finish_managed_open(
         stream_stats_buf: Mutex::new(Vec::new()),
         cancel,
         was_cancelled,
+        end_reason,
     }))
 }
 
@@ -285,6 +298,109 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_cancel(
     })
 }
 
+/// Read the recorded reason this `tst_managed_demux_receiver_t` receive
+/// session ended, if any.
+///
+/// Writes `TstStreamEndReason::None` (returns `0`) when the session
+/// hasn't ended yet, or ended through a path this arc doesn't
+/// instrument — and in that case the thread-local last-error channel is
+/// left untouched (any pending failure from an earlier call is still
+/// readable). A recorded reason is data, not a getter failure — this
+/// only returns a nonzero code for a null-pointer argument.
+///
+/// Reuses the RTP-side `TstStreamEndReason` enum — its RTSP-shaped
+/// variant names (`SessionExpired`, `KeepaliveFailed`, `ProtocolError`)
+/// are never produced on this SRT recv path; only three of its six
+/// non-`None` variants apply here:
+/// - `tst_pipeline::RecvEndReason::EndOfStream` → `CleanTeardown`
+/// - `tst_pipeline::RecvEndReason::ReconnectExhausted` → `TransportFailed`
+///   (the reconnect decorator exhausted its policy budget — the peer
+///   never came back)
+/// - `tst_pipeline::RecvEndReason::Cancelled` → `Cancelled`
+///
+/// **Last-error side effect on every ACTUALLY-recorded reason:** unlike
+/// the "hasn't ended" case above, once the session has ended this getter
+/// unconditionally resets the thread-local last-error channel to
+/// `TST_E_SUCCESS` with an EMPTY detail message — none of the three
+/// `RecvEndReason` variants above carry a detail string (unlike the RTP
+/// side's `KeepaliveFailed`/`TransportFailed`/`ProtocolError`), so
+/// `tst_get_last_error_str()` always reads `""` once a reason has been
+/// recorded, never a stale message left over from some earlier,
+/// unrelated failure. Same contract as
+/// `tst_rtp_demux_receiver_end_reason` — see that function's doc for the
+/// full rationale and `docs/binding-authors.md`. Read any pending
+/// failure from an earlier call BEFORE calling this getter, or it is
+/// overwritten.
+///
+/// Side-channel: reads directly off the end-reason handle captured at
+/// open time WITHOUT acquiring this handle's data-path Mutex — same
+/// rationale as `tst_managed_demux_receiver_cancel` (a concurrent
+/// `_recv_event` may be blocked holding it). This is what makes the
+/// getter safe to poll from a watchdog thread while another thread
+/// drives `_recv_event`. One consequence: this call never itself
+/// returns `TST_E_CLOSED` — after `_close` the whole handle is freed,
+/// and calling anything on it, including this getter, is a
+/// use-after-free the caller must avoid.
+///
+/// # Safety
+///
+/// `p` must be a valid non-freed `*mut TstManagedDemuxReceiver` opened
+/// via one of the `tst_managed_demux_receiver_open*` functions. `out`
+/// must point to a writable `TstStreamEndReason`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_demux_receiver_end_reason(
+    p: *mut TstManagedDemuxReceiver,
+    out: *mut TstStreamEndReason,
+) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if out.is_null() {
+            set_last_error(TstError::InvalidConfig, "null out pointer");
+            return TstError::InvalidConfig as i32;
+        }
+        let reason = match handle.end_reason.get() {
+            Some(r) => convert_recv_end_reason(&r),
+            None => TstStreamEndReason::None,
+        };
+        // SAFETY: out non-null per guard above.
+        unsafe { *out = reason };
+        0
+    })
+}
+
+/// Convert a recorded [`tst_pipeline::RecvEndReason`] to its C
+/// discriminant. Only called by `tst_managed_demux_receiver_end_reason`
+/// when it already holds a `Some` from `RecvEndReasonHandle::get()` —
+/// i.e. every arm here corresponds to an ACTUALLY-RECORDED reason, never
+/// the "hasn't ended yet" case (that short-circuits to
+/// `TstStreamEndReason::None` at the call site without reaching this
+/// function — see the getter's doc for why that split matters to the
+/// last-error contract).
+///
+/// Every arm therefore unconditionally resets the thread-local
+/// last-error channel to `TstError::Success` with an empty detail
+/// message — `RecvEndReason` carries no per-variant message data (unlike
+/// `tst_rtp::StreamEndReason`), so there is nothing to forward.
+///
+/// `RecvEndReason` is `#[non_exhaustive]` on the `tst-pipeline` side; a
+/// future variant this binding doesn't know how to map yet degrades to
+/// `None` rather than panicking, mirroring
+/// `crate::rtp::end_reason::convert_end_reason`'s wildcard fallback.
+fn convert_recv_end_reason(r: &tst_pipeline::RecvEndReason) -> TstStreamEndReason {
+    use tst_pipeline::RecvEndReason;
+    let converted = match r {
+        RecvEndReason::EndOfStream => TstStreamEndReason::CleanTeardown,
+        RecvEndReason::ReconnectExhausted => TstStreamEndReason::TransportFailed,
+        RecvEndReason::Cancelled => TstStreamEndReason::Cancelled,
+        _ => TstStreamEndReason::None,
+    };
+    set_last_error(TstError::Success, "");
+    converted
+}
+
 /// Close and free a `tst_managed_demux_receiver_t`.
 ///
 /// Safe to call with NULL (no-op). After this call the pointer is
@@ -316,6 +432,72 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stats(
         return TstError::InvalidConfig as i32;
     };
     unsafe { crate::transport_impls::managed_demux_receiver_get_stats(&handle.inner, out) }
+}
+
+/// Snapshot reconnect telemetry for a `tst_managed_demux_receiver_t` —
+/// recv-side sibling of `tst_managed_sender_get_reconnect_stats` /
+/// `tst_managed_mux_sender_get_reconnect_stats` /
+/// `tst_managed_raw_sender_get_reconnect_stats`. Reuses the same
+/// `tst_managed_transport_stats_t` struct.
+///
+/// Field semantics differ from the send-side getter in two ways:
+///
+/// * `gap_len`, `gap_messages_dropped`, `gap_bytes_dropped` are always
+///   `0`. Unlike the send side's `ManagedTransport`, the recv-side
+///   `ManagedRecvTransport`/`ManagedDemuxReceiver` has no gap buffer —
+///   there is nothing to queue while disconnected on the receive path
+///   (a receiver only ever consumes bytes that already arrived; it
+///   cannot buffer bytes the peer hasn't sent yet), so eviction
+///   telemetry is structurally inapplicable.
+/// * `reconnect_attempts` equals `reconnect_successes`
+///   (`ManagedDemuxReceiver::reconnects_count()`). The recv side tracks
+///   no separate attempts counter distinct from successful rebuilds
+///   (unlike the send side's `ManagedTransportStats::reconnect_attempts`,
+///   which counts every `factory()` invocation including failed ones) —
+///   this is a real asymmetry between the two sides, not a bug; it is
+///   documented here rather than silently reported as `0`, which would
+///   read as "never attempted" and be actively misleading while a
+///   reconnect is in progress.
+///
+/// `reconnecting` and `reconnect_successes` come from
+/// `ManagedDemuxReceiver::reconnecting()` / `reconnects_count()` and are
+/// live — they reflect the current state through reconnects (read via
+/// `with_inner_ref`, which works whether or not the inner transport is
+/// currently present).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+/// null, or `TST_E_CLOSED` if the receiver has been closed.
+///
+/// # Safety
+///
+/// `p` must be a valid `*mut TstManagedDemuxReceiver` opened via one of
+/// the `tst_managed_demux_receiver_open*` functions. `out` must point
+/// to a writable `tst_managed_transport_stats_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_demux_receiver_get_reconnect_stats(
+    p: *mut TstManagedDemuxReceiver,
+    out: *mut crate::stats::TstManagedTransportStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|rx| {
+        let successes = rx.reconnects_count();
+        let stats = crate::stats::TstManagedTransportStats {
+            reconnect_attempts: successes,
+            reconnect_successes: successes,
+            reconnecting: rx.reconnecting(),
+            ..Default::default()
+        };
+        // SAFETY: out non-null per guard above.
+        unsafe { *out = stats };
+        0
+    })
 }
 
 /// Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`](super::stats::tst_demux_receiver_get_stream_codec_stats).
@@ -436,5 +618,68 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_stats(
             out_array,
             out_count,
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+//
+// Null-pointer-only coverage lives here (no live socket required). Real
+// end-reason / reconnect-stats assertions against a live managed demux
+// receiver live in `bindings/c/tests/url_open/demux_receiver.rs`, which
+// has the real-SRT-socket rendezvous harness these entry points need.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn null_end_reason_returns_invalid_config() {
+        let mut out = TstStreamEndReason::None;
+        let rc = unsafe { tst_managed_demux_receiver_end_reason(std::ptr::null_mut(), &mut out) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_get_reconnect_stats_returns_invalid_config() {
+        let mut out = crate::stats::TstManagedTransportStats::default();
+        let rc = unsafe {
+            tst_managed_demux_receiver_get_reconnect_stats(std::ptr::null_mut(), &mut out)
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    /// `RecvEndReason` variants carry no message data, so every
+    /// ACTUALLY-recorded reason must reset last-error to `(Success, "")`
+    /// — pinned directly against the conversion helper, independent of
+    /// live-socket setup. Mirrors `convert_end_reason`'s own unit tests
+    /// in `crate::rtp::end_reason`.
+    #[test]
+    fn convert_recv_end_reason_sets_empty_last_error_detail_for_every_variant() {
+        for (reason, expected) in [
+            (
+                tst_pipeline::RecvEndReason::EndOfStream,
+                TstStreamEndReason::CleanTeardown,
+            ),
+            (
+                tst_pipeline::RecvEndReason::ReconnectExhausted,
+                TstStreamEndReason::TransportFailed,
+            ),
+            (
+                tst_pipeline::RecvEndReason::Cancelled,
+                TstStreamEndReason::Cancelled,
+            ),
+        ] {
+            crate::error::clear_last_error_for_test();
+            let converted = convert_recv_end_reason(&reason);
+            // TstStreamEndReason has no Debug impl; compare discriminants.
+            assert_eq!(converted as i32, expected as i32, "mapping for {reason:?}");
+            assert_eq!(
+                crate::error::test_last_error_code(),
+                TstError::Success as i32
+            );
+            assert_eq!(crate::error::test_last_error_msg(), "");
+        }
     }
 }

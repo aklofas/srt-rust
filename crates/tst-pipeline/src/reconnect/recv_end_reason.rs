@@ -77,6 +77,11 @@ impl RecvEndReasonHandle {
 
     /// The recorded reason, or `None` if the stream is still live (or
     /// ended through a path this type doesn't instrument).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_demux_receiver_end_reason` — see
+    /// `bindings/c/include/tstrans.h`.
     #[must_use]
     pub fn get(&self) -> Option<RecvEndReason> {
         self.0.get().copied()

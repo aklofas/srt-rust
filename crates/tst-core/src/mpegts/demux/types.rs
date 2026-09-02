@@ -232,6 +232,11 @@ pub struct DemuxerConfig {
     /// The accumulator resets alongside all other per-PID parse state on
     /// [`Demuxer::reset_sync`](crate::mpegts::demux::Demuxer::reset_sync)
     /// — a reconnect restarts the unwrap timeline.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demux_config_set_unwrap_timestamps` — see
+    /// `bindings/c/include/tstrans.h`.
     pub unwrap_timestamps: bool,
 }
 

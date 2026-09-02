@@ -115,6 +115,7 @@ pub struct TstDemuxConfig {
     // `None` = use Rust-side default (1 MiB).
     au_cell_cap_per_pid: Option<usize>,
     lenient_psi_reassembly: bool,
+    unwrap_timestamps: bool,
 }
 
 /// Build a `DemuxerConfig` from a C-side `TstDemuxConfig`. Exposed to
@@ -146,6 +147,7 @@ impl TstDemuxConfig {
         cfg.klv_link_overrides = self.klv_link_overrides.clone();
         cfg.stream_kind_overrides = self.stream_kind_overrides.clone();
         cfg.lenient_psi_reassembly = self.lenient_psi_reassembly;
+        cfg.unwrap_timestamps = self.unwrap_timestamps;
         cfg.cfi_tolerance = self.cfi_tolerance;
         if let Some(mode) = self.av1_carriage {
             cfg.av1_carriage = mode;
@@ -175,6 +177,7 @@ pub unsafe extern "C" fn tst_demux_config_new() -> *mut TstDemuxConfig {
             av1_carriage: None,
             au_cell_cap_per_pid: None,
             lenient_psi_reassembly: false,
+            unwrap_timestamps: false,
         }))
     })
 }
@@ -470,6 +473,32 @@ pub unsafe extern "C" fn tst_demux_config_set_lenient_psi_reassembly(
     })
 }
 
+/// Enable the opt-in monotonic PTS/DTS unwrap. `enable` is read as a C
+/// `bool` (any non-zero value enables). Default is `false` (raw wire
+/// PTS/DTS, matching today's behavior). See
+/// `tst_core::mpegts::demux::DemuxerConfig::unwrap_timestamps` for the
+/// full unwrap semantics (per-PID monotonic timeline, DTS unwrapped
+/// against its own PES's PTS, reset on reconnect).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_config_set_unwrap_timestamps(
+    cfg: *mut TstDemuxConfig,
+    enable: c_int,
+) -> c_int {
+    crate::panic::ffi_catch(crate::error::TstError::PanicCaught as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "null config pointer",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        cfg.unwrap_timestamps = enable != 0;
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -700,6 +729,34 @@ mod tests {
     #[test]
     fn set_lenient_psi_reassembly_null_cfg_returns_invalid_config() {
         let rc = unsafe { tst_demux_config_set_lenient_psi_reassembly(core::ptr::null_mut(), 1) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn unwrap_timestamps_default_is_false() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let opts = (*cfg).build_options();
+            assert!(!opts.unwrap_timestamps);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_unwrap_timestamps_toggles() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            assert_eq!(tst_demux_config_set_unwrap_timestamps(cfg, 1), 0);
+            assert!((*cfg).build_options().unwrap_timestamps);
+            assert_eq!(tst_demux_config_set_unwrap_timestamps(cfg, 0), 0);
+            assert!(!(*cfg).build_options().unwrap_timestamps);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_unwrap_timestamps_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_set_unwrap_timestamps(core::ptr::null_mut(), 1) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 }

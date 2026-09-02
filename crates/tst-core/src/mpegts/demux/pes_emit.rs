@@ -190,7 +190,20 @@ impl super::demuxer::Demuxer {
                 Some(raw) => self.unwrap_pts(pes.pid, raw),
                 None => pts,
             };
-            let unwrapped_dts = pes.dts.map(|raw| self.unwrap_secondary_ts(pes.pid, raw));
+            // DTS unwraps relative to THIS PES's own raw PTS, not the
+            // bare per-PID offset — the 33-bit boundary can fall between
+            // one AU's DTS and PTS (DTS <= PTS always), and applying the
+            // just-advanced offset directly would put a pre-wrap DTS a
+            // full epoch too high. See `Self::unwrap_dts_with_pts`. The
+            // DTS-with-no-PTS branch is spec-illegal but tolerated
+            // defensively via the older bare-offset fallback.
+            let unwrapped_dts = match (pes.pts, pes.dts) {
+                (Some(pts_raw), Some(dts_raw)) => {
+                    Some(Self::unwrap_dts_with_pts(unwrapped_pts, pts_raw, dts_raw))
+                }
+                (None, Some(dts_raw)) => Some(self.unwrap_secondary_ts(pes.pid, dts_raw)),
+                (_, None) => None,
+            };
             (unwrapped_pts, unwrapped_dts)
         } else {
             (pts, pes.dts)

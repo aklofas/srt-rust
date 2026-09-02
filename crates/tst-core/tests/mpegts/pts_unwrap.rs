@@ -213,6 +213,71 @@ fn missing_pts_stays_zero_and_does_not_corrupt_following_pts() {
     );
 }
 
+/// Test C2 (Fix round 1 regression) — the 33-bit wrap boundary can fall
+/// BETWEEN one AU's DTS and PTS (DTS <= PTS always, so DTS can still be
+/// pre-wrap while PTS has already wrapped — once per ~26.5h on any
+/// B-frame stream). The unwrapped DTS must stay in the PRE-wrap epoch
+/// (below the unwrapped PTS), not get shifted a full `1 << 33` past it.
+#[test]
+fn dts_straddling_the_wrap_stays_below_unwrapped_pts() {
+    let cfg = single_video_cfg(0x102);
+    let mut mux = Muxer::new(cfg).unwrap();
+    let handle = mux.video_handles()[0];
+    let au = minimal_h264_au();
+
+    // First AU anchors the pre-wrap epoch (a plain PTS-only push).
+    mux.push_video_to(handle, &au, Pts90khz::new(PTS_ROLLOVER_START), true)
+        .unwrap();
+
+    // Second AU: PTS has wrapped (small raw); this AU's DTS is still
+    // pre-wrap (large raw) — decode-before-compose, straddling the
+    // boundary within one PES.
+    let pts_raw = 100i64;
+    let dts_raw = WRAP - 200; // 300 ticks before pts_raw in real (wrapped) time
+    mux.push_video_to_with_dts(
+        handle,
+        &au,
+        Pts90khz::new(pts_raw),
+        Pts90khz::new(dts_raw),
+        true,
+    )
+    .unwrap();
+    let ts_buf = drain(&mut mux);
+
+    let events = demux_all(&ts_buf, true);
+    let (pts_out, dts_out) = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::Sample {
+                stream,
+                pts,
+                dts,
+                payload: SamplePayload::Video { .. },
+                ..
+            } if stream.pid == 0x102 && pts.as_ticks() != PTS_ROLLOVER_START => {
+                Some((pts.as_ticks(), dts.map(|d| d.as_ticks())))
+            }
+            _ => None,
+        })
+        .expect("the wrapped video sample");
+
+    assert_eq!(pts_out, WRAP + pts_raw, "unwrapped PTS");
+    let dts_out = dts_out.expect("DTS present on this sample");
+    assert_eq!(
+        dts_out, dts_raw,
+        "DTS must stay in the pre-wrap epoch (offset 0 relative to its own raw value)"
+    );
+    assert!(
+        dts_out < pts_out,
+        "DTS must stay <= PTS across the wrap straddle, got dts={dts_out} pts={pts_out}"
+    );
+    assert_ne!(
+        dts_out,
+        WRAP + dts_raw,
+        "regression guard: DTS must NOT be shifted a full 1<<33 epoch past its correct value"
+    );
+}
+
 /// Locate the PES start (`00 00 01 <stream_id>`) and clear `PTS_DTS_flags`
 /// (top 2 bits of byte 7) + zero `header_data_length` (byte 8), so the
 /// parsed PES has no PTS. Mirrors

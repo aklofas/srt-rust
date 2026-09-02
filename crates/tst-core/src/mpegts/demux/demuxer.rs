@@ -115,8 +115,8 @@ pub struct Demuxer {
     /// raw 90 kHz ticks. Populated and consulted only when
     /// [`DemuxerConfig::unwrap_timestamps`] is `true`; stays empty (and
     /// inert) otherwise. See `pes_emit.rs::unwrap_pts` /
-    /// `unwrap_secondary_ts`. Cleared on [`Self::reset_sync`] alongside
-    /// `last_pts_by_pid`.
+    /// `unwrap_dts_with_pts` / `unwrap_secondary_ts`. Cleared on
+    /// [`Self::reset_sync`] alongside `last_pts_by_pid`.
     pub(super) unwrap_state: HashMap<u16, (i64, i64)>,
     pub(super) pes: Reassembler,
     pub(super) queue: VecDeque<DemuxEvent>,
@@ -660,15 +660,42 @@ impl Demuxer {
         crate::mpegts::common::Pts90khz::new(offset + raw_ticks)
     }
 
-    /// Unwrap a secondary timestamp (DTS) for `pid` by reusing the
-    /// *current* accumulator offset — no independent wrap detection, no
-    /// state mutation. DTS shares its PID's wrap epoch with PTS
-    /// (DTS ≤ PTS): once [`Self::unwrap_pts`] has processed this PES's
-    /// PTS, the resulting offset is already correct for the paired DTS,
-    /// including the case where the PTS in this same PES just crossed
-    /// the wrap boundary. If `pid` has no accumulator entry yet (a DTS
-    /// with no preceding PTS — not spec-legal, but tolerated
-    /// defensively), the offset defaults to 0.
+    /// Unwrap a DTS that has a PTS on the same PES, relative to that
+    /// PES's OWN raw PTS — NOT the bare per-PID offset.
+    ///
+    /// This distinction matters exactly at a wrap: the 33-bit boundary
+    /// can fall BETWEEN one AU's DTS and PTS (DTS ≤ PTS always, so DTS
+    /// can still be in the pre-wrap epoch while PTS has already
+    /// wrapped). Applying [`Self::unwrap_pts`]'s just-advanced offset
+    /// directly to the DTS would then put it a full `1 << 33` epoch too
+    /// high — this method instead measures the DTS's wrap-aware
+    /// distance from its own PES's raw PTS (via
+    /// [`crate::mpegts::common::pts_diff_33bit`]) and adds that to the
+    /// *unwrapped* PTS, so the result lands in the correct epoch
+    /// whether or not this particular PES straddled the boundary.
+    ///
+    /// Pure — does not read or mutate the accumulator. `unwrapped_pts`
+    /// is this PES's already-unwrapped PTS (the return of
+    /// [`Self::unwrap_pts`]); `pts_raw` / `dts_raw` are this PES's raw
+    /// 33-bit wire values.
+    pub(super) fn unwrap_dts_with_pts(
+        unwrapped_pts: crate::mpegts::common::Pts90khz,
+        pts_raw: crate::mpegts::common::Pts90khz,
+        dts_raw: crate::mpegts::common::Pts90khz,
+    ) -> crate::mpegts::common::Pts90khz {
+        let delta = crate::mpegts::common::pts_diff_33bit(
+            dts_raw.as_ticks() as u64,
+            pts_raw.as_ticks() as u64,
+        );
+        crate::mpegts::common::Pts90khz::new(unwrapped_pts.as_ticks() + delta)
+    }
+
+    /// Unwrap a DTS that arrived with NO PTS on the same PES — not
+    /// spec-legal (§2.4.3.6 forbids `PTS_DTS_flags = '01'`), but
+    /// tolerated defensively. Falls back to the *current* per-PID
+    /// accumulator offset (no independent wrap detection, no state
+    /// mutation); defaults to offset 0 if `pid` has no accumulator entry
+    /// yet.
     pub(super) fn unwrap_secondary_ts(
         &self,
         pid: u16,
@@ -3818,5 +3845,46 @@ mod tests {
         let d = Demuxer::new();
         let out = d.unwrap_secondary_ts(0x999, Pts90khz::new(42));
         assert_eq!(out.as_ticks(), 42);
+    }
+
+    /// Fix round 1 (Finding 1 + 2) — the straddle case: PTS has already
+    /// wrapped (small raw) while this AU's DTS is still pre-wrap (large
+    /// raw). The pre-fix code (`unwrap_secondary_ts`, bare per-PID
+    /// offset) put the DTS a full `1 << 33` epoch above where it
+    /// belongs. Numbers mirror the reviewer's worked trace:
+    /// `pts_diff_33bit(1<<33-200, 100) == -300`, so the unwrapped DTS is
+    /// `(1<<33+100) + (-300) == 1<<33-200` — in the PRE-wrap epoch,
+    /// below the unwrapped PTS, NOT `1<<33 + (1<<33-200)`.
+    #[test]
+    fn unwrap_dts_with_pts_straddling_wrap_stays_in_pre_wrap_epoch() {
+        let pts_raw = Pts90khz::new(100);
+        let dts_raw = Pts90khz::new((1i64 << 33) - 200);
+        let unwrapped_pts = Pts90khz::new((1i64 << 33) + 100);
+
+        let dts = Demuxer::unwrap_dts_with_pts(unwrapped_pts, pts_raw, dts_raw);
+
+        assert_eq!(dts.as_ticks(), (1i64 << 33) - 200);
+        assert!(
+            dts.as_ticks() < unwrapped_pts.as_ticks(),
+            "DTS must stay below PTS across the straddle, got dts={} pts={}",
+            dts.as_ticks(),
+            unwrapped_pts.as_ticks()
+        );
+    }
+
+    /// Fix round 1 — same-epoch regression guard: when DTS and PTS are
+    /// both on the same side of any wrap (the common case), the fix must
+    /// reproduce today's correct behavior exactly.
+    /// `pts_diff_33bit(87_000, 90_000) == -3000`, so unwrapped DTS ==
+    /// `90_000 + (-3000) == 87_000` (offset 0, matches the raw value).
+    #[test]
+    fn unwrap_dts_with_pts_same_epoch_matches_raw_delta() {
+        let pts_raw = Pts90khz::new(90_000);
+        let dts_raw = Pts90khz::new(87_000);
+        let unwrapped_pts = Pts90khz::new(90_000); // no wrap yet — offset 0
+
+        let dts = Demuxer::unwrap_dts_with_pts(unwrapped_pts, pts_raw, dts_raw);
+
+        assert_eq!(dts.as_ticks(), 87_000);
     }
 }

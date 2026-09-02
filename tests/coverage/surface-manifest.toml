@@ -2066,6 +2066,30 @@ item = "tst_core::codec::nal_framing::length_prefixed_to_annexb"
 reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
 
 [[exempt]]
+item = "tst_core::codec::nal_framing::ParameterSets"
+reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
+
+[[exempt]]
+item = "tst_core::codec::nal_framing::ParameterSets::clone"
+reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
+
+[[exempt]]
+item = "tst_core::codec::nal_framing::ParameterSets::eq"
+reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
+
+[[exempt]]
+item = "tst_core::codec::nal_framing::ParameterSets::default"
+reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
+
+[[exempt]]
+item = "tst_core::codec::nal_framing::ParameterSets::fmt"
+reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
+
+[[exempt]]
+item = "tst_core::codec::nal_framing::extract_parameter_sets"
+reason = "new 2026-09-02, tst-core only (Apple/VideoToolbox PoC arc); no binding wraps it yet — graduate to [[surface]] when a later task in the arc binds it"
+
+[[exempt]]
 item = "tst_core::error::DemuxError::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

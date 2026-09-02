@@ -5712,6 +5712,7 @@ pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_total: core::option::Option<
 pub tst_core::mpegts::demux::DemuxerConfig::stream_kind_overrides: alloc::collections::btree::map::BTreeMap<u16, tst_core::mpegts::demux::event::StreamKind>
 pub tst_core::mpegts::demux::DemuxerConfig::strict: tst_core::mpegts::demux::strict::StrictMode
 pub tst_core::mpegts::demux::DemuxerConfig::sync_buf_cap: core::option::Option<usize>
+pub tst_core::mpegts::demux::DemuxerConfig::unwrap_timestamps: bool
 impl tst_core::mpegts::demux::DemuxerConfig
 pub fn tst_core::mpegts::demux::DemuxerConfig::builder() -> tst_core::mpegts::demux::DemuxerConfigBuilder
 impl core::clone::Clone for tst_core::mpegts::demux::DemuxerConfig
@@ -5742,6 +5743,7 @@ pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::pes_cap_total(self, usize)
 pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::strict(self, tst_core::mpegts::demux::strict::StrictMode) -> Self
 pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::sync_buf_cap(self, usize) -> Self
 pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::treat_as(self, u16, tst_core::mpegts::demux::event::StreamKind) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::unwrap_timestamps(self, bool) -> Self
 impl core::default::Default for tst_core::mpegts::demux::DemuxerConfigBuilder
 pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::default() -> tst_core::mpegts::demux::DemuxerConfigBuilder
 impl core::fmt::Debug for tst_core::mpegts::demux::DemuxerConfigBuilder

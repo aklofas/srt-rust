@@ -175,6 +175,26 @@ impl super::demuxer::Demuxer {
             self.last_pts_by_pid
                 .insert(pes.pid, observed_pts.as_ticks());
         }
+        // Opt-in monotonic PTS/DTS unwrap (`DemuxerConfig::unwrap_timestamps`,
+        // default off — the branch below is skipped entirely and `pts`/`dts`
+        // stay exactly as computed above, so the default emit path is
+        // byte-for-byte unchanged). `pts` and `dts` are shadowed here, once,
+        // rather than at each event-construction site below — every event
+        // this function pushes (`Sample` for every `StreamKind`, and every
+        // `Metadata` KLV shape) reads from these same two locals, so shadowing
+        // them here covers all of it. A synthesized `pts = 0` from the
+        // missing-PTS branch above (`pes.pts.is_none()`) is never fed to the
+        // accumulator and is left as 0.
+        let (pts, dts) = if self.options.unwrap_timestamps {
+            let unwrapped_pts = match pes.pts {
+                Some(raw) => self.unwrap_pts(pes.pid, raw),
+                None => pts,
+            };
+            let unwrapped_dts = pes.dts.map(|raw| self.unwrap_secondary_ts(pes.pid, raw));
+            (unwrapped_pts, unwrapped_dts)
+        } else {
+            (pts, pes.dts)
+        };
         match kind {
             StreamKind::Video(codec) => {
                 // Raw-first: the demuxer no longer parses the video elementary
@@ -226,7 +246,7 @@ impl super::demuxer::Demuxer {
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
-                    dts: pes.dts,
+                    dts,
                     payload: SamplePayload::Video {
                         codec,
                         raw,
@@ -279,7 +299,7 @@ impl super::demuxer::Demuxer {
                     self.queue.push_back(DemuxEvent::Sample {
                         stream,
                         pts,
-                        dts: pes.dts,
+                        dts,
                         payload: SamplePayload::Unknown {
                             stream_type: StreamTypeCode::from_byte(0x15),
                             raw: SharedBytes::from_slice(&raw),
@@ -480,7 +500,7 @@ impl super::demuxer::Demuxer {
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
-                    dts: pes.dts,
+                    dts,
                     payload: SamplePayload::Unknown {
                         stream_type: StreamTypeCode::from_byte(stream_type),
                         raw: SharedBytes::from_slice(&pes.payload),

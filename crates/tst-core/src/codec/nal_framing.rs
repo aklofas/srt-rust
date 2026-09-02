@@ -17,7 +17,7 @@
 //! matching the widths ISO/IEC 14496-15's `NALUnitLength` field allows.
 
 use crate::codec::CodecParseError;
-use crate::mpegts::mux::VideoCodec;
+use crate::mpegts::demux::VideoCodec;
 use alloc::vec::Vec;
 
 /// Offsets of one Annex-B start-code occurrence: where the prefix starts

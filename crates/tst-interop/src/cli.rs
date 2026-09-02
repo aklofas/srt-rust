@@ -70,9 +70,23 @@ mod tests {
         n: u32,
     }
 
+    // Per-test-process-unique temp path — a fixed filename would collide
+    // under parallel/retried test execution (nextest runs tests
+    // concurrently, and can spawn a fresh process per retry), where two
+    // runs racing on the same literal path in the shared OS temp dir can
+    // overwrite or remove each other's file mid-test. `name` alone
+    // already disambiguates the two file-touching tests below within one
+    // process; std::process::id() disambiguates across processes.
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "tst-interop-cli-test-{name}-{}",
+            std::process::id()
+        ))
+    }
+
     #[test]
     fn write_json_writes_pretty_json_to_a_file() {
-        let path = std::env::temp_dir().join("tst-interop-cli-test-write.json");
+        let path = unique_temp_path("write");
         let path_str = path.to_str().unwrap();
         write_json(path_str, &Sample { n: 7 }).unwrap();
         let contents = std::fs::read_to_string(&path).unwrap();
@@ -83,16 +97,15 @@ mod tests {
     #[test]
     fn write_json_dash_target_does_not_error() {
         // "-" means "print to stdout" — just assert it doesn't error;
-        // stdout content isn't worth capturing here.
+        // stdout content isn't worth capturing here. No file touched, so
+        // no unique-path concern.
         write_json("-", &Sample { n: 1 }).unwrap();
     }
 
     #[test]
     fn write_json_surfaces_the_write_error() {
         // A path under a nonexistent directory can never be created.
-        let bad = std::env::temp_dir()
-            .join("tst-interop-cli-test-nonexistent-dir")
-            .join("out.json");
+        let bad = unique_temp_path("nonexistent-dir").join("out.json");
         let err = write_json(bad.to_str().unwrap(), &Sample { n: 1 }).unwrap_err();
         assert!(err.contains("write"));
     }

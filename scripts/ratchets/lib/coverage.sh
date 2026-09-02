@@ -130,6 +130,19 @@ rust_arm_enum_variants() { # <enum> <src_file>
     ' "$2"
 }
 
+# Strip Rust comments (block /* */ then line //) before an arm-presence
+# grep — otherwise a variant name that only appears in prose (a
+# rationale comment, a stale commented-out arm) satisfies the check
+# without a real match arm existing, exactly the false-PASS class this
+# rail exists to prevent. Mirrors the sed pipeline
+# scripts/check/jvm/error-mapping-coverage.sh already uses for the same
+# reason (see its is_no_producer_exempt-adjacent comment block).
+strip_rust_comments() { # <file>
+    sed 's@/\*.*\*/@@g' "$1" \
+        | sed '\@/\*@,\@\*/@d' \
+        | sed 's@//.*@@'
+}
+
 # Returns 0 if covered, 1 (and prints a failure summary) on any gap.
 assert_rust_arm_row() { # <enum> <src_file> <py_file> <label> [match_names]
     local enum="$1" src="$2" py_file="$3" label="$4" match_names="${5:-$1}"
@@ -147,9 +160,16 @@ assert_rust_arm_row() { # <enum> <src_file> <py_file> <label> [match_names]
         return 1
     fi
 
+    local code
+    code=$(strip_rust_comments "$py_file")
+
     local missing=()
     for v in "${variants[@]}"; do
-        if ! grep -qE "($match_names)::${v}\b" "$py_file"; then
+        # `[^A-Za-z0-9_]|$` in place of `\b` — GNU-only in POSIX ERE and
+        # not portable to BSD/macOS grep; this anchors the same way
+        # without it (rejects a variant name that's a strict prefix of
+        # a longer one, e.g. `Foo` inside `FooBar`).
+        if ! grep -qE "(${match_names})::${v}([^A-Za-z0-9_]|\$)" <<<"$code"; then
             missing+=("$v")
         fi
     done

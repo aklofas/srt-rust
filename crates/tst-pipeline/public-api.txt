@@ -315,7 +315,9 @@ pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::end_reason
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(tst_pipeline::managed_receive::ManagedRecvTransport<R>, tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnecting(&self) -> bool
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnecting_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicBool>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
@@ -1645,7 +1647,9 @@ pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::end_reason
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(tst_pipeline::managed_receive::ManagedRecvTransport<R>, tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnecting(&self) -> bool
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnecting_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicBool>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>

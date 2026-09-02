@@ -26,6 +26,7 @@ use crate::sender::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use tst_pipeline::ManagedDemuxReceiver;
 use tst_pipeline::ManagedDemuxReceiverConfig;
@@ -54,6 +55,22 @@ pub struct TstManagedDemuxReceiver {
     /// be polled from a watchdog thread side-channel, without acquiring
     /// `inner`'s Mutex. Read by `tst_managed_demux_receiver_end_reason`.
     end_reason: RecvEndReasonHandle,
+    /// Reconnect-counter + reconnecting-flag handles, snapshotted at
+    /// open time with the same capture-before-move timing as `cancel`
+    /// and `end_reason` — obtained from the `ManagedDemuxReceiver`
+    /// BEFORE it is moved into `Handle::new(...)` in
+    /// `finish_managed_open`. Reading through these `Arc`s takes NO lock
+    /// on `inner` (unlike `handle.inner.with_inner_ref`/`with_inner_mut`,
+    /// which share ONE mutex with `_recv_event` — a blocked `_recv_event`
+    /// call holds that mutex for its ENTIRE duration, including any
+    /// internal reconnect retry loop, so a stats read gated behind it
+    /// could never observe `reconnecting == true` while a reconnect is
+    /// actually in progress). Side-channel reads here are what make
+    /// `tst_managed_demux_receiver_get_reconnect_stats` safe to poll
+    /// from a watchdog thread concurrently with a thread blocked in
+    /// `_recv_event`, same as `end_reason`.
+    reconnects: Arc<AtomicU64>,
+    reconnecting: Arc<AtomicBool>,
 }
 
 /// Open a `tst_managed_demux_receiver_t` with default demux options.
@@ -204,6 +221,8 @@ fn finish_managed_open(
     };
     let cancel = rx.cancel_handle();
     let end_reason = rx.end_reason_handle();
+    let reconnects = rx.reconnects_handle();
+    let reconnecting = rx.reconnecting_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
     Box::into_raw(Box::new(TstManagedDemuxReceiver {
         inner: Handle::new(rx),
@@ -211,6 +230,8 @@ fn finish_managed_open(
         stream_stats_buf: Mutex::new(Vec::new()),
         cancel,
         was_cancelled,
+        reconnects,
+        reconnecting,
         end_reason,
     }))
 }
@@ -459,14 +480,28 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stats(
 ///   read as "never attempted" and be actively misleading while a
 ///   reconnect is in progress.
 ///
-/// `reconnecting` and `reconnect_successes` come from
-/// `ManagedDemuxReceiver::reconnecting()` / `reconnects_count()` and are
-/// live — they reflect the current state through reconnects (read via
-/// `with_inner_ref`, which works whether or not the inner transport is
-/// currently present).
+/// **Lock-free side-channel read**, same shape as
+/// `tst_managed_demux_receiver_end_reason`: `reconnecting` and
+/// `reconnect_successes` are read directly off `Arc<AtomicU64>` /
+/// `Arc<AtomicBool>` handles snapshotted at open time
+/// (`ManagedDemuxReceiver::reconnects_handle` /
+/// `ManagedDemuxReceiver::reconnecting_handle`), WITHOUT acquiring this
+/// handle's data-path Mutex. This is load-bearing, not a style choice: a
+/// thread blocked in `_recv_event` holds that Mutex for the entire call,
+/// including any internal reconnect retry loop — a getter gated behind
+/// that same lock could only ever observe `reconnecting == true` once
+/// nothing is actually reconnecting, defeating the point of exposing the
+/// flag. Reading the snapshotted atomics directly is what makes this
+/// getter safe to poll from a watchdog thread while another thread
+/// drives `_recv_event`, including mid-outage.
 ///
-/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
-/// null, or `TST_E_CLOSED` if the receiver has been closed.
+/// Returns 0 on success, or `TST_E_INVALID_CONFIG` if either pointer is
+/// null. Unlike most getters on this handle, this one **never** returns
+/// `TST_E_CLOSED` — it doesn't consult the handle's data-path state at
+/// all, so it keeps returning the last-observed values after `_close`
+/// too (same caveat as `tst_managed_demux_receiver_end_reason`: calling
+/// anything on a freed handle, including this getter, is a
+/// use-after-free the caller must avoid).
 ///
 /// # Safety
 ///
@@ -478,20 +513,20 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_reconnect_stats(
     p: *mut TstManagedDemuxReceiver,
     out: *mut crate::stats::TstManagedTransportStats,
 ) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null receiver pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let successes = rx.reconnects_count();
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if out.is_null() {
+            set_last_error(TstError::InvalidConfig, "null out pointer");
+            return TstError::InvalidConfig as i32;
+        }
+        let successes = handle.reconnects.load(Ordering::Acquire);
         let stats = crate::stats::TstManagedTransportStats {
             reconnect_attempts: successes,
             reconnect_successes: successes,
-            reconnecting: rx.reconnecting(),
+            reconnecting: handle.reconnecting.load(Ordering::Acquire),
             ..Default::default()
         };
         // SAFETY: out non-null per guard above.

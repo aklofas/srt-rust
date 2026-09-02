@@ -111,6 +111,13 @@ pub struct Demuxer {
     /// so PCR comparison MUST stay within a single PID's timeline).
     pub(super) last_pcr_by_pid: HashMap<u16, u64>,
     pub(super) last_pts_by_pid: HashMap<u16, i64>,
+    /// Per-PID PTS/DTS unwrap accumulator: `(last_raw, offset)`, both in
+    /// raw 90 kHz ticks. Populated and consulted only when
+    /// [`DemuxerConfig::unwrap_timestamps`] is `true`; stays empty (and
+    /// inert) otherwise. See `pes_emit.rs::unwrap_pts` /
+    /// `unwrap_secondary_ts`. Cleared on [`Self::reset_sync`] alongside
+    /// `last_pts_by_pid`.
+    pub(super) unwrap_state: HashMap<u16, (i64, i64)>,
     pub(super) pes: Reassembler,
     pub(super) queue: VecDeque<DemuxEvent>,
     pub(super) bytes_since_sync: usize,
@@ -219,6 +226,7 @@ impl Demuxer {
             last_psi_cc_jump: None,
             last_pcr_by_pid: HashMap::new(),
             last_pts_by_pid: HashMap::new(),
+            unwrap_state: HashMap::new(),
             pes: Reassembler::new(cap_per_pid, cap_total),
             queue: VecDeque::new(),
             bytes_since_sync: 0,
@@ -610,6 +618,66 @@ impl Demuxer {
         self.pid_to_program.get(&pid).copied().unwrap_or(0)
     }
 
+    /// Unwrap a raw 33-bit PTS (or a KLV Metadata PTS — same clock, same
+    /// accumulator) for `pid` into a monotonic `i64` timeline, advancing
+    /// the per-PID accumulator. Only called when
+    /// `options.unwrap_timestamps` is `true` and a genuine (non-
+    /// synthesized) PTS was observed.
+    ///
+    /// The first observed value for a PID anchors the timeline (emitted
+    /// value == the raw value); each subsequent value is `offset + raw`,
+    /// where `offset` grows by `1 << 33` on every detected forward wrap.
+    /// `offset` is never rebased to zero — see
+    /// [`DemuxerConfig::unwrap_timestamps`](crate::mpegts::demux::DemuxerConfig::unwrap_timestamps)
+    /// for why that matters for cross-PID (video vs. KLV) comparability.
+    ///
+    /// A genuine small backward step (raw decreased, but not by wrap-
+    /// magnitude — e.g. an out-of-order arrival) is NOT a wrap: `offset`
+    /// is left unchanged and the emitted value is allowed to be
+    /// non-monotonic, correctly reflecting the reorder.
+    pub(super) fn unwrap_pts(
+        &mut self,
+        pid: u16,
+        raw: crate::mpegts::common::Pts90khz,
+    ) -> crate::mpegts::common::Pts90khz {
+        let raw_ticks = raw.as_ticks();
+        let (last_raw, offset) = match self.unwrap_state.get(&pid).copied() {
+            Some(state) => state,
+            None => {
+                self.unwrap_state.insert(pid, (raw_ticks, 0));
+                return crate::mpegts::common::Pts90khz::new(raw_ticks);
+            }
+        };
+        let delta = crate::mpegts::common::pts_diff_33bit(raw_ticks as u64, last_raw as u64);
+        let offset = if raw_ticks < last_raw && delta > 0 {
+            // Raw value dropped numerically, but the wrap-aware delta
+            // says time still moved forward — a genuine 33-bit wrap.
+            offset + (1i64 << 33)
+        } else {
+            offset
+        };
+        self.unwrap_state.insert(pid, (raw_ticks, offset));
+        crate::mpegts::common::Pts90khz::new(offset + raw_ticks)
+    }
+
+    /// Unwrap a secondary timestamp (DTS) for `pid` by reusing the
+    /// *current* accumulator offset — no independent wrap detection, no
+    /// state mutation. DTS shares its PID's wrap epoch with PTS
+    /// (DTS ≤ PTS): once [`Self::unwrap_pts`] has processed this PES's
+    /// PTS, the resulting offset is already correct for the paired DTS,
+    /// including the case where the PTS in this same PES just crossed
+    /// the wrap boundary. If `pid` has no accumulator entry yet (a DTS
+    /// with no preceding PTS — not spec-legal, but tolerated
+    /// defensively), the offset defaults to 0.
+    pub(super) fn unwrap_secondary_ts(
+        &self,
+        pid: u16,
+        raw: crate::mpegts::common::Pts90khz,
+    ) -> crate::mpegts::common::Pts90khz {
+        let offset = self.unwrap_state.get(&pid).map_or(0, |&(_, off)| off);
+        crate::mpegts::common::Pts90khz::new(offset + raw.as_ticks())
+    }
+
     /// Convert a `process_packet` result into lenient/strict policy.
     ///
     /// Lenient mode (`StrictMode::Off`): `DemuxError::MalformedPes` becomes
@@ -714,6 +782,10 @@ impl Demuxer {
         self.last_psi_cc_jump = None;
         self.last_pcr_by_pid.clear();
         self.last_pts_by_pid.clear();
+        // A reconnect restarts the opt-in PTS/DTS unwrap timeline (see
+        // `DemuxerConfig::unwrap_timestamps`) — stale offsets from the
+        // dead connection must not splice into the new one's epoch.
+        self.unwrap_state.clear();
         // Drop all in-flight PES reassembly state. A new reassembler
         // with the same caps replaces it (Reassembler exposes no
         // public reset method; constructing fresh is the canonical
@@ -3664,5 +3736,87 @@ mod tests {
             "MPEG-2 video (unrecognized codec) zero-length PES must NOT be \
              flagged as ZeroLengthPesNonVideo; got {events:?}"
         );
+    }
+
+    // ── unwrap_timestamps accumulator (opt-in PTS/DTS unwrap) ───────────
+    // White-box coverage of `unwrap_pts` / `unwrap_secondary_ts` in
+    // isolation. Wire-level (mux -> bytes -> demux) coverage, including
+    // the default-off byte-identity guarantee and the missing-PTS guard,
+    // lives in `tests/mpegts/pts_unwrap.rs`.
+
+    #[test]
+    fn unwrap_pts_first_call_anchors_at_raw_value() {
+        let mut d = Demuxer::new();
+        let out = d.unwrap_pts(0x100, Pts90khz::new(12_345));
+        assert_eq!(out.as_ticks(), 12_345);
+        assert_eq!(d.unwrap_state.get(&0x100), Some(&(12_345, 0)));
+    }
+
+    #[test]
+    fn unwrap_pts_forward_progress_within_epoch_does_not_bump_offset() {
+        let mut d = Demuxer::new();
+        let _ = d.unwrap_pts(0x100, Pts90khz::new(1_000));
+        let out = d.unwrap_pts(0x100, Pts90khz::new(91_000));
+        assert_eq!(out.as_ticks(), 91_000, "no wrap — offset stays 0");
+        assert_eq!(d.unwrap_state.get(&0x100), Some(&(91_000, 0)));
+    }
+
+    #[test]
+    fn unwrap_pts_detects_forward_wrap() {
+        let mut d = Demuxer::new();
+        let raw1 = (1i64 << 33) - 90_000;
+        let _ = d.unwrap_pts(0x100, Pts90khz::new(raw1));
+        // Wraps forward by 180_000 ticks past the 33-bit boundary.
+        let raw2 = raw1 + 180_000 - (1i64 << 33);
+        let out = d.unwrap_pts(0x100, Pts90khz::new(raw2));
+        assert_eq!(out.as_ticks(), raw1 + 180_000);
+        assert!(out.as_ticks() > raw1, "must be monotonic across the wrap");
+        assert_eq!(d.unwrap_state.get(&0x100), Some(&(raw2, 1i64 << 33)));
+    }
+
+    #[test]
+    fn unwrap_pts_genuine_small_backward_step_is_not_a_wrap() {
+        let mut d = Demuxer::new();
+        let _ = d.unwrap_pts(0x100, Pts90khz::new(100_000));
+        // A modest backward step (e.g. an out-of-order arrival) is not a
+        // wrap — offset stays 0 and the emitted value is non-monotonic,
+        // which correctly reflects the reorder.
+        let out = d.unwrap_pts(0x100, Pts90khz::new(99_000));
+        assert_eq!(out.as_ticks(), 99_000);
+        assert_eq!(d.unwrap_state.get(&0x100), Some(&(99_000, 0)));
+    }
+
+    #[test]
+    fn unwrap_pts_is_per_pid() {
+        let mut d = Demuxer::new();
+        let _ = d.unwrap_pts(0x100, Pts90khz::new(500_000));
+        // A different PID's first observation anchors independently —
+        // untouched by PID 0x100's already-established state.
+        let out = d.unwrap_pts(0x200, Pts90khz::new(1_000));
+        assert_eq!(out.as_ticks(), 1_000);
+    }
+
+    #[test]
+    fn unwrap_secondary_ts_reuses_current_offset_without_mutating_state() {
+        let mut d = Demuxer::new();
+        let raw1 = (1i64 << 33) - 90_000;
+        let _ = d.unwrap_pts(0x100, Pts90khz::new(raw1)); // anchors, offset 0
+        let raw2 = raw1 + 180_000 - (1i64 << 33);
+        let _ = d.unwrap_pts(0x100, Pts90khz::new(raw2)); // wraps — offset becomes 1<<33
+        let state_before = d.unwrap_state.get(&0x100).copied();
+
+        // A DTS just below the (already-wrapped) PTS on the same PES
+        // reuses the post-wrap offset — no independent wrap check.
+        let dts = d.unwrap_secondary_ts(0x100, Pts90khz::new(raw2 - 3_000));
+        assert_eq!(dts.as_ticks(), (1i64 << 33) + raw2 - 3_000);
+        // The DTS call must not mutate the accumulator.
+        assert_eq!(d.unwrap_state.get(&0x100).copied(), state_before);
+    }
+
+    #[test]
+    fn unwrap_secondary_ts_defaults_to_zero_offset_for_unseen_pid() {
+        let d = Demuxer::new();
+        let out = d.unwrap_secondary_ts(0x999, Pts90khz::new(42));
+        assert_eq!(out.as_ticks(), 42);
     }
 }

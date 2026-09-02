@@ -86,6 +86,8 @@ mod mux_shorthand_multi_program;
 mod mux_subtitle;
 #[path = "mpegts/psi_proptest.rs"]
 mod psi_proptest;
+#[path = "mpegts/pts_unwrap.rs"]
+mod pts_unwrap;
 #[path = "mpegts/subtitle_fixtures.rs"]
 mod subtitle_fixtures;
 #[path = "mpegts/subtitle_treat_as.rs"]

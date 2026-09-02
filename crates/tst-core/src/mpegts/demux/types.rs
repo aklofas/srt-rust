@@ -198,6 +198,38 @@ pub struct DemuxerConfig {
     /// empirical proof the CFI bug is dominant in real traffic; we do
     /// not have equivalent evidence for PSI reassembly violations.)
     pub cfi_tolerance: bool,
+    /// Unwrap the demuxer's raw 33-bit 90 kHz PTS/DTS into a monotonic
+    /// `i64` timeline, per PID.
+    ///
+    /// **Default `false`** — off. When `false`,
+    /// [`DemuxEvent::Sample`](crate::mpegts::demux::DemuxEvent::Sample)
+    /// and
+    /// [`DemuxEvent::Metadata`](crate::mpegts::demux::DemuxEvent::Metadata)
+    /// carry the raw wire PTS/DTS exactly as they do today: a per-PID
+    /// value in `0..2^33` that wraps to 0 at the H.222.0 §2.4.3.6
+    /// rollover boundary (~26.5 h at 90 kHz).
+    ///
+    /// When `true`, a per-PID accumulator adds `1 << 33` to a running
+    /// offset on each detected forward wrap (a genuine small backward
+    /// step — e.g. an out-of-order arrival — is not a wrap and does not
+    /// bump the offset; the emitted value is then allowed to be
+    /// non-monotonic, correctly reflecting the reorder). The first
+    /// observed PTS on a PID anchors the timeline (emitted value == the
+    /// raw value); every subsequent value is `offset + raw`. The offset
+    /// is never rebased to zero, so a video PID and a KLV PID sharing
+    /// one 33-bit wire clock stay directly comparable across the whole
+    /// session — this is what lets a consumer pair KLV to video frames
+    /// by PTS on a long-running stream that crosses the rollover.
+    ///
+    /// DTS unwraps against the same per-PID offset as PTS (DTS ≤ PTS,
+    /// same wrap epoch). A synthesized `pts = 0` (see
+    /// [`NonConformantIssue::MissingRequiredPts`](crate::mpegts::demux::NonConformantIssue::MissingRequiredPts))
+    /// is never fed to the accumulator.
+    ///
+    /// The accumulator resets alongside all other per-PID parse state on
+    /// [`Demuxer::reset_sync`](crate::mpegts::demux::Demuxer::reset_sync)
+    /// — a reconnect restarts the unwrap timeline.
+    pub unwrap_timestamps: bool,
 }
 
 impl Default for DemuxerConfig {
@@ -216,6 +248,7 @@ impl Default for DemuxerConfig {
             au_cell_max_in_flight_pids: None,
             // Tolerance-by-default — see field rustdoc above.
             cfi_tolerance: true,
+            unwrap_timestamps: false,
         }
     }
 }
@@ -321,6 +354,13 @@ impl DemuxerConfigBuilder {
         self
     }
 
+    /// Enable the opt-in monotonic PTS/DTS unwrap. See
+    /// [`DemuxerConfig::unwrap_timestamps`].
+    pub fn unwrap_timestamps(mut self, enable: bool) -> Self {
+        self.options.unwrap_timestamps = enable;
+        self
+    }
+
     pub fn build(self) -> DemuxerConfig {
         self.options
     }
@@ -375,5 +415,16 @@ mod tests {
             .cfi_tolerance(true)
             .cfi_tolerance(false);
         assert!(!builder.options.cfi_tolerance);
+    }
+
+    #[test]
+    fn default_unwrap_timestamps_is_false() {
+        assert!(!DemuxerConfig::default().unwrap_timestamps);
+    }
+
+    #[test]
+    fn builder_sets_unwrap_timestamps() {
+        let builder = DemuxerConfig::builder().unwrap_timestamps(true);
+        assert!(builder.options.unwrap_timestamps);
     }
 }

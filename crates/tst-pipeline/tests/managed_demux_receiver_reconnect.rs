@@ -72,14 +72,14 @@ fn pack_chunk(packets: &[[u8; 188]]) -> Vec<u8> {
 
 /// Minimal RecvTransport implementing the script-then-fail pattern.
 ///
-/// `MockRecvTransport` from tst-test-helpers is intentionally NOT used
-/// here because that mock's behavior on queue-exhaust is `Closed` (peer
-/// EOS) — but for these tests we need each successive recv_bytes to
-/// terminate by triggering a *reconnect* in `ManagedRecvTransport`,
-/// which means the first inner needs to surface `Broken` once its
-/// chunk is consumed (not `Closed`, which is also a reconnect trigger
-/// but exhausts the budget less informatively — both work, Broken is
-/// closer to a real network drop).
+/// A generic queue-exhaust mock would surface `Closed` (peer EOS) once
+/// its scripted chunks run out — but for these tests we need each
+/// successive recv_bytes to terminate by triggering a *reconnect* in
+/// `ManagedRecvTransport`, which means the first inner needs to surface
+/// `Broken` once its chunk is consumed (not `Closed`, which is also a
+/// reconnect trigger but exhausts the budget less informatively — both
+/// work, Broken is closer to a real network drop). Hence this local,
+/// purpose-built `on_exhaust`-configurable stub instead of a shared one.
 struct ScriptedInner {
     chunks: std::collections::VecDeque<Vec<u8>>,
     /// What to return once the chunk queue is empty.

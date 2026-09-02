@@ -221,8 +221,11 @@ pub struct DemuxerConfig {
     /// session — this is what lets a consumer pair KLV to video frames
     /// by PTS on a long-running stream that crosses the rollover.
     ///
-    /// DTS unwraps against the same per-PID offset as PTS (DTS ≤ PTS,
-    /// same wrap epoch). A synthesized `pts = 0` (see
+    /// DTS unwraps against its own PES's PTS rather than the shared
+    /// per-PID offset, so a DTS that straddles the wrap boundary (DTS
+    /// still pre-wrap while its PES's PTS has already wrapped) lands in
+    /// the correct epoch instead of over-shifting by a full `1 << 33`.
+    /// A synthesized `pts = 0` (see
     /// [`NonConformantIssue::MissingRequiredPts`](crate::mpegts::demux::NonConformantIssue::MissingRequiredPts))
     /// is never fed to the accumulator.
     ///

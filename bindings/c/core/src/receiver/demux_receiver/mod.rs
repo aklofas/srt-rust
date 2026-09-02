@@ -41,6 +41,7 @@ pub mod managed;
 pub use events::{tst_demux_receiver_cancel, tst_demux_receiver_recv_event};
 pub use managed::{
     TstManagedDemuxReceiver, tst_managed_demux_receiver_cancel, tst_managed_demux_receiver_close,
+    tst_managed_demux_receiver_end_reason, tst_managed_demux_receiver_get_reconnect_stats,
     tst_managed_demux_receiver_get_socket_stats, tst_managed_demux_receiver_get_stats,
     tst_managed_demux_receiver_get_stream_codec_stats,
     tst_managed_demux_receiver_get_stream_last_seen_micros,

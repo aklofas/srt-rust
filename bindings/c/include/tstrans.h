@@ -352,6 +352,53 @@
  */
 #define TST_VERSION_PATCH 0
 
+/**
+ * Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`
+ * with one addition — `None` (0) — for "hasn't ended yet, or ended
+ * through a path this arc doesn't instrument" (the case
+ * `StreamEndReasonHandle::get()` reports as `Option::None`, e.g. a plain
+ * `rtp://` receiver that was never `_cancel`'d or `_close`'d).
+ * Discriminants 1-6 are cross-surface stable — the Python and JVM
+ * bindings use the same numbering.
+ */
+typedef enum tst_stream_end_reason {
+  /**
+   * The session hasn't ended yet, or ended through a path this arc
+   * doesn't instrument.
+   */
+  TST_STREAM_END_REASON_NONE = 0,
+  /**
+   * The peer closed the connection in an orderly way, with no
+   * protocol or transport error.
+   */
+  TST_STREAM_END_REASON_CLEAN_TEARDOWN = 1,
+  /**
+   * The server no longer honors the session — a keepalive ping was
+   * answered `454 Session Not Found`.
+   */
+  TST_STREAM_END_REASON_SESSION_EXPIRED = 2,
+  /**
+   * The keepalive background thread failed to encode or send a ping.
+   * Detail message: see the getter doc.
+   */
+  TST_STREAM_END_REASON_KEEPALIVE_FAILED = 3,
+  /**
+   * A hard I/O error on the underlying transport. Detail message:
+   * see the getter doc.
+   */
+  TST_STREAM_END_REASON_TRANSPORT_FAILED = 4,
+  /**
+   * The peer violated the wire protocol. Detail message: see the
+   * getter doc.
+   */
+  TST_STREAM_END_REASON_PROTOCOL_ERROR = 5,
+  /**
+   * The caller explicitly cancelled or closed the transport — not a
+   * wire-level failure.
+   */
+  TST_STREAM_END_REASON_CANCELLED = 6,
+} tst_stream_end_reason;
+
 enum tst_video_codec
 #ifdef __cplusplus
   : int32_t
@@ -412,53 +459,6 @@ typedef enum tst_overflow_policy {
   TST_OVERFLOW_POLICY_DROP_OLDEST = 0,
   TST_OVERFLOW_POLICY_REJECT = 1,
 } tst_overflow_policy;
-
-/**
- * Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`
- * with one addition — `None` (0) — for "hasn't ended yet, or ended
- * through a path this arc doesn't instrument" (the case
- * `StreamEndReasonHandle::get()` reports as `Option::None`, e.g. a plain
- * `rtp://` receiver that was never `_cancel`'d or `_close`'d).
- * Discriminants 1-6 are cross-surface stable — the Python and JVM
- * bindings use the same numbering.
- */
-typedef enum tst_stream_end_reason {
-  /**
-   * The session hasn't ended yet, or ended through a path this arc
-   * doesn't instrument.
-   */
-  TST_STREAM_END_REASON_NONE = 0,
-  /**
-   * The peer closed the connection in an orderly way, with no
-   * protocol or transport error.
-   */
-  TST_STREAM_END_REASON_CLEAN_TEARDOWN = 1,
-  /**
-   * The server no longer honors the session — a keepalive ping was
-   * answered `454 Session Not Found`.
-   */
-  TST_STREAM_END_REASON_SESSION_EXPIRED = 2,
-  /**
-   * The keepalive background thread failed to encode or send a ping.
-   * Detail message: see the getter doc.
-   */
-  TST_STREAM_END_REASON_KEEPALIVE_FAILED = 3,
-  /**
-   * A hard I/O error on the underlying transport. Detail message:
-   * see the getter doc.
-   */
-  TST_STREAM_END_REASON_TRANSPORT_FAILED = 4,
-  /**
-   * The peer violated the wire protocol. Detail message: see the
-   * getter doc.
-   */
-  TST_STREAM_END_REASON_PROTOCOL_ERROR = 5,
-  /**
-   * The caller explicitly cancelled or closed the transport — not a
-   * wire-level failure.
-   */
-  TST_STREAM_END_REASON_CANCELLED = 6,
-} tst_stream_end_reason;
 
 typedef enum tst_ts_framing_mode {
   TST_TS_FRAMING_MODE_RECOVER = 0,
@@ -4761,6 +4761,18 @@ int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid,
  */
 int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
 
+/**
+ * Enable the opt-in monotonic PTS/DTS unwrap. `enable` is read as a C
+ * `bool` (any non-zero value enables). Default is `false` (raw wire
+ * PTS/DTS, matching today's behavior). See
+ * `tst_core::mpegts::demux::DemuxerConfig::unwrap_timestamps` for the
+ * full unwrap semantics (per-PID monotonic timeline, DTS unwrapped
+ * against its own PES's PTS, reset on reconnect).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+int tst_demux_config_set_unwrap_timestamps(struct tst_demux_config_t *cfg, int enable);
+
 #if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
@@ -5115,6 +5127,110 @@ int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Read the recorded reason this `tst_managed_demux_receiver_t` receive
+ * session ended, if any.
+ *
+ * Writes `TstStreamEndReason::None` (returns `0`) when the session
+ * hasn't ended yet, or ended through a path this arc doesn't
+ * instrument — and in that case the thread-local last-error channel is
+ * left untouched (any pending failure from an earlier call is still
+ * readable). A recorded reason is data, not a getter failure — this
+ * only returns a nonzero code for a null-pointer argument.
+ *
+ * Reuses the RTP-side `TstStreamEndReason` enum — its RTSP-shaped
+ * variant names (`SessionExpired`, `KeepaliveFailed`, `ProtocolError`)
+ * are never produced on this SRT recv path; only three of its six
+ * non-`None` variants apply here:
+ * - `tst_pipeline::RecvEndReason::EndOfStream` → `CleanTeardown`
+ * - `tst_pipeline::RecvEndReason::ReconnectExhausted` → `TransportFailed`
+ *   (the reconnect decorator exhausted its policy budget — the peer
+ *   never came back)
+ * - `tst_pipeline::RecvEndReason::Cancelled` → `Cancelled`
+ *
+ * **Last-error side effect on every ACTUALLY-recorded reason:** unlike
+ * the "hasn't ended" case above, once the session has ended this getter
+ * unconditionally resets the thread-local last-error channel to
+ * `TST_E_SUCCESS` with an EMPTY detail message — none of the three
+ * `RecvEndReason` variants above carry a detail string (unlike the RTP
+ * side's `KeepaliveFailed`/`TransportFailed`/`ProtocolError`), so
+ * `tst_get_last_error_str()` always reads `""` once a reason has been
+ * recorded, never a stale message left over from some earlier,
+ * unrelated failure. Same contract as
+ * `tst_rtp_demux_receiver_end_reason` — see that function's doc for the
+ * full rationale and `docs/binding-authors.md`. Read any pending
+ * failure from an earlier call BEFORE calling this getter, or it is
+ * overwritten.
+ *
+ * Side-channel: reads directly off the end-reason handle captured at
+ * open time WITHOUT acquiring this handle's data-path Mutex — same
+ * rationale as `tst_managed_demux_receiver_cancel` (a concurrent
+ * `_recv_event` may be blocked holding it). This is what makes the
+ * getter safe to poll from a watchdog thread while another thread
+ * drives `_recv_event`. One consequence: this call never itself
+ * returns `TST_E_CLOSED` — after `_close` the whole handle is freed,
+ * and calling anything on it, including this getter, is a
+ * use-after-free the caller must avoid.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstManagedDemuxReceiver` opened
+ * via one of the `tst_managed_demux_receiver_open*` functions. `out`
+ * must point to a writable `TstStreamEndReason`.
+ */
+
+int tst_managed_demux_receiver_end_reason(struct tst_managed_demux_receiver_t *p,
+                                          enum tst_stream_end_reason *out);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Snapshot reconnect telemetry for a `tst_managed_demux_receiver_t` —
+ * recv-side sibling of `tst_managed_sender_get_reconnect_stats` /
+ * `tst_managed_mux_sender_get_reconnect_stats` /
+ * `tst_managed_raw_sender_get_reconnect_stats`. Reuses the same
+ * `tst_managed_transport_stats_t` struct.
+ *
+ * Field semantics differ from the send-side getter in two ways:
+ *
+ * * `gap_len`, `gap_messages_dropped`, `gap_bytes_dropped` are always
+ *   `0`. Unlike the send side's `ManagedTransport`, the recv-side
+ *   `ManagedRecvTransport`/`ManagedDemuxReceiver` has no gap buffer —
+ *   there is nothing to queue while disconnected on the receive path
+ *   (a receiver only ever consumes bytes that already arrived; it
+ *   cannot buffer bytes the peer hasn't sent yet), so eviction
+ *   telemetry is structurally inapplicable.
+ * * `reconnect_attempts` equals `reconnect_successes`
+ *   (`ManagedDemuxReceiver::reconnects_count()`). The recv side tracks
+ *   no separate attempts counter distinct from successful rebuilds
+ *   (unlike the send side's `ManagedTransportStats::reconnect_attempts`,
+ *   which counts every `factory()` invocation including failed ones) —
+ *   this is a real asymmetry between the two sides, not a bug; it is
+ *   documented here rather than silently reported as `0`, which would
+ *   read as "never attempted" and be actively misleading while a
+ *   reconnect is in progress.
+ *
+ * `reconnecting` and `reconnect_successes` come from
+ * `ManagedDemuxReceiver::reconnecting()` / `reconnects_count()` and are
+ * live — they reflect the current state through reconnects (read via
+ * `with_inner_ref`, which works whether or not the inner transport is
+ * currently present).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstManagedDemuxReceiver` opened via one of
+ * the `tst_managed_demux_receiver_open*` functions. `out` must point
+ * to a writable `tst_managed_transport_stats_t`.
+ */
+
+int tst_managed_demux_receiver_get_reconnect_stats(struct tst_managed_demux_receiver_t *p,
+                                                   struct tst_managed_transport_stats_t *out);
 #endif
 
 #if defined(TST_HAS_SRT)

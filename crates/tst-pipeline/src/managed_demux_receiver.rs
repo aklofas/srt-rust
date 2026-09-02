@@ -391,6 +391,13 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     /// reads the shared counter shipped from the inner
     /// [`ManagedRecvTransport::reconnects_handle`]. Useful for stats
     /// exports / dashboards.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_demux_receiver_get_reconnect_stats` (both
+    /// `reconnect_attempts` and `reconnect_successes` — the recv side
+    /// tracks no separate attempts counter, see that getter's doc) —
+    /// see `bindings/c/include/tstrans.h`.
     #[must_use]
     pub fn reconnects_count(&self) -> u64 {
         self.reconnects.load(Ordering::Acquire)
@@ -401,6 +408,11 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     /// after the reconnect budget has been exhausted. Check
     /// [`Self::is_alive`] to distinguish a live retry loop from a
     /// terminal give-up.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_demux_receiver_get_reconnect_stats` — see
+    /// `bindings/c/include/tstrans.h`.
     #[must_use]
     pub fn reconnecting(&self) -> bool {
         self.reconnect_in_progress.load(Ordering::Acquire)
@@ -416,6 +428,11 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     /// after the receiver itself is dropped, which is what lets a
     /// watchdog thread poll it independently of the thread driving
     /// [`Self::recv_event`].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_demux_receiver_end_reason` — see
+    /// `bindings/c/include/tstrans.h`.
     #[must_use]
     pub fn end_reason_handle(&self) -> RecvEndReasonHandle {
         self.end_reason.clone()

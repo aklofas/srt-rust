@@ -82,6 +82,7 @@ pub(crate) mod nostd_mutex {
 }
 
 // Cross-cutting (shared by both sender and receiver):
+pub mod codec_framing;
 pub mod config;
 pub mod demux_config;
 pub mod demuxer;
@@ -407,6 +408,18 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   structural ST 0601 decode failure). See
 ///   `bindings/c/core/src/klv_st0601.rs` for the tag table and the
 ///   corner-geometry fallback contract.
+///
+///   Task 8 (same arc, additive within `21` — no further bump):
+///   `tst_annexb_to_length_prefixed` (Annex B → AVCC/HVCC length-prefixed
+///   NAL conversion, two-call sizing idiom) and the parameter-set
+///   extraction trio `tst_param_sets_extract` / `_count` / `_get` behind
+///   a new opaque handle `tst_param_sets_t` (freed via
+///   `tst_param_sets_free`). Both wrap
+///   `tst_core::codec::nal_framing::{annexb_to_length_prefixed,
+///   extract_parameter_sets}`. No new error codes — reuses
+///   `TST_E_BUFFER_FULL` / `TST_E_INVALID_CONFIG` / `TST_E_TOO_LARGE` /
+///   `TST_E_NOT_FOUND`. Unconditional module, matching Task 7. See
+///   `bindings/c/core/src/codec_framing.rs`.
 pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 21;
 
 // =========================================================================

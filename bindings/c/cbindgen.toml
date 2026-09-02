@@ -197,6 +197,9 @@ include = [
     "TstSt0601",
     "TstSt0601Geometry",
     "TstSt0601FieldState",
+    # Task 8: Annex B <-> length-prefixed + parameter-set extraction
+    # (ABI 21, unconditional)
+    "TstParamSets",
 ]
 
 [export.rename]
@@ -293,6 +296,8 @@ include = [
 "TstSt0601"                 = "tst_st0601_t"
 "TstSt0601Geometry"         = "tst_st0601_geometry_t"
 "TstSt0601FieldState"       = "tst_st0601_field_state"
+# Task 8: Annex B <-> length-prefixed + parameter-set extraction (ABI 21)
+"TstParamSets"              = "tst_param_sets_t"
 
 [enum]
 prefix_with_name = true

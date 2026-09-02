@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.Locale;
 import org.tstrans.codec.NalUnit;
 import org.tstrans.codec.VideoUnit;
 import org.tstrans.mpegts.MuxerConfig;
@@ -39,7 +40,7 @@ public final class TestSupport {
 
     /** Whether the current OS is Linux, for gating live-socket fixtures. */
     public static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux");
     }
 
     /** Pack `int` literals (0-255) into a `byte[]`, one cast per element. */

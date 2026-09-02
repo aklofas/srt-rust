@@ -268,7 +268,7 @@ baseline (by design)" for the full rationale.
   **20** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
-      `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
+      `tst-c`; `TST_EVENT_KIND_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
       raw-receiver pull-loop hardening + F2 C-ABI shape additions.
     - `3` (AU cell reassembly, 2026-05-24): `TstMultiCellAuReason` +
       `multi_cell_au_reason` field on `TstEventNonConformant`.

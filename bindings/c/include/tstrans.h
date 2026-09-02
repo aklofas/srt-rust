@@ -353,11 +353,18 @@
 #define TST_VERSION_PATCH 0
 
 /**
- * Why an RTP receive session ended. Mirrors `tst_rtp::StreamEndReason`
- * with one addition — `None` (0) — for "hasn't ended yet, or ended
- * through a path this arc doesn't instrument" (the case
- * `StreamEndReasonHandle::get()` reports as `Option::None`, e.g. a plain
- * `rtp://` receiver that was never `_cancel`'d or `_close`'d).
+ * Why a receive session ended. One shared enum, reused by every
+ * transport's own end-reason getter — see the getters' own docs
+ * (`tst_rtp_receiver_end_reason` / `tst_rtp_demux_receiver_end_reason` /
+ * `tst_managed_demux_receiver_end_reason`) for which reasons each
+ * transport can actually produce. `None` (0) — "hasn't ended yet, or
+ * ended through a path this arc doesn't instrument" — is common to all
+ * of them (the case each side's own end-reason handle reports as
+ * `Option::None`, e.g. a plain `rtp://` receiver that was never
+ * `_cancel`'d or `_close`'d). Some variants are transport-specific: the
+ * RTSP-shaped `SessionExpired` / `KeepaliveFailed` / `ProtocolError`
+ * only ever surface from the RTP/RTSP side — the SRT managed receiver's
+ * `RecvEndReason` has no equivalent and never produces them.
  * Discriminants 1-6 are cross-surface stable — the Python and JVM
  * bindings use the same numbering.
  */
@@ -5213,14 +5220,28 @@ int tst_managed_demux_receiver_end_reason(struct tst_managed_demux_receiver_t *p
  *   read as "never attempted" and be actively misleading while a
  *   reconnect is in progress.
  *
- * `reconnecting` and `reconnect_successes` come from
- * `ManagedDemuxReceiver::reconnecting()` / `reconnects_count()` and are
- * live — they reflect the current state through reconnects (read via
- * `with_inner_ref`, which works whether or not the inner transport is
- * currently present).
+ * **Lock-free side-channel read**, same shape as
+ * `tst_managed_demux_receiver_end_reason`: `reconnecting` and
+ * `reconnect_successes` are read directly off `Arc<AtomicU64>` /
+ * `Arc<AtomicBool>` handles snapshotted at open time
+ * (`ManagedDemuxReceiver::reconnects_handle` /
+ * `ManagedDemuxReceiver::reconnecting_handle`), WITHOUT acquiring this
+ * handle's data-path Mutex. This is load-bearing, not a style choice: a
+ * thread blocked in `_recv_event` holds that Mutex for the entire call,
+ * including any internal reconnect retry loop — a getter gated behind
+ * that same lock could only ever observe `reconnecting == true` once
+ * nothing is actually reconnecting, defeating the point of exposing the
+ * flag. Reading the snapshotted atomics directly is what makes this
+ * getter safe to poll from a watchdog thread while another thread
+ * drives `_recv_event`, including mid-outage.
  *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the receiver has been closed.
+ * Returns 0 on success, or `TST_E_INVALID_CONFIG` if either pointer is
+ * null. Unlike most getters on this handle, this one **never** returns
+ * `TST_E_CLOSED` — it doesn't consult the handle's data-path state at
+ * all, so it keeps returning the last-observed values after `_close`
+ * too (same caveat as `tst_managed_demux_receiver_end_reason`: calling
+ * anything on a freed handle, including this getter, is a
+ * use-after-free the caller must avoid).
  *
  * # Safety
  *

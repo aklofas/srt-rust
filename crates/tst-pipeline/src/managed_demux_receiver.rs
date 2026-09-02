@@ -391,16 +391,33 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     /// reads the shared counter shipped from the inner
     /// [`ManagedRecvTransport::reconnects_handle`]. Useful for stats
     /// exports / dashboards.
-    ///
-    /// # C ABI
-    ///
-    /// `tst_managed_demux_receiver_get_reconnect_stats` (both
-    /// `reconnect_attempts` and `reconnect_successes` — the recv side
-    /// tracks no separate attempts counter, see that getter's doc) —
-    /// see `bindings/c/include/tstrans.h`.
     #[must_use]
     pub fn reconnects_count(&self) -> u64 {
         self.reconnects.load(Ordering::Acquire)
+    }
+
+    /// Shared handle onto this receiver's reconnect counter — the same
+    /// underlying `Arc<AtomicU64>` [`Self::reconnects_count`] reads.
+    /// Same naming/shape as
+    /// [`ManagedRecvTransport::reconnects_handle`], one layer up.
+    ///
+    /// Obtain this **before** moving the receiver into an opaque handle
+    /// (e.g. a C binding's box): reading through the returned `Arc`
+    /// takes no lock on the receiver itself, so it stays safe to poll
+    /// from a watchdog thread concurrently with a thread blocked in
+    /// [`Self::recv_event`] — including while that call is inside its
+    /// own internal reconnect retry loop. Same rationale as
+    /// [`Self::end_reason_handle`].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_demux_receiver_get_reconnect_stats` (`reconnect_successes`
+    /// and `reconnect_attempts` — the recv side tracks no separate
+    /// attempts counter, see that getter's doc) — see
+    /// `bindings/c/include/tstrans.h`.
+    #[must_use]
+    pub fn reconnects_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.reconnects)
     }
 
     /// True while the underlying transport's inner connection is
@@ -408,14 +425,27 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     /// after the reconnect budget has been exhausted. Check
     /// [`Self::is_alive`] to distinguish a live retry loop from a
     /// terminal give-up.
-    ///
-    /// # C ABI
-    ///
-    /// `tst_managed_demux_receiver_get_reconnect_stats` — see
-    /// `bindings/c/include/tstrans.h`.
     #[must_use]
     pub fn reconnecting(&self) -> bool {
         self.reconnect_in_progress.load(Ordering::Acquire)
+    }
+
+    /// Shared handle onto this receiver's "reconnecting" flag — the same
+    /// underlying `Arc<AtomicBool>` [`Self::reconnecting`] reads. Same
+    /// naming/shape as [`ManagedRecvTransport::reconnecting_handle`],
+    /// one layer up.
+    ///
+    /// Obtain this **before** moving the receiver into an opaque handle,
+    /// for the same lock-free-watchdog-polling reason documented on
+    /// [`Self::reconnects_handle`].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_managed_demux_receiver_get_reconnect_stats` (`reconnecting`)
+    /// — see `bindings/c/include/tstrans.h`.
+    #[must_use]
+    pub fn reconnecting_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.reconnect_in_progress)
     }
 
     /// Shared handle onto this receiver's stream-end reason — see

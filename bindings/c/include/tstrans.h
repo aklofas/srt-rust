@@ -466,7 +466,8 @@ typedef enum tst_st0601_field_state {
   TST_ST0601_FIELD_STATE_PRESENT = 0,
   /**
    * The tag was not present on the wire (and is not a tag this
-   * module maps — see [`field_kind`]).
+   * module maps — see `field_kind`, the private tag-to-type table in
+   * the source).
    */
   TST_ST0601_FIELD_STATE_ABSENT = 1,
   /**
@@ -5734,9 +5735,21 @@ void tst_st0601_free(struct tst_st0601_t *p);
 /**
  * Fill `*out` with the curated geometry/attitude summary — see
  * [`TstSt0601Geometry`]. Returns 0 on success, or a negative `TST_E_*`
- * code if `p` or `out` is null, or `TST_E_CLOSED` if `p` has already
- * been freed... (freeing invalidates the pointer itself; a live but
- * closed handle returns `TST_E_CLOSED`).
+ * code if `p` or `out` is null, or `TST_E_CLOSED` if an earlier call on
+ * this same live handle triggered the caught-panic latch (see
+ * `Handle::with_inner_ref` in `crate::handle` — a caught panic drops
+ * the inner state, so later calls on the same pointer report `Closed`
+ * rather than reusing possibly-corrupted state). This type has no
+ * separate `_close` — only
+ * [`tst_st0601_free`] — so freeing invalidates the pointer itself;
+ * calling this (or any `tst_st0601_*` function) with an already-freed
+ * pointer is undefined behavior, not a clean `TST_E_CLOSED` return.
+ *
+ * **Corners:** unlike [`tst_st0601_get_f64`]/[`tst_st0601_state`] on
+ * tags 82-89 (which read the raw full-range tag only), the 4 corner
+ * points here prefer the full tag family and fall back to
+ * offsets-from-frame-center when only that family is populated — see
+ * the module doc and [`tst_st0601_get_f64`]'s doc for the exact split.
  *
  * # Safety
  *
@@ -5762,6 +5775,15 @@ int tst_st0601_geometry(const struct tst_st0601_t *p, struct tst_st0601_geometry
  * use [`tst_st0601_get_u64`]). Returns `TST_E_NOT_FOUND` (-14) without
  * writing `*out` if `tag` is not in the contract table, or is in the
  * table but absent/sentinel/IMAPB-special on this record.
+ *
+ * **Corner tags (82-89) do NOT apply the offsets-from-frame-center
+ * fallback [`tst_st0601_geometry`] applies.** This getter (and
+ * [`tst_st0601_state`]) reads the raw full-range tag directly — on a
+ * record carrying only the offset family (26-33), a corner tag here
+ * reports `Absent` even though `tst_st0601_geometry` would compute and
+ * report that same corner as `Present`. This getter family is a raw
+ * per-tag reader; `tst_st0601_geometry` is the curated/derived view —
+ * use whichever contract you need.
  *
  * # Safety
  *

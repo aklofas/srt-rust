@@ -190,6 +190,19 @@ pub enum TstError {
     /// the payload is malformed (truncated / bad 0xFF guard byte).
     /// Maps from `codec::misp_time::MispTimeExtractError`.
     MispTimeMalformed = -46,
+    /// (-47) A `tst_st0601_get_f64` / `tst_st0601_get_u64` accessor was
+    /// called for a tag whose corresponding `UasDatalinkLs` field has a
+    /// different native Rust type than the accessor requests (e.g.
+    /// `tst_st0601_get_f64` on tag 2, whose typed field is `u64`). The
+    /// getter refuses to lossily cast; call the correctly-typed accessor
+    /// instead.
+    WrongType = -47,
+    /// (-48) `tst_st0601_decode` could not parse the input bytes as a
+    /// MISB ST 0601 UAS Datalink Local Set. Maps from
+    /// `tst_core::error::KlvDecodeError`; see the message for the
+    /// specific structural failure (truncated buffer, malformed BER
+    /// length/tag, checksum mismatch, unexpected universal label, ...).
+    KlvDecode = -48,
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +335,7 @@ pub unsafe extern "C" fn tst_clear_last_error() {
     });
 }
 
-use tst_core::error::{DemuxError, MuxError};
+use tst_core::error::{DemuxError, KlvDecodeError, MuxError};
 #[cfg(test)]
 use tst_core::mpegts::mux::StreamKind;
 use tst_pipeline::{ShellError, ShellErrorKind, TransportError};
@@ -607,6 +620,27 @@ pub(crate) fn record_not_available(msg: &str) -> i32 {
 pub(crate) fn record_not_found(msg: &str) -> i32 {
     set_last_error(TstError::NotFound, msg);
     TstError::NotFound as i32
+}
+
+/// Record `WrongType` (-47) with a per-call message and return the
+/// negative code. Use this from C ABI accessors that refuse a lossy
+/// cast between the caller's requested native type and the mapped
+/// field's actual Rust type (see [`TstError::WrongType`]).
+pub(crate) fn record_wrong_type(msg: &str) -> i32 {
+    set_last_error(TstError::WrongType, msg);
+    TstError::WrongType as i32
+}
+
+/// Map a [`KlvDecodeError`] to `TstError::KlvDecode` (-48) and record it
+/// to the per-thread last-error slot. Every variant collapses to the
+/// same code — `tst_st0601_decode` is a single structural-parse entry
+/// point with no per-variant C-side branching, unlike
+/// [`record_mux_error`]'s per-variant overrides. The `Display` impl on
+/// `KlvDecodeError` still carries the spec-rich diagnostic (offset,
+/// expected/found bytes, ...) into the last-error message.
+pub(crate) fn record_klv_decode_error(e: &KlvDecodeError) -> i32 {
+    set_last_error(TstError::KlvDecode, &e.to_string());
+    TstError::KlvDecode as i32
 }
 
 // ---------------------------------------------------------------------------

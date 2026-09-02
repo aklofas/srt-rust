@@ -237,7 +237,7 @@ fn inject_feature_defines(header_path: &std::path::Path) {
 /// source-file location), so Plan C's tst-c/src/ reorg doesn't affect
 /// the grouping. Section order in the header follows the table below.
 ///
-/// 7 required domain sections (always emit) + 2 conditional catch-alls
+/// 7 required domain sections (always emit) + 3 conditional sections
 /// (emit only when their bucket is non-empty):
 ///
 /// Required:
@@ -249,7 +249,8 @@ fn inject_feature_defines(header_path: &std::path::Path) {
 /// - TS RECEIVER:   tst_receiver / tst_managed_receiver
 /// - RAW RECEIVER:  tst_raw_receiver / tst_managed_raw_receiver
 ///
-/// Conditional (catch-alls; emit only when at least one symbol matched):
+/// Conditional (emit only when at least one symbol matched):
+/// - KLV:           tst_st0601_ (Task 7: ST 0601 KLV decode surface)
 /// - LIFETIME:      *_close / *_cancel / *_free (catch-all cleanup)
 /// - OTHER:         catch-all safety net
 fn add_section_dividers(header_path: &std::path::Path) {
@@ -297,10 +298,11 @@ fn add_section_dividers(header_path: &std::path::Path) {
             &["tst_raw_receiver_", "tst_managed_raw_receiver_"],
             "RAW RECEIVER",
         ),
+        (&["tst_st0601_"], "KLV"),
     ];
 
-    // Emission order. Required sections always emit; LIFETIME and OTHER
-    // emit only when non-empty.
+    // Emission order. Required sections always emit; KLV, LIFETIME, and
+    // OTHER emit only when non-empty.
     const REQUIRED_ORDER: &[&str] = &[
         "INTROSPECTION",
         "MUX SENDER",
@@ -310,7 +312,7 @@ fn add_section_dividers(header_path: &std::path::Path) {
         "TS RECEIVER",
         "RAW RECEIVER",
     ];
-    const CONDITIONAL_ORDER: &[&str] = &["LIFETIME", "OTHER"];
+    const CONDITIONAL_ORDER: &[&str] = &["KLV", "LIFETIME", "OTHER"];
 
     // Pass 1: chunk the input into (header-bytes, [(section, chunk-bytes)],
     // trailer-bytes). Header = lines before the first function declaration
@@ -524,6 +526,7 @@ fn classify_symbol(symbol: &str, sections: &[(&[&str], &str)]) -> &'static str {
                     "DEMUX RECEIVER" => "DEMUX RECEIVER",
                     "TS RECEIVER" => "TS RECEIVER",
                     "RAW RECEIVER" => "RAW RECEIVER",
+                    "KLV" => "KLV",
                     _ => "OTHER",
                 };
             }

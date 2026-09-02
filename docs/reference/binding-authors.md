@@ -265,7 +265,7 @@ baseline (by design)" for the full rationale.
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **20** today. History (additive bumps only — major stays at 0 pre-1.0):
+  **21** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
       `tst-c`; `TST_EVENT_KIND_RECONNECT_DISCONTINUITY = 6` added; TS-bytes

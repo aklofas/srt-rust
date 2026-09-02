@@ -193,6 +193,10 @@ include = [
     "TstMountStats",
     # T10: RTSP server cancel handle (rtp feature)
     "TstRtspCancelHandle",
+    # Task 7: ST 0601 KLV decode surface (ABI 21, unconditional)
+    "TstSt0601",
+    "TstSt0601Geometry",
+    "TstSt0601FieldState",
 ]
 
 [export.rename]
@@ -285,6 +289,10 @@ include = [
 "TstMountStats"             = "tst_mount_stats_t"
 # T10: RTSP server cancel handle
 "TstRtspCancelHandle"       = "tst_rtsp_cancel_handle_t"
+# Task 7: ST 0601 KLV decode surface (ABI 21)
+"TstSt0601"                 = "tst_st0601_t"
+"TstSt0601Geometry"         = "tst_st0601_geometry_t"
+"TstSt0601FieldState"       = "tst_st0601_field_state"
 
 [enum]
 prefix_with_name = true

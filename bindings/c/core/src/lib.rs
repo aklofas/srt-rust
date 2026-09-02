@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.20` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.21` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -88,6 +88,7 @@ pub mod demuxer;
 pub mod error;
 pub mod event;
 pub mod handle;
+pub mod klv_st0601;
 pub mod misp_time;
 pub mod muxer;
 pub mod stats;
@@ -390,7 +391,23 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///     existing `TST_E_BUFFER_FULL` (-4), retryable, exactly like SRT's
 ///     recv-deadline expiry already does. Documented on
 ///     `tst_rtp_receiver_recv_ts` / `tst_rtp_demux_receiver_next_event`.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 20;
+/// - `21` (Apple-PoC C ABI arc, Task 7): C-callable MISB ST 0601 KLV
+///   decode surface — the first PR-2 addition, unconditional (no
+///   feature gate; `tst-core` is a non-optional dependency). New
+///   opaque handle `tst_st0601_t` (`tst_st0601_decode` /
+///   `tst_st0601_free`), the `tst_st0601_field_state` enum
+///   (`TST_ST0601_FIELD_STATE_PRESENT` = 0 / `_ABSENT` = 1 /
+///   `_SENTINEL` = 2 / `_IMAPB_SPECIAL` = 3 / `_WRONG_TYPE` = 4,
+///   preserving the MISB three-way-`None` distinction end-to-end), a
+///   24-tag curated `tst_st0601_geometry_t` struct + one-call getter
+///   (`tst_st0601_geometry`), and per-tag typed accessors
+///   (`tst_st0601_get_f64` / `_get_u64` / `_state`). Two new error
+///   codes: `TST_E_WRONG_TYPE` (-47, a getter's native type doesn't
+///   match the mapped field) and `TST_E_KLV_DECODE` (-48, hard
+///   structural ST 0601 decode failure). See
+///   `bindings/c/core/src/klv_st0601.rs` for the tag table and the
+///   corner-geometry fallback contract.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 21;
 
 // =========================================================================
 // Runtime version accessors

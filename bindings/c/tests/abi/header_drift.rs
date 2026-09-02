@@ -156,6 +156,7 @@ fn add_section_dividers(original: &str) -> String {
             &["tst_raw_receiver_", "tst_managed_raw_receiver_"],
             "RAW RECEIVER",
         ),
+        (&["tst_st0601_"], "KLV"),
     ];
 
     const REQUIRED_ORDER: &[&str] = &[
@@ -167,7 +168,7 @@ fn add_section_dividers(original: &str) -> String {
         "TS RECEIVER",
         "RAW RECEIVER",
     ];
-    const CONDITIONAL_ORDER: &[&str] = &["LIFETIME", "OTHER"];
+    const CONDITIONAL_ORDER: &[&str] = &["KLV", "LIFETIME", "OTHER"];
 
     let mut header_bytes = String::new();
     let mut trailer_bytes = String::new();
@@ -320,6 +321,7 @@ fn classify_symbol(symbol: &str, sections: &[(&[&str], &str)]) -> &'static str {
                     "DEMUX RECEIVER" => "DEMUX RECEIVER",
                     "TS RECEIVER" => "TS RECEIVER",
                     "RAW RECEIVER" => "RAW RECEIVER",
+                    "KLV" => "KLV",
                     _ => "OTHER",
                 };
             }

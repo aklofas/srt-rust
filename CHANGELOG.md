@@ -9,7 +9,74 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`tst_core::codec::nal_framing`** — Annex-B ↔ length-prefixed NAL
+  conversion for AVCC/HVCC-style consumers (Apple VideoToolbox and
+  similar decoder APIs expect length-prefixed framing, not the
+  start-code-delimited Annex B the demuxer emits):
+  `annexb_to_length_prefixed(annexb: &[u8], length_size: u8)` /
+  `length_prefixed_to_annexb(data: &[u8], length_size: u8)` round-trip
+  through `length_size`-byte (1/2/4) big-endian length prefixes, and
+  `extract_parameter_sets(annexb: &[u8], codec: VideoCodec) ->
+  ParameterSets { vps, sps, pps }` pulls complete parameter-set NALs
+  (header byte(s) included, ready for
+  `CMVideoFormatDescriptionCreateFrom{H264,HEVC}ParameterSets` and
+  equivalents) directly out of a `Sample`'s raw Annex-B bytes — no
+  manual header reconstruction needed. Two additive `CodecParseError`
+  variants, `InvalidLengthSize { got }` and `NalLengthOverflow {
+  nal_len, length_size }`.
+- **`DemuxerConfig::unwrap_timestamps`** (default `false`) +
+  `DemuxerConfigBuilder::unwrap_timestamps` — opt-in per-PID unwrap of
+  the demuxer's raw 33-bit 90 kHz PTS/DTS into a monotonic `i64`
+  timeline, applied uniformly to `DemuxEvent::Sample` and
+  `DemuxEvent::Metadata`. The offset is never rebased to zero, so a
+  video PID and a KLV PID sharing one wire clock stay directly
+  comparable across the ~26.5 h rollover — this is what lets a consumer
+  pair KLV to video frames by PTS on a long-running stream. DTS
+  unwraps against its own PES's PTS rather than the shared per-PID
+  offset, so a DTS that straddles the wrap boundary (DTS still
+  pre-wrap while its PES's PTS has already wrapped) lands in the
+  correct epoch instead of over-shifting by a full `1 << 33`. The
+  accumulator resets alongside the rest of the per-PID parse state on
+  `Demuxer::reset_sync` — a reconnect restarts the unwrap timeline.
+- **`tst-pipeline` recv-side stream-end reason** — `RecvEndReason`
+  (`EndOfStream` / `ReconnectExhausted` / `Cancelled`) +
+  `RecvEndReasonHandle` (first-writer-wins, readable after the owning
+  receiver is dropped) via `ManagedDemuxReceiver::end_reason_handle()`
+  — the recv-side analogue of `tst-rtp`'s `StreamEndReasonHandle`.
+  Distinguishes reconnect-budget exhaustion from a caller-initiated
+  cancel/close, which today both surface indistinguishably as
+  `TST_E_END_OF_STREAM` / `TST_E_CLOSED`. Obtain the handle before
+  moving the receiver into an opaque handle (e.g. a C binding's box) so
+  a watchdog thread can poll it independently of the thread driving
+  `recv_event`. Also adds `ManagedDemuxReceiver::reconnecting()` +
+  `ManagedRecvTransport::reconnecting_handle()` to expose whether the
+  inner connection is currently absent (mid-reconnect, or permanently
+  after budget exhaustion).
+
+### Fixed
+
+- **Docs: decoder-replay parameter-set reconstruction.** `codec.md`
+  claimed `NalUnit::{H264,H265,H266}.payload` / `raw_rbsp` include the
+  NAL header byte(s) — they don't; the demuxer strips them before
+  parsing. The worked Annex-B-reconstruction examples now rebuild the
+  header from the NAL's type/ref_idc (H.264) or
+  type/layer_id/temporal_id_plus1 (H.265) fields, and point at the new
+  `extract_parameter_sets` above as the shortcut for the common case.
+- **Docs: reconnect cache behavior.** `binding-authors.md` claimed
+  `tst_managed_demux_receiver_*`'s post-reconnect `reset_sync()`
+  preserves PAT/PMT and per-PID reassembly state across a reconnect —
+  it clears it (PAT/PMT, continuity counters, last PCR/PTS, PES
+  reassembly partials, the `NonConformant` dedupe sets); only aggregate
+  stats counters and `DemuxerConfig` survive. Also fixes the constant
+  name in two places (`TST_EVENT_KIND_RECONNECT_DISCONTINUITY`, not
+  `TST_EVENT_RECONNECT_DISCONTINUITY`, which never existed).
+- **Docs: SRT URL keys.** `srt.md` claimed `x-recvtimeout` bounds a
+  Listener's `accept` call — libsrt ignores `SRTO_RCVTIMEO` on
+  `srt_accept`; the key only bounds recv on a connected/accepted socket
+  (and sets what accepted sockets inherit). Also: `mode=listener` is
+  accepted, not rejected — only `mode=rendezvous` is unsupported.
 
 ---
 

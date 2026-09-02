@@ -556,13 +556,13 @@ FFmpeg, GStreamer, etc.) — use builder-style config if portability matters.
 
 | URL key | libsrt option | Type | Notes |
 |---|---|---|---|
-| `x-recvtimeout` | `SRTO_RCVTIMEO` | INT (ms) | bounds blocking recv; on a Listener also bounds `accept` |
+| `x-recvtimeout` | `SRTO_RCVTIMEO` | INT (ms) | bounds blocking recv on a connected/accepted socket; on a Listener this sets the timeout inherited by accepted sockets, but does **not** bound the `accept` call itself — libsrt ignores `SRTO_RCVTIMEO` on `srt_accept` |
 | `x-sendtimeout` | `SRTO_SNDTIMEO` | INT (ms) | bounds blocking send and synchronous handshake |
 
 ### Mode and authority
 
-`mode=caller` is accepted (no-op — only caller-direction senders ship
-today). `mode=listener` and `mode=rendezvous` reject with
+`mode=caller` (the default when `?mode=` is absent) and `mode=listener`
+are both accepted. `mode=rendezvous` rejects with
 `UrlError::UnsupportedMode`. Userinfo (`srt://user:pass@host:port`) is
 explicitly rejected, with a hint pointing at `?passphrase=...` —
 userinfo is not used by mainstream SRT tooling and is too easy to

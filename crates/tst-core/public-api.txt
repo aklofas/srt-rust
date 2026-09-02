@@ -1030,7 +1030,7 @@ impl core::marker::UnsafeUnpin for tst_core::codec::nal_framing::ParameterSets
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::nal_framing::ParameterSets
 impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::nal_framing::ParameterSets
 pub fn tst_core::codec::nal_framing::annexb_to_length_prefixed(&[u8], u8) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::codec::CodecParseError>
-pub fn tst_core::codec::nal_framing::extract_parameter_sets(&[u8], tst_core::mpegts::mux::VideoCodec) -> tst_core::codec::nal_framing::ParameterSets
+pub fn tst_core::codec::nal_framing::extract_parameter_sets(&[u8], tst_core::mpegts::demux::event::VideoCodec) -> tst_core::codec::nal_framing::ParameterSets
 pub fn tst_core::codec::nal_framing::length_prefixed_to_annexb(&[u8], u8) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::codec::CodecParseError>
 pub mod tst_core::codec::util
 pub fn tst_core::codec::util::count_nal_units(&[u8], tst_core::mpegts::mux::VideoCodec) -> u64

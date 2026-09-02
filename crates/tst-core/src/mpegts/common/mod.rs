@@ -330,10 +330,15 @@ pub const SRT_TS_BUNDLE_BYTES: usize = SRT_TS_BUNDLE_PACKETS * TS_PACKET_SIZE;
 ///
 /// Used by both the muxer and the demuxer as a wrap-aware backward-PTS
 /// anomaly detector — large negative deltas indicate a non-conformant
-/// backward jump rather than a benign 33-bit wrap. The demuxer does NOT
-/// use this to accumulate stream-monotonic ticks; `DemuxEvent::Sample.pts`
-/// and `DemuxEvent::Metadata.pts` remain raw 33-bit values that wrap to 0
-/// at the H.222.0 §2.4.3.7 rollover (≈ every 26.5 h of 90 kHz).
+/// backward jump rather than a benign 33-bit wrap. By default the
+/// demuxer does NOT use this to accumulate stream-monotonic ticks;
+/// `DemuxEvent::Sample.pts` and `DemuxEvent::Metadata.pts` remain raw
+/// 33-bit values that wrap to 0 at the H.222.0 §2.4.3.7 rollover
+/// (≈ every 26.5 h of 90 kHz). The one exception: when the opt-in
+/// [`DemuxerConfig::unwrap_timestamps`](crate::mpegts::demux::DemuxerConfig::unwrap_timestamps)
+/// is enabled, the demuxer's per-PID accumulator DOES use this function
+/// to detect wraps and accumulate a monotonic `i64` timeline, and the
+/// emitted pts/dts are monotonic rather than wrapping.
 pub fn pts_diff_33bit(now: u64, last: u64) -> i64 {
     const RANGE: u64 = 1u64 << 33;
     const HALF: u64 = 1u64 << 32;

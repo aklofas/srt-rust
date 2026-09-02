@@ -17,6 +17,7 @@
 //! matching the widths ISO/IEC 14496-15's `NALUnitLength` field allows.
 
 use crate::codec::CodecParseError;
+use crate::mpegts::mux::VideoCodec;
 use alloc::vec::Vec;
 
 /// Offsets of one Annex-B start-code occurrence: where the prefix starts
@@ -188,6 +189,87 @@ fn read_length_prefix(prefix: &[u8]) -> u32 {
     }
 }
 
+/// Complete parameter-set NALs extracted from an Annex-B access unit, as
+/// `CMVideoFormatDescriptionCreateFrom{H264,HEVC}ParameterSets` on Apple's
+/// VideoToolbox wants them: each inner `Vec<u8>` is one complete NAL
+/// (header byte(s) included), with no start code and no length prefix.
+///
+/// `vps` is always empty for H.264 — it has no VPS NAL type.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ParameterSets {
+    pub vps: Vec<Vec<u8>>,
+    pub sps: Vec<Vec<u8>>,
+    pub pps: Vec<Vec<u8>>,
+}
+
+/// Scan an Annex-B access unit and collect its parameter-set NALs
+/// (VPS/SPS/PPS), classified by NAL type, as complete NALs (header
+/// byte(s) included, no start code, no length prefix) — ready for
+/// `CMVideoFormatDescriptionCreateFrom{H264,HEVC}ParameterSets`.
+///
+/// Non-fallible: a malformed or empty `annexb` (no start codes, or no
+/// NAL classified as a parameter set) simply yields empty `Vec`s, not an
+/// error.
+///
+/// NAL-type classification:
+/// - **H.264**: `nal_type = byte0 & 0x1F`; SPS = 7, PPS = 8. `vps` is
+///   always empty (H.264 has no VPS NAL type).
+/// - **H.265**: `nal_type = (byte0 >> 1) & 0x3F`; VPS = 32, SPS = 33,
+///   PPS = 34.
+/// - **H.266**: not implemented in this arc — always returns an empty
+///   [`ParameterSets`]. (H.266's own scheme would be VPS = 14, SPS = 15,
+///   PPS = 16 under the same `(byte0 >> 1) & 0x3F` shift, but this PoC
+///   targets H.264/HEVC only; wire H.266 up when it gets a VideoToolbox
+///   consumer.)
+/// - **AV1**: OBU-framed, not NAL-framed — always returns an empty
+///   [`ParameterSets`].
+pub fn extract_parameter_sets(annexb: &[u8], codec: VideoCodec) -> ParameterSets {
+    let mut sets = ParameterSets::default();
+    match codec {
+        VideoCodec::H266 | VideoCodec::Av1 => return sets,
+        VideoCodec::H264 | VideoCodec::H265 => {}
+    }
+
+    let starts = find_start_codes(annexb);
+    for win in starts.windows(2) {
+        classify_parameter_set(
+            &annexb[win[0].data_start..win[1].prefix_start],
+            codec,
+            &mut sets,
+        );
+    }
+    if let Some(&last) = starts.last() {
+        classify_parameter_set(&annexb[last.data_start..annexb.len()], codec, &mut sets);
+    }
+    sets
+}
+
+/// Classify one already-extracted NAL by its header byte and, if it's a
+/// parameter set, push a copy into the matching field of `sets`. Any
+/// other NAL type (slices, SEI, AUD, …) is silently ignored — this is a
+/// filter, not a validator.
+fn classify_parameter_set(nal: &[u8], codec: VideoCodec, sets: &mut ParameterSets) {
+    let Some(&byte0) = nal.first() else {
+        return;
+    };
+    match codec {
+        VideoCodec::H264 => match byte0 & 0x1F {
+            7 => sets.sps.push(nal.to_vec()),
+            8 => sets.pps.push(nal.to_vec()),
+            _ => {}
+        },
+        VideoCodec::H265 => match (byte0 >> 1) & 0x3F {
+            32 => sets.vps.push(nal.to_vec()),
+            33 => sets.sps.push(nal.to_vec()),
+            34 => sets.pps.push(nal.to_vec()),
+            _ => {}
+        },
+        VideoCodec::H266 | VideoCodec::Av1 => {
+            unreachable!("filtered out by extract_parameter_sets before this is called")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +388,68 @@ mod tests {
         annexb.extend_from_slice(&[0x00, 0x00, 0x00, 0x01, 0x67, 0x01]);
         let out = annexb_to_length_prefixed(&annexb, 4).unwrap();
         assert_eq!(out, vec![0x00, 0x00, 0x00, 0x02, 0x67, 0x01]);
+    }
+
+    /// Hand-built H.264 AU: SPS(0x67) + PPS(0x68) + an IDR slice(0x65)
+    /// that must NOT be classified as a parameter set.
+    fn h264_sps_pps_idr_annexb() -> Vec<u8> {
+        vec![
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x67, 0x42, 0x00, 0x1E, // SPS: nal_type = 0x67 & 0x1F = 7
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x68, 0xCE, 0x3C, 0x80, // PPS: nal_type = 0x68 & 0x1F = 8
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x65, 0x88, 0x84, 0x00, // IDR slice: nal_type = 0x65 & 0x1F = 5 (not a param set)
+        ]
+    }
+
+    #[test]
+    fn extract_parameter_sets_h264_collects_full_sps_and_pps_nals() {
+        let sets = extract_parameter_sets(&h264_sps_pps_idr_annexb(), VideoCodec::H264);
+        assert_eq!(sets.sps, vec![vec![0x67, 0x42, 0x00, 0x1E]]);
+        assert_eq!(sets.pps, vec![vec![0x68, 0xCE, 0x3C, 0x80]]);
+        assert!(sets.vps.is_empty());
+    }
+
+    /// Hand-built H.265 AU: VPS(0x40) + SPS(0x42) + PPS(0x44). NAL type
+    /// is `(byte0 >> 1) & 0x3F`: 0x40 -> 32 (VPS), 0x42 -> 33 (SPS),
+    /// 0x44 -> 34 (PPS).
+    fn h265_vps_sps_pps_annexb() -> Vec<u8> {
+        vec![
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x40, 0x01, 0x0C, 0x01, // VPS
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x42, 0x01, 0x01, 0x02, // SPS
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x44, 0x01, 0xC0, 0xF3, // PPS
+        ]
+    }
+
+    #[test]
+    fn extract_parameter_sets_h265_collects_full_vps_sps_pps_nals() {
+        let sets = extract_parameter_sets(&h265_vps_sps_pps_annexb(), VideoCodec::H265);
+        assert_eq!(sets.vps, vec![vec![0x40, 0x01, 0x0C, 0x01]]);
+        assert_eq!(sets.sps, vec![vec![0x42, 0x01, 0x01, 0x02]]);
+        assert_eq!(sets.pps, vec![vec![0x44, 0x01, 0xC0, 0xF3]]);
+    }
+
+    #[test]
+    fn extract_parameter_sets_h266_returns_empty_for_now() {
+        let sets = extract_parameter_sets(&h264_sps_pps_idr_annexb(), VideoCodec::H266);
+        assert_eq!(sets, ParameterSets::default());
+    }
+
+    #[test]
+    fn extract_parameter_sets_av1_returns_empty() {
+        let sets = extract_parameter_sets(&h264_sps_pps_idr_annexb(), VideoCodec::Av1);
+        assert_eq!(sets, ParameterSets::default());
+    }
+
+    #[test]
+    fn extract_parameter_sets_empty_input_returns_empty() {
+        assert_eq!(
+            extract_parameter_sets(&[], VideoCodec::H264),
+            ParameterSets::default()
+        );
     }
 }

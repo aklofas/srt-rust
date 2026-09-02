@@ -1008,7 +1008,29 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::mpegaudio::Fr
 pub fn tst_core::codec::mpegaudio::frames(&[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
 pub fn tst_core::codec::mpegaudio::frames_with_resync(&[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
 pub mod tst_core::codec::nal_framing
+pub struct tst_core::codec::nal_framing::ParameterSets
+pub tst_core::codec::nal_framing::ParameterSets::pps: alloc::vec::Vec<alloc::vec::Vec<u8>>
+pub tst_core::codec::nal_framing::ParameterSets::sps: alloc::vec::Vec<alloc::vec::Vec<u8>>
+pub tst_core::codec::nal_framing::ParameterSets::vps: alloc::vec::Vec<alloc::vec::Vec<u8>>
+impl core::clone::Clone for tst_core::codec::nal_framing::ParameterSets
+pub fn tst_core::codec::nal_framing::ParameterSets::clone(&self) -> tst_core::codec::nal_framing::ParameterSets
+impl core::cmp::Eq for tst_core::codec::nal_framing::ParameterSets
+impl core::cmp::PartialEq for tst_core::codec::nal_framing::ParameterSets
+pub fn tst_core::codec::nal_framing::ParameterSets::eq(&self, &tst_core::codec::nal_framing::ParameterSets) -> bool
+impl core::default::Default for tst_core::codec::nal_framing::ParameterSets
+pub fn tst_core::codec::nal_framing::ParameterSets::default() -> tst_core::codec::nal_framing::ParameterSets
+impl core::fmt::Debug for tst_core::codec::nal_framing::ParameterSets
+pub fn tst_core::codec::nal_framing::ParameterSets::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::codec::nal_framing::ParameterSets
+impl core::marker::Freeze for tst_core::codec::nal_framing::ParameterSets
+impl core::marker::Send for tst_core::codec::nal_framing::ParameterSets
+impl core::marker::Sync for tst_core::codec::nal_framing::ParameterSets
+impl core::marker::Unpin for tst_core::codec::nal_framing::ParameterSets
+impl core::marker::UnsafeUnpin for tst_core::codec::nal_framing::ParameterSets
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::nal_framing::ParameterSets
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::nal_framing::ParameterSets
 pub fn tst_core::codec::nal_framing::annexb_to_length_prefixed(&[u8], u8) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::codec::CodecParseError>
+pub fn tst_core::codec::nal_framing::extract_parameter_sets(&[u8], tst_core::mpegts::mux::VideoCodec) -> tst_core::codec::nal_framing::ParameterSets
 pub fn tst_core::codec::nal_framing::length_prefixed_to_annexb(&[u8], u8) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::codec::CodecParseError>
 pub mod tst_core::codec::util
 pub fn tst_core::codec::util::count_nal_units(&[u8], tst_core::mpegts::mux::VideoCodec) -> u64

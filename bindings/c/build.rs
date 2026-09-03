@@ -156,9 +156,20 @@ fn main() {
     let version = env!("CARGO_PKG_VERSION");
     let template_path = PathBuf::from(&crate_dir).join("tstrans.pc.in");
     let template = std::fs::read_to_string(&template_path).expect("read tstrans.pc.in");
+    // C++ runtime + libdl are platform-shaped: macOS's runtime is `-lc++`
+    // (no `-lstdc++`, and `-ldl` is a Linux-only libc split — macOS's dl*
+    // symbols live in libSystem, linked implicitly). Everything else
+    // (`-lpthread`, `-lm`, `-ltstrans`) is common across platforms and
+    // stays in the template unsubstituted.
+    let platform_libs = if cfg!(target_os = "macos") {
+        "-lc++"
+    } else {
+        "-lstdc++ -ldl"
+    };
     let pc = template
         .replace("@VERSION@", version)
-        .replace("@PREFIX@", "/usr/local"); // tarball install default; consumer can sed it
+        .replace("@PREFIX@", "/usr/local") // tarball install default; consumer can sed it
+        .replace("@PLATFORM_LIBS@", platform_libs);
     let pc_path = profile_dir.join("tstrans.pc");
     std::fs::write(&pc_path, pc).expect("write tstrans.pc");
     println!("cargo:rerun-if-changed=tstrans.pc.in");

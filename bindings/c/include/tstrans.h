@@ -5119,8 +5119,13 @@ struct TstDemuxer *tst_demuxer_open_with_config(const struct tst_demux_config_t 
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  *
- * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
- * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+ * Closes the underlying socket, which unblocks a thread parked in
+ * [`tst_managed_demux_receiver_recv_event`] within about one libsrt I/O
+ * cycle (roughly 3-10 ms). After cancel, `_recv_event` returns
+ * `TST_E_CLOSED` (not `TST_E_END_OF_STREAM`). The handle must still be
+ * `_close`'d to free — but NOT while a thread may still be blocked in
+ * `_recv_event`; see [`tst_managed_demux_receiver_close`]'s doc for the
+ * safe teardown ordering.
  */
 int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
 #endif
@@ -5132,6 +5137,14 @@ int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
  * Safe to call with NULL (no-op). After this call the pointer is
  * invalid; passing the same non-null pointer twice is undefined
  * behavior (use-after-free on the consumed `Box`).
+ *
+ * **NOT safe to call concurrently with a thread blocked in
+ * [`tst_managed_demux_receiver_recv_event`]**: this function acquires
+ * the data-path mutex and then frees the allocation out from under it.
+ * The safe teardown sequence is: [`tst_managed_demux_receiver_cancel`]
+ * from the control thread, wait for the reader thread to return from
+ * `_recv_event`, then call this function from the thread that owns the
+ * handle.
  */
 void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
 #endif
@@ -5326,6 +5339,22 @@ int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receive
  * Open a `tst_managed_demux_receiver_t` with default demux options.
  * URL-driven mode dispatch matches `tst_demux_receiver_open`.
  * `policy` is the reconnect policy; pass NULL for default.
+ *
+ * # `?x-recvtimeout=<ms>`
+ *
+ * `srt_url` accepts a `tst-c`-flavor SRT URL extension with no
+ * libsrt-URL or ffmpeg precedent (ffmpeg's `?timeout=` is a rejected,
+ * known-but-unsupported key here). `?x-recvtimeout=<ms>` sets
+ * `SRTO_RCVTIMEO` — a per-recv deadline on the connected socket. On
+ * expiry, `_recv_event` returns the retryable `TST_E_BUFFER_FULL` (the
+ * transport is still alive; call `_recv_event` again). The setting
+ * **survives reconnect**: the internal factory rebuilds every new socket
+ * from the same parsed URL config, so the deadline reapplies to each
+ * fresh connection automatically. It does **not** bound a listener-mode
+ * open's `accept()` wait (see `tst_managed_demux_receiver_open_listener`)
+ * — libsrt's `srt_accept` ignores `SRTO_RCVTIMEO`, so a listener-mode
+ * open can still block indefinitely for a first connection regardless of
+ * this key.
  */
 
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open(const char *srt_url,
@@ -5335,6 +5364,12 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open(const char 
 #if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open for the managed demux receiver.
+ *
+ * `srt_url` accepts the same `?x-recvtimeout=<ms>` URL key as
+ * [`tst_managed_demux_receiver_open`] — see that function's doc for the
+ * full contract. It does NOT bound this call's own `accept()` wait
+ * (libsrt's `srt_accept` ignores `SRTO_RCVTIMEO`); once a peer connects,
+ * it governs `_recv_event`'s per-recv deadline on the accepted socket.
  */
 
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(const char *srt_url,
@@ -5344,6 +5379,11 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(co
 #if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open with a TstDemuxConfig override.
+ *
+ * `srt_url` accepts the same `?x-recvtimeout=<ms>` URL key as
+ * [`tst_managed_demux_receiver_open`] — see that function's doc for the
+ * full contract, and [`tst_managed_demux_receiver_open_listener`]'s doc
+ * for why it doesn't bound this call's own `accept()` wait.
  */
 
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_with_config(const char *srt_url,
@@ -5354,6 +5394,10 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_wi
 #if defined(TST_HAS_SRT)
 /**
  * Open with a TstDemuxConfig override. URL-driven mode dispatch.
+ *
+ * `srt_url` accepts the same `?x-recvtimeout=<ms>` URL key as
+ * [`tst_managed_demux_receiver_open`] — see that function's doc for the
+ * full contract.
  */
 
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config(const char *srt_url,
@@ -5369,8 +5413,45 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config
  * maps `TransportError::Broken` on a non-cancelled handle to
  * `TST_E_END_OF_STREAM`. The managed version does NOT apply that mapping —
  * `ManagedRecvTransport` retries internally on Broken, so a Broken
- * reaching this function means reconnect attempts are exhausted: a hard
+ * reaching this function is the inner-cancel-mutex-poisoned path: a hard
  * transport failure (`TST_E_TRANSPORT`), not end-of-stream.
+ *
+ * **Reconnect budget exhaustion is a different path, and it is NOT
+ * `TST_E_TRANSPORT`:** when the configured reconnect policy gives up,
+ * `ManagedRecvTransport` latches its inner transport `Closed` (the same
+ * state a clean peer close leaves it in — SRT cannot tell "peer hung up"
+ * from "peer never came back" at this layer), and this function returns
+ * `TST_E_END_OF_STREAM`, exactly like a clean end of stream. Call
+ * [`tst_managed_demux_receiver_end_reason`] afterward to distinguish a
+ * clean teardown (`CLEAN_TEARDOWN`) from a give-up-after-retries
+ * (`TRANSPORT_FAILED`) or an explicit `_cancel` (`CANCELLED`).
+ *
+ * # Threading and blocking behavior
+ *
+ * This call **blocks with no per-call timeout of its own**; see
+ * [`tst_managed_demux_receiver_open`]'s `?x-recvtimeout=<ms>` doc for a
+ * socket-level deadline. During a managed reconnect it stays blocked for
+ * the whole backoff — recv-side reconnect is always the blocking
+ * `ReconnectMode::Blocking` shape; `ReconnectMode::Background` is
+ * warn-and-ignored on the receive path.
+ *
+ * [`tst_managed_demux_receiver_cancel`] is lock-free, callable from any
+ * thread, and idempotent — it closes the underlying socket, which
+ * unblocks a thread parked here within about one libsrt I/O cycle
+ * (roughly 3-10 ms), after which this call returns `TST_E_CLOSED`.
+ * [`tst_managed_demux_receiver_close`] is **not** safe to call
+ * concurrently with a thread blocked here — it acquires the data-path
+ * mutex and then frees the allocation. The safe teardown sequence is:
+ * `_cancel` from the control thread, wait for the reader thread to
+ * return from this call, then `_close` from the thread that owns the
+ * handle.
+ *
+ * [`tst_managed_demux_receiver_end_reason`] and
+ * `tst_managed_demux_receiver_get_reconnect_stats` are lock-free
+ * side-channel reads — safe to poll from a watchdog thread concurrently
+ * with a thread blocked here. The other stats getters (`_get_stats`,
+ * `_get_socket_stats`, etc.) are NOT side-channel — they still take the
+ * data-path mutex, so a blocked call here blocks them too.
  */
 
 int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p,

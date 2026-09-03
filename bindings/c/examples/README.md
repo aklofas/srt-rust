@@ -197,3 +197,12 @@ raw/TS receiver) surfaces. Receiver-side C examples ship under
   `_play`, `into_demux_receiver` bridge to typed event loop, SIGINT
   cancel, and cleanup. Canonical pattern for consuming a gimbaled-platform
   camera stream over RTSP.
+- [`receiving/recv_srt_events.c`](receiving/recv_srt_events.c) — the
+  MANAGED (auto-reconnecting) SRT demux receiver reference example: full
+  `tst_event_t` kind coverage including `TST_EVENT_KIND_RECONNECT_DISCONTINUITY`
+  (the boundary marker `recv_demux_to_console.c`'s switch has no case
+  for), inline MISB ST 0601 KLV decode via `tst_st0601_decode` /
+  `tst_st0601_geometry`, and the documented cancel-then-close SIGINT
+  shutdown ordering. Supersedes `recv_demux_to_console.c` for the
+  managed+caller+KLV-decode case, and is the behavioral reference the
+  Apple/Swift wrapper is written against.

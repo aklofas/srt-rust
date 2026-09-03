@@ -220,7 +220,7 @@ fn compute_state(ls: &UasDatalinkLs, tag: u32) -> TstSt0601FieldState {
 // ---------------------------------------------------------------------------
 
 /// Curated summary of the ST 0601 geometry/attitude fields the
-/// Apple-PoC consumer contract needs — one call instead of 24
+/// Apple-PoC consumer contract needs — one call instead of 23
 /// individual [`tst_st0601_get_f64`] / [`tst_st0601_get_u64`] round
 /// trips. Every value field is paired with a `uint8_t ..._state`
 /// carrying a [`TstSt0601FieldState`] discriminant (0-4); read the

@@ -242,7 +242,7 @@
  *   (`TST_ST0601_FIELD_STATE_PRESENT` = 0 / `_ABSENT` = 1 /
  *   `_SENTINEL` = 2 / `_IMAPB_SPECIAL` = 3 / `_WRONG_TYPE` = 4,
  *   preserving the MISB three-way-`None` distinction end-to-end), a
- *   24-tag curated `tst_st0601_geometry_t` struct + one-call getter
+ *   23-tag curated `tst_st0601_geometry_t` struct + one-call getter
  *   (`tst_st0601_geometry`), and per-tag typed accessors
  *   (`tst_st0601_get_f64` / `_get_u64` / `_state`). Two new error
  *   codes: `TST_E_WRONG_TYPE` (-47, a getter's native type doesn't
@@ -2452,7 +2452,7 @@ typedef struct tst_server_stats_t {
 
 /**
  * Curated summary of the ST 0601 geometry/attitude fields the
- * Apple-PoC consumer contract needs — one call instead of 24
+ * Apple-PoC consumer contract needs — one call instead of 23
  * individual [`tst_st0601_get_f64`] / [`tst_st0601_get_u64`] round
  * trips. Every value field is paired with a `uint8_t ..._state`
  * carrying a [`TstSt0601FieldState`] discriminant (0-4); read the
@@ -5179,10 +5179,21 @@ void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
  *
  * Writes `TstStreamEndReason::None` (returns `0`) when the session
  * hasn't ended yet, or ended through a path this arc doesn't
- * instrument — and in that case the thread-local last-error channel is
- * left untouched (any pending failure from an earlier call is still
- * readable). A recorded reason is data, not a getter failure — this
+ * instrument. A recorded reason is data, not a getter failure — this
  * only returns a nonzero code for a null-pointer argument.
+ *
+ * **Last-error is untouched only for the "hasn't ended yet" sub-case**
+ * (`RecvEndReasonHandle::get()` returns `None` — no reason was ever
+ * recorded, so any pending failure from an earlier call is still
+ * readable). The "recorded but this binding doesn't map that variant
+ * yet" sub-case is different: `convert_recv_end_reason`'s `#[non_exhaustive]`
+ * wildcard fallback still degrades to `None` for the *return value*,
+ * but it runs through the same unconditional last-error reset every
+ * other arm does (see that function's doc) — so last-error IS reset to
+ * `TST_E_SUCCESS` there, not left untouched. This only bites if
+ * `tst-pipeline` adds a `RecvEndReason` variant before this binding's
+ * match is updated for it (mirrors `crate::rtp::end_reason::convert_end_reason`'s
+ * wildcard, which has the same property).
  *
  * Reuses the RTP-side `TstStreamEndReason` enum — its RTSP-shaped
  * variant names (`SessionExpired`, `KeepaliveFailed`, `ProtocolError`)

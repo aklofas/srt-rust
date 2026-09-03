@@ -58,7 +58,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   opaque `tst_st0601_t` (`tst_st0601_decode` / `_geometry` / `_get_f64`
   / `_get_u64` / `_state` / `_free`), the `tst_st0601_field_state` enum
   (present / absent / MISB sentinel / IMAPB special / wrong-type), a
-  24-tag curated `tst_st0601_geometry_t` one-call getter, and two new
+  23-tag curated `tst_st0601_geometry_t` one-call getter, and two new
   error codes `TST_E_WRONG_TYPE` (-47) / `TST_E_KLV_DECODE` (-48).
   Annex-B ↔ length-prefixed and parameter-set C helpers:
   `tst_annexb_to_length_prefixed` (two-call sizing idiom) and the

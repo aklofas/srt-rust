@@ -55,6 +55,38 @@ fn native_sanitizer_cflags() -> Option<String> {
     Some(format!("-fsanitize={value} -fno-omit-frame-pointer -g"))
 }
 
+/// Apply Apple-iOS cross-compile settings to a cmake config when `target` is
+/// an `*-apple-ios` / `*-apple-ios-sim` triple; a no-op on every other target.
+///
+/// libsrt's own CMakeLists keys its Darwin/iOS handling on
+/// `CMAKE_SYSTEM_NAME MATCHES "iOS"` (vendor/srt/CMakeLists.txt), so setting the
+/// system name explicitly is required for a correct iOS configure — the `cmake`
+/// crate supplies the sysroot/arch for Apple targets but does not reliably set
+/// the system name. Setting the sysroot/arch here too is idempotent with what
+/// the crate emits (cmake takes the last `-D`), and pins the correct values.
+///
+/// The whole body is gated on `target.contains("apple-ios")`, so linux / macos
+/// / windows builds are completely unaffected. Only reachable on a macOS host
+/// with the iOS SDK (Apple cross-compilation cannot run off a Mac).
+fn apply_apple_ios(cfg: &mut cmake::Config, target: &str) {
+    if !target.contains("apple-ios") {
+        return;
+    }
+    // `aarch64-apple-ios-sim` → simulator SDK; `aarch64-apple-ios` → device SDK.
+    let sysroot = if target.ends_with("-sim") {
+        "iphonesimulator"
+    } else {
+        "iphoneos"
+    };
+    cfg.define("CMAKE_SYSTEM_NAME", "iOS")
+        .define("CMAKE_OSX_ARCHITECTURES", "arm64")
+        .define("CMAKE_OSX_SYSROOT", sysroot)
+        // A conservative floor; raise via the build script if a consumer needs
+        // a newer minimum. Bitcode is intentionally left off (removed from the
+        // toolchain in Xcode 14+).
+        .define("CMAKE_OSX_DEPLOYMENT_TARGET", "13.0");
+}
+
 /// Build the vendored mbedTLS to a private install prefix.
 /// Returns the install prefix path.
 ///
@@ -80,8 +112,8 @@ fn build_mbedtls(sanitizer: Option<&str>) -> PathBuf {
         c_flags.push_str(san);
     }
 
-    cmake::Config::new(&mbedtls_dir)
-        .define("ENABLE_PROGRAMS", "OFF")
+    let mut cfg = cmake::Config::new(&mbedtls_dir);
+    cfg.define("ENABLE_PROGRAMS", "OFF")
         .define("ENABLE_TESTING", "OFF")
         .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
         .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
@@ -93,8 +125,9 @@ fn build_mbedtls(sanitizer: Option<&str>) -> PathBuf {
         // RHEL/AlmaLinux gcc-toolset (manylinux wheel builds) does not — without
         // this the wheel link fails: "relocation R_X86_64_32S ... can not be
         // used when making a shared object; recompile with -fPIC". No-op on MSVC.
-        .define("CMAKE_POSITION_INDEPENDENT_CODE", "ON")
-        .build()
+        .define("CMAKE_POSITION_INDEPENDENT_CODE", "ON");
+    apply_apple_ios(&mut cfg, &env::var("TARGET").unwrap_or_default());
+    cfg.build()
 }
 
 fn main() {
@@ -266,6 +299,10 @@ fn build_vendored(mbedtls_prefix: Option<&PathBuf>, sanitizer: Option<&str>) -> 
             cfg.define("ENABLE_ENCRYPTION", "OFF");
         }
     }
+
+    // iOS cross-compile (macOS host only) — libsrt's CMakeLists needs
+    // CMAKE_SYSTEM_NAME=iOS to take its Darwin path. No-op off apple-ios.
+    apply_apple_ios(&mut cfg, &target);
 
     let dst = cfg.build();
 

@@ -50,16 +50,31 @@ build_slice() {
     || die "cargo build failed for $triple"
 
   local target_dir="${WORKSPACE_ROOT}/target/${triple}/${PROFILE}"
+  # Apple's `staticlib` assembly garbage-collects upstream-rlib objects that the
+  # leaf crate only re-exports (`pub use tst_c_core::*`) without an object-level
+  # reference — so target/<triple>/<profile>/libtstrans.a comes out MISSING the
+  # tst_c_core entry points on iOS (Linux bundles the whole graph, so it has all
+  # 228+ tst_* symbols; iOS has zero). Rather than trust that incomplete
+  # archive, reconstruct the complete static library from every compiled Rust
+  # object — the project's rlibs (leaf + workspace + third-party) AND the
+  # target's precompiled std rlibs — plus the native libs. That's the full set
+  # rustc's staticlib *should* contain, assembled deterministically ourselves.
   local rust_lib="${target_dir}/libtstrans.a"
   [ -f "$rust_lib" ] || die "expected Rust staticlib not found: $rust_lib"
 
-  # Diagnostic: what tst_ symbols does the RAW Rust staticlib carry, before any
-  # merge? (Isolates a rustc/staticlib issue from a libtool-merge issue.)
-  echo "  [diag] raw ${rust_lib##*/}: T _tst_=$(nm -g "$rust_lib" 2>/dev/null | grep -cE ' T _tst_') t _tst_(local)=$(nm "$rust_lib" 2>/dev/null | grep -cE ' t _tst_') U _tst_(undef)=$(nm "$rust_lib" 2>/dev/null | grep -cE ' U _tst_')"
-  echo "  [diag] sample tst_st0601_decode lines:"; nm "$rust_lib" 2>/dev/null | grep -E '_tst_st0601_decode' | sed 's/^/    /' | head -4 || true
+  # 1. Collect all Rust archives: the project's compiled rlibs + the target's
+  #    precompiled std rlibs (libstd/libcore/liballoc/libcompiler_builtins/…).
+  local std_libdir
+  std_libdir="$(cd "$WORKSPACE_ROOT" && rustc --target "$triple" --print target-libdir 2>/dev/null || true)"
+  local -a rlibs=()
+  local r
+  while IFS= read -r r; do rlibs+=("$r"); done < <(
+    { find "${target_dir}/deps" -name '*.rlib' 2>/dev/null
+      [ -n "$std_libdir" ] && find "$std_libdir" -name '*.rlib' 2>/dev/null; } | sort -u
+  )
+  [ "${#rlibs[@]}" -ge 1 ] || die "no .rlib archives found under ${target_dir}/deps"
 
-  # The native .a's live under the sys crate's OUT_DIR (cmake install trees).
-  # Collect every relevant archive for this triple's build tree.
+  # 2. The native .a's from the vendored cmake install trees.
   local -a native_libs=()
   local a
   while IFS= read -r a; do native_libs+=("$a"); done < <(
@@ -69,15 +84,30 @@ build_slice() {
   )
   [ "${#native_libs[@]}" -ge 1 ] || die "no native static libs (libsrt.a / libmbed*.a) found under ${target_dir}/build — did the vendored cmake build run?"
 
+  # 3. Extract each rlib's object files into its own subdir (object names collide
+  #    across rlibs otherwise), skipping rlib metadata members (*.rmeta / lib.rmeta).
+  local objroot; objroot="$(mktemp -d "${APPLE_OUT%/}/.objs-${slice}.XXXXXX")"
+  local -a objs=()
+  local i=0 o
+  for r in "${rlibs[@]}"; do
+    local d="${objroot}/$((i++))"
+    mkdir -p "$d"
+    ( cd "$d" && ar x "$r" 2>/dev/null || true )
+    rm -f "$d"/*.rmeta "$d"/lib.rmeta 2>/dev/null || true
+    while IFS= read -r o; do objs+=("$o"); done < <(find "$d" -name '*.o' 2>/dev/null)
+  done
+  [ "${#objs[@]}" -ge 1 ] || die "extracted zero object files from the rlibs for $slice"
+
   mkdir -p "$out_dir"
-  # libtool -static merges multiple archives into one; -D makes it
-  # deterministic (no timestamps). Duplicate members across archives are fine.
-  libtool -static -D -o "${out_dir}/libtstrans.a" "$rust_lib" "${native_libs[@]}" 2>/dev/null \
-    || libtool -static -o "${out_dir}/libtstrans.a" "$rust_lib" "${native_libs[@]}" \
+  # libtool -static merges archives + loose objects into one; -D = deterministic
+  # (no timestamps). Duplicate members are tolerated (first definition wins).
+  libtool -static -D -o "${out_dir}/libtstrans.a" "${objs[@]}" "${native_libs[@]}" 2>/dev/null \
+    || libtool -static -o "${out_dir}/libtstrans.a" "${objs[@]}" "${native_libs[@]}" \
     || die "libtool merge failed for $slice"
+  rm -rf "$objroot"
 
   echo "  merged: ${out_dir}/libtstrans.a"
-  echo "  inputs: libtstrans.a + $(printf '%s ' "${native_libs[@]##*/}")"
+  echo "  inputs: ${#objs[@]} rust objects (from ${#rlibs[@]} rlibs) + $(printf '%s ' "${native_libs[@]##*/}")"
   # Sanity: architecture + that our C ABI symbols and libsrt's are both present.
   lipo -info "${out_dir}/libtstrans.a" 2>/dev/null | sed 's/^/  arch: /' || true
   # `nm -g` lists external symbols; a defined C function shows as ` T _name`.

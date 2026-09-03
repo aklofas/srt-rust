@@ -1,0 +1,52 @@
+# Apple iOS spike + XCFramework — the validation gate for items 5b/5c of the
+# Apple/VideoToolbox PoC. Manual (workflow_dispatch) only: it's an expensive
+# macOS job that isn't needed on every push, and it proves the highest-risk
+# item of the arc — that libsrt + the vendored mbedTLS cross-compile and link
+# into an iOS static lib — which cannot run off a Mac.
+#
+# Run it from the Actions tab; it builds the device / simulator / macOS slices,
+# assembles TSTrans.xcframework, and uploads it as an artifact.
+name: apple-ios
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xcframework:
+    name: iOS spike + XCFramework (macos-14)
+    runs-on: macos-14
+    env:
+      SRT_FORCE_VENDORED: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain + Apple targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin
+
+      - name: Ensure cmake
+        run: cmake --version || brew install cmake
+
+      - name: Show toolchain / SDKs
+        run: |
+          rustc -vV
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Build iOS slices + assemble XCFramework
+        run: bash scripts/apple/make-xcframework.sh
+
+      - name: Upload XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: TSTrans.xcframework
+          path: target/apple/TSTrans.xcframework
+          if-no-files-found: error

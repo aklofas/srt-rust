@@ -1302,19 +1302,22 @@ the trigger that would unblock it.
 
 ## iOS (arm64 device + arm64 simulator + x86_64 simulator)
 
-- **Status:** Deferred. `tst-c` builds Linux x86_64, Linux
-  aarch64, macOS arm64, and Windows MSVC today (see
-  `compatibility.md` build-targets table).
-- **Why deferred:** iOS requires the Xcode SDK + a macOS-based
-  build runner + iOS-specific libsrt / mbedTLS cmake toolchain
-  files (iOS SDK paths, simulator vs device arch selection,
-  framework-vs-static packaging). The work is significant and
-  the field set is best landed alongside `tst-uniffi` so
-  consumer-facing iOS packaging shape (xcframework? CocoaPod?)
-  drives the build-side decisions rather than the other way
-  around.
-- **Trigger to revisit:** The `tst-uniffi` implementation plan
-  starts. iOS support lands as part of that plan, not before.
+- **Status:** Partial — a C-ABI iOS build spike exists (2026-09-02, Apple/
+  VideoToolbox PoC arc). `scripts/apple/build-ios.sh` cross-compiles the
+  `tst-c` static lib + vendored libsrt + mbedTLS for `aarch64-apple-ios` and
+  `aarch64-apple-ios-sim`, and `scripts/apple/make-xcframework.sh` assembles
+  `TSTrans.xcframework` (macOS + iOS + iOS-sim), gated by the manual
+  `.github/workflows/apple-ios.yml` (`macos-14`). The enabler is
+  `crates/srt-sys/build.rs`'s `apply_apple_ios` (sets `CMAKE_SYSTEM_NAME=iOS`
+  etc. for `*-apple-ios*` triples). This is the **C-ABI** path; the full
+  UniFFI Swift binding is still deferred (below). `tst-c` also builds Linux
+  x86_64/aarch64, macOS arm64, and Windows MSVC (see `compatibility.md`).
+- **Why the rest is deferred:** the Swift-idiomatic surface (UniFFI-generated
+  bindings, an SPM package wrapper, x86_64-simulator/older-arch coverage)
+  belongs with `tst-uniffi` so the consumer-facing shape drives it. The
+  C-ABI XCFramework above is enough for a C/Swift-shim PoC in the meantime.
+- **Trigger to revisit:** The `tst-uniffi` implementation plan starts (for
+  the Swift binding + SPM). The C-ABI XCFramework build is available now.
 - **Scope when added:** Three matrix entries (arm64 device,
   arm64 simulator, x86_64 simulator) under a separate iOS-
   specific CI workflow (the existing GHA `macos-14` runner

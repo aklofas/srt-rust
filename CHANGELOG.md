@@ -84,6 +84,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tst_event_t` kind switch including `RECONNECT_DISCONTINUITY`,
   inline ST 0601 KLV decode via the new `tst_st0601_*` surface, and a
   cancel-from-signal-handler-then-close SIGINT shutdown sequence.
+- **Apple iOS build tooling** — `scripts/apple/build-ios.sh` cross-compiles
+  the `tst-c` static library + vendored libsrt (encrypted via the vendored
+  mbedTLS backend) for `aarch64-apple-ios` and `aarch64-apple-ios-sim`, and
+  `scripts/apple/make-xcframework.sh` assembles `TSTrans.xcframework` (macOS +
+  iOS + iOS-sim, with the header + `module.modulemap`). Enabled by
+  `srt-sys`'s build script setting the iOS cmake toolchain
+  (`CMAKE_SYSTEM_NAME=iOS`) for `*-apple-ios*` targets. Gated by the manual
+  `apple-ios` GitHub Actions workflow (`macos-14`). C-ABI path; the UniFFI
+  Swift binding + SPM package remain deferred to `tst-uniffi`.
 
 ### Fixed
 

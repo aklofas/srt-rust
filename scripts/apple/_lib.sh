@@ -53,6 +53,11 @@ build_slice() {
   local rust_lib="${target_dir}/libtstrans.a"
   [ -f "$rust_lib" ] || die "expected Rust staticlib not found: $rust_lib"
 
+  # Diagnostic: what tst_ symbols does the RAW Rust staticlib carry, before any
+  # merge? (Isolates a rustc/staticlib issue from a libtool-merge issue.)
+  echo "  [diag] raw ${rust_lib##*/}: T _tst_=$(nm -g "$rust_lib" 2>/dev/null | grep -cE ' T _tst_') t _tst_(local)=$(nm "$rust_lib" 2>/dev/null | grep -cE ' t _tst_') U _tst_(undef)=$(nm "$rust_lib" 2>/dev/null | grep -cE ' U _tst_')"
+  echo "  [diag] sample tst_st0601_decode lines:"; nm "$rust_lib" 2>/dev/null | grep -E '_tst_st0601_decode' | sed 's/^/    /' | head -4 || true
+
   # The native .a's live under the sys crate's OUT_DIR (cmake install trees).
   # Collect every relevant archive for this triple's build tree.
   local -a native_libs=()

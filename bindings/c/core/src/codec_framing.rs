@@ -119,6 +119,13 @@ pub unsafe extern "C" fn tst_annexb_to_length_prefixed(
 /// [`tst_param_sets_extract`] — see [`nal_framing::extract_parameter_sets`].
 /// Immutable once built; no separate `_close`, only
 /// [`tst_param_sets_free`].
+///
+/// Deliberately a bare `Box<ParameterSets>`, *not* the crate's
+/// mutex-backed `Handle<T>` that [`crate::klv_st0601::TstSt0601`] uses —
+/// `ParameterSets` has no mutation surface and no `_close`, so there is
+/// nothing for a `Handle`'s lock to protect; a plain `Box` is the
+/// simpler choice, equally sound for a handle that is only ever read
+/// then freed.
 pub struct TstParamSets {
     inner: ParameterSets,
 }

@@ -54,8 +54,60 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ManagedRecvTransport::reconnecting_handle()` to expose whether the
   inner connection is currently absent (mid-reconnect, or permanently
   after budget exhaustion).
+- **C ABI 0.20 → 0.21 (additive).** C-callable MISB ST 0601 KLV decode:
+  opaque `tst_st0601_t` (`tst_st0601_decode` / `_geometry` / `_get_f64`
+  / `_get_u64` / `_state` / `_free`), the `tst_st0601_field_state` enum
+  (present / absent / MISB sentinel / IMAPB special / wrong-type), a
+  24-tag curated `tst_st0601_geometry_t` one-call getter, and two new
+  error codes `TST_E_WRONG_TYPE` (-47) / `TST_E_KLV_DECODE` (-48).
+  Annex-B ↔ length-prefixed and parameter-set C helpers:
+  `tst_annexb_to_length_prefixed` (two-call sizing idiom) and the
+  opaque `tst_param_sets_t` extraction trio
+  `tst_param_sets_extract` / `_count` / `_get` / `_free`, wrapping the
+  `tst_core::codec::nal_framing` additions above. Managed SRT
+  demux-receiver lifecycle parity: `tst_managed_demux_receiver_end_reason`
+  and `tst_managed_demux_receiver_get_reconnect_stats` close the
+  send/recv asymmetry left by the 0.20 background-reconnect and
+  stream-end-reason surfaces (both reuse existing 0.20 C types — no new
+  struct or enum), plus `tst_demux_config_set_unwrap_timestamps` wiring
+  the `DemuxerConfig::unwrap_timestamps` knob above through the C
+  builder. See `docs/reference/binding-authors.md`'s ABI-21 entry for
+  the full breakdown.
+- **`bindings/c/include/module.modulemap`** beside the committed header,
+  so a Swift/SPM/XCFramework consumer can `import TSTrans` directly
+  without a bridging header. `tstrans.pc`'s `Libs` line is now
+  platform-aware (`-lc++`/no `-ldl` on macOS vs `-lstdc++ -ldl` on
+  Linux) instead of hardcoding the Linux shape.
+- **`bindings/c/examples/recv_srt_events.c`** — reference example for
+  the managed (auto-reconnecting) SRT demux receiver, the behavioral
+  reference the Apple/Swift wrapper is written against: the full
+  `tst_event_t` kind switch including `RECONNECT_DISCONTINUITY`,
+  inline ST 0601 KLV decode via the new `tst_st0601_*` surface, and a
+  cancel-from-signal-handler-then-close SIGINT shutdown sequence.
 
 ### Fixed
+
+- **C docs: managed-receiver budget-exhaustion contract.** The module
+  doc and `tst_managed_demux_receiver_recv_event` (plus the sibling
+  `tst_managed_receiver_recv_packet` / `tst_managed_raw_receiver_recv`)
+  claimed reconnect-budget exhaustion surfaces as `TST_E_TRANSPORT` —
+  it surfaces as `TST_E_END_OF_STREAM` (a latched inner `Closed`, the
+  same code path a clean peer close takes; libsrt can't distinguish the
+  two at this layer). `TST_E_TRANSPORT` is reserved for the
+  inner-cancel-mutex-poisoned path. The demux-receiver family's doc now
+  also points callers at `tst_managed_demux_receiver_end_reason` to
+  disambiguate a clean teardown from a give-up-after-retries; the
+  plain/raw families have no `end_reason` getter, so their docs just
+  state the `TST_E_END_OF_STREAM` reality.
+- **C docs: managed demux-receiver threading + timeout contract.**
+  Documents the family's threading rules (`_cancel` is
+  lock-free/any-thread/idempotent and unblocks a blocked `recv_event`
+  within one libsrt I/O cycle; `_close` is not safe concurrently with a
+  blocked `recv_event` — cancel, join, then close; which getters are
+  lock-free side-channel reads vs. mutex-gated) and the
+  `?x-recvtimeout=<ms>` URL extension (`SRTO_RCVTIMEO`; retryable
+  `TST_E_BUFFER_FULL` on expiry; survives reconnect; does not bound
+  `Listener::accept`).
 
 - **Docs: decoder-replay parameter-set reconstruction.** `codec.md`
   claimed `NalUnit::{H264,H265,H266}.payload` / `raw_rbsp` include the

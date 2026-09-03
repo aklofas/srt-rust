@@ -214,7 +214,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 20` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 21` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -420,6 +420,22 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   `TST_E_BUFFER_FULL` / `TST_E_INVALID_CONFIG` / `TST_E_TOO_LARGE` /
 ///   `TST_E_NOT_FOUND`. Unconditional module, matching Task 7. See
 ///   `bindings/c/core/src/codec_framing.rs`.
+///
+///   Task 9 (same arc, additive within `21` — no further bump): managed
+///   SRT demux-receiver lifecycle parity, both `TST_HAS_SRT`-gated —
+///   `tst_managed_demux_receiver_end_reason` reuses the existing (ABI
+///   20) `TstStreamEndReason` enum via a new
+///   `tst-pipeline`-side `RecvEndReason` type (the recv analogue of
+///   `tst_rtp::StreamEndReason`, mapped onto the shared C enum by
+///   `convert_recv_end_reason`) rather than adding a new one, and
+///   `tst_managed_demux_receiver_get_reconnect_stats` reuses the
+///   existing `tst_managed_transport_stats_t` struct from ABI 20,
+///   closing the send/recv asymmetry both left open. Also
+///   `tst_demux_config_set_unwrap_timestamps` (unconditional, no
+///   feature gate), a new demuxer-config setter. No new C types or
+///   error codes. See
+///   `bindings/c/core/src/receiver/demux_receiver/managed.rs` and
+///   `bindings/c/core/src/demux_config.rs`.
 pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 21;
 
 // =========================================================================

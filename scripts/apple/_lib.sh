@@ -15,8 +15,11 @@ PROFILE="${PROFILE:-release}"
 # tst-c-core forward) — the PoC's scope. rtp/udp/tcp/hls/rist are opt-in; rtp
 # (for the "RTSPS later" path) can be added here once its iOS build is proven.
 FEATURES="${FEATURES:-srt}"
+# Cargo's target directory — honor CARGO_TARGET_DIR (as the repo's ABI tests do)
+# so a redirected build output is still found.
+CARGO_TARGET_ROOT="${CARGO_TARGET_DIR:-${WORKSPACE_ROOT}/target}"
 # Where merged per-slice static libs land (git-ignored build output).
-APPLE_OUT="${APPLE_OUT:-${WORKSPACE_ROOT}/target/apple}"
+APPLE_OUT="${APPLE_OUT:-${CARGO_TARGET_ROOT}/apple}"
 
 _cargo_profile_flag() { [ "$PROFILE" = "release" ] && echo "--release" || echo ""; }
 
@@ -56,7 +59,7 @@ build_slice() {
         --features "$FEATURES" --crate-type staticlib ) \
     || die "cargo rustc (staticlib) failed for $triple"
 
-  local target_dir="${WORKSPACE_ROOT}/target/${triple}/${PROFILE}"
+  local target_dir="${CARGO_TARGET_ROOT}/${triple}/${PROFILE}"
   local rust_lib="${target_dir}/libtst_c_core.a"
   [ -f "$rust_lib" ] || die "expected tst-c-core staticlib not found: $rust_lib"
 

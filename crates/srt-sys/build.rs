@@ -91,7 +91,10 @@ fn apply_apple_ios(cfg: &mut cmake::Config, target: &str) {
     // CMAKE_OSX_ARCHITECTURES uses Apple arch names — map Rust's `aarch64` → `arm64`;
     // `x86_64` is already the Apple name. Derived from the target, not hard-coded,
     // so future non-arm64 iOS slices configure correctly.
-    let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default().as_str() {
+    let arch = match env::var("CARGO_CFG_TARGET_ARCH")
+        .unwrap_or_default()
+        .as_str()
+    {
         "aarch64" => "arm64".to_string(),
         other => other.to_string(),
     };

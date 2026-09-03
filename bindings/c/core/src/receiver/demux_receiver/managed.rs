@@ -415,10 +415,21 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_cancel(
 ///
 /// Writes `TstStreamEndReason::None` (returns `0`) when the session
 /// hasn't ended yet, or ended through a path this arc doesn't
-/// instrument — and in that case the thread-local last-error channel is
-/// left untouched (any pending failure from an earlier call is still
-/// readable). A recorded reason is data, not a getter failure — this
+/// instrument. A recorded reason is data, not a getter failure — this
 /// only returns a nonzero code for a null-pointer argument.
+///
+/// **Last-error is untouched only for the "hasn't ended yet" sub-case**
+/// (`RecvEndReasonHandle::get()` returns `None` — no reason was ever
+/// recorded, so any pending failure from an earlier call is still
+/// readable). The "recorded but this binding doesn't map that variant
+/// yet" sub-case is different: `convert_recv_end_reason`'s `#[non_exhaustive]`
+/// wildcard fallback still degrades to `None` for the *return value*,
+/// but it runs through the same unconditional last-error reset every
+/// other arm does (see that function's doc) — so last-error IS reset to
+/// `TST_E_SUCCESS` there, not left untouched. This only bites if
+/// `tst-pipeline` adds a `RecvEndReason` variant before this binding's
+/// match is updated for it (mirrors `crate::rtp::end_reason::convert_end_reason`'s
+/// wildcard, which has the same property).
 ///
 /// Reuses the RTP-side `TstStreamEndReason` enum — its RTSP-shaped
 /// variant names (`SessionExpired`, `KeepaliveFailed`, `ProtocolError`)

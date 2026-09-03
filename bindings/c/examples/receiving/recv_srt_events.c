@@ -384,8 +384,8 @@ static void print_metadata(const tst_event_t *ev) {
     }
 
     /*
-     * `tst_st0601_geometry` is the curated one-call summary (24 tags)
-     * rather than 24 individual `tst_st0601_get_f64`/`_get_u64` round
+     * `tst_st0601_geometry` is the curated one-call summary (23 tags)
+     * rather than 23 individual `tst_st0601_get_f64`/`_get_u64` round
      * trips. Every value field is paired with a `..._state` byte — read
      * the value ONLY when its state is `TST_ST0601_FIELD_STATE_PRESENT`
      * (0); the other three states this getter can produce are `Absent`

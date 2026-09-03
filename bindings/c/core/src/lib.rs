@@ -400,7 +400,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   (`TST_ST0601_FIELD_STATE_PRESENT` = 0 / `_ABSENT` = 1 /
 ///   `_SENTINEL` = 2 / `_IMAPB_SPECIAL` = 3 / `_WRONG_TYPE` = 4,
 ///   preserving the MISB three-way-`None` distinction end-to-end), a
-///   24-tag curated `tst_st0601_geometry_t` struct + one-call getter
+///   23-tag curated `tst_st0601_geometry_t` struct + one-call getter
 ///   (`tst_st0601_geometry`), and per-tag typed accessors
 ///   (`tst_st0601_get_f64` / `_get_u64` / `_state`). Two new error
 ///   codes: `TST_E_WRONG_TYPE` (-47, a getter's native type doesn't

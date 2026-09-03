@@ -127,6 +127,39 @@ impl<T> Handle<T> {
             *guard = None;
         }
     }
+
+    /// Run `f` against `&T` if the handle is live, WITHOUT touching the
+    /// last-error channel on any path — closed handle, poisoned mutex, or
+    /// a caught panic all just return `default`, silently. For
+    /// side-channel query entry points (e.g. `tst_st0601_state`) that are
+    /// documented to never clobber a caller's pending last-error just by
+    /// being polled — `with_inner_ref` cannot be reused for those because
+    /// it unconditionally calls `set_last_error`/`record_panic_caught` on
+    /// its non-live paths.
+    ///
+    /// Panics are still caught (no unwinding crosses this boundary) and
+    /// the inner state is still dropped afterward, for the same
+    /// indeterminate-state reason as `with_inner_ref` — only the
+    /// recording to last-error is skipped.
+    pub(crate) fn with_inner_ref_silent<R, F>(&self, default: R, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
+        let mut guard = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return default,
+        };
+        match guard.as_ref() {
+            Some(t) => match catch(|| f(t)) {
+                Ok(r) => r,
+                Err(_detail) => {
+                    *guard = None;
+                    default
+                }
+            },
+            None => default,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -459,5 +492,44 @@ mod tests {
         // inner. Subsequent calls return Closed.
         let rc2 = h.with_inner_ref(|_| 0);
         assert_eq!(rc2, TstError::Closed as i32);
+    }
+
+    #[test]
+    fn with_inner_ref_silent_runs_when_live_and_does_not_touch_last_error() {
+        use crate::error::{clear_last_error_for_test, tst_get_last_error};
+        clear_last_error_for_test();
+        let h = Handle::new(7i32);
+        let value = h.with_inner_ref_silent(-1, |n| *n);
+        assert_eq!(value, 7);
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+    }
+
+    #[test]
+    fn with_inner_ref_silent_on_closed_handle_returns_default_without_recording() {
+        use crate::error::{clear_last_error_for_test, tst_get_last_error};
+        clear_last_error_for_test();
+        let h = Handle::new(7i32);
+        h.close();
+        let value = h.with_inner_ref_silent(-1, |n| *n);
+        assert_eq!(value, -1);
+        // The whole point of the _silent variant: unlike with_inner_ref,
+        // a closed handle must NOT set last-error to Closed here.
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+    }
+
+    #[test]
+    fn with_inner_ref_silent_panic_is_caught_without_recording() {
+        use crate::error::{clear_last_error_for_test, tst_get_last_error};
+        clear_last_error_for_test();
+        let h = Handle::new(7i32);
+        let rc = h.with_inner_ref_silent(-1, |_| panic!("test silent panic"));
+        assert_eq!(rc, -1);
+        // Unlike with_inner_ref, a caught panic here must NOT record
+        // PanicCaught to last-error.
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+        // Defense-in-depth still applies: the inner state is dropped, so
+        // a subsequent call also returns the default.
+        let rc2 = h.with_inner_ref_silent(-1, |_| 0);
+        assert_eq!(rc2, -1);
     }
 }

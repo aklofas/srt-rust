@@ -3,7 +3,10 @@
  * receiver against a URL taken from argv[1] (caller or listener mode,
  * URL-driven — see below), walk every `tst_event_t` kind (including the
  * reconnect boundary marker), decode ST 0601 KLV inline, and shut down
- * via a lock-free signal-path cancel.
+ * via an async-signal-safe flag that the main thread polls on a bounded
+ * `?x-recvtimeout` cadence — the actual lock-free `_cancel` call happens
+ * on the main thread, never inside the signal handler (see the SIGINT
+ * section below for why that distinction matters).
  *
  * Why this example:
  *   This is the BEHAVIORAL REFERENCE for the Apple/Swift wrapper — the
@@ -91,11 +94,13 @@
  *          bindings/c/examples/operations/poll_socket_stats.c -ltstrans
  *       LD_LIBRARY_PATH=target/debug /tmp/poll_socket_stats srt://127.0.0.1:9000
  *     Press Ctrl-C on Terminal A any time in the first ~4.5s. Verified
- *     across repeated runs: on the order of 50-60 SAMPLE/PROGRAM_MAP
- *     events received (exact count depends on exactly when you press
- *     Ctrl-C — not a fixed number), clean exit, printing
- *     "receiver cancelled (SIGINT); <n> events received" then
- *     "end reason: CANCELLED".
+ *     this session (log-timestamped, not wall-clock-guessed): shutdown
+ *     lands roughly 30-45ms after the signal — bounded by one inter-event
+ *     gap at 30fps (see `cancel_if_shutdown_requested`'s doc below), NOT
+ *     by the `?x-recvtimeout` interval (500ms), which only matters on an
+ *     idle stream. Exact event count depends on when you press Ctrl-C —
+ *     not a fixed number. Clean exit, printing "receiver cancelled
+ *     (SIGINT); <n> events received" then "end reason: CANCELLED".
  *
  *   Caller-mode variant of either recipe (swap who binds vs dials — point
  *   this example at a real listener instead, e.g. a camera or
@@ -106,15 +111,19 @@
  *   guarantee either way: if a peer disconnects and this listener-mode
  *   receiver goes looking for a NEW one (managed auto-reconnect), Ctrl-C
  *   during THAT specific window does not exit promptly. tstrans.h already
- *   documents that a listener's `accept()` wait is unbounded; what this
- *   session additionally observed is that `_cancel` does not appear to
- *   unblock that particular wait either — there is no live data socket
- *   yet for it to close. A second signal (`kill -9`) is the practical way
- *   out if you land in this window. This is a real, reproducible
- *   interaction worth a closer look outside the scope of this example —
- *   it does NOT affect the documented, and verified above (Recipe 2),
- *   "cancel while genuinely blocked in `_recv_event` on an established
- *   connection" contract this example's SIGINT handling is built around.
+ *   documents that a listener's `accept()` wait is unbounded AND that
+ *   `?x-recvtimeout` does NOT apply to it (SRTO_RCVTIMEO only governs a
+ *   connected socket's recv, not `srt_accept`) — so the periodic wakeup
+ *   this example relies on for Ctrl-C responsiveness (see
+ *   `url_with_recv_timeout` below) never fires during that specific
+ *   reconnect-search window either, and `g_shutdown_requested` just sits
+ *   set until `_recv_event` eventually returns on its own. A second
+ *   signal (`kill -9`) is the practical way out if you land in this
+ *   window. This is a real, reproducible interaction worth a closer look
+ *   outside the scope of this example — it does NOT affect the
+ *   documented, and verified above (Recipe 2), "cancel while genuinely
+ *   blocked in `_recv_event` on an established connection" contract this
+ *   example's SIGINT handling is built around.
  *
  *   NOTE on `mux_synthetic_srt.c`'s KLV (Recipe 1 only): its `make_klv()`
  *   writes the 16-byte ST 0601 Universal Label + a BER length byte, but
@@ -160,50 +169,43 @@
 
 /* ── SIGINT state ─────────────────────────────────────────────────────────
  *
- * Same shape as `recv_rtp.c`'s cancel pattern, applied to the managed SRT
- * family. `tst_managed_demux_receiver_cancel` is documented (see
- * tstrans.h) as a side-channel operation — no Mutex acquisition, just a
- * socket close — which is what makes calling it DIRECTLY from the signal
- * handler body reasonable here, unlike an arbitrary tst-c entry point.
+ * POSIX restricts a signal handler to a small set of async-signal-safe
+ * operations (see `signal-safety(7)`) — an arbitrary tst-c entry point is
+ * NOT on that list. `tst_managed_demux_receiver_cancel` runs Rust's
+ * `catch_unwind` panic boundary, a trait-object virtual call, and
+ * ultimately a libsrt socket close; none of that is async-signal-safe,
+ * so calling it directly from a signal handler body (as an earlier
+ * version of this example did) is undefined behavior under POSIX even
+ * though it happened to work in practice on this platform. The fix: the
+ * handler does the ONE thing `sig_atomic_t` + `volatile` guarantees is
+ * safe — set a flag — and nothing else. No `_cancel`, no `printf`, no
+ * `fprintf`.
+ *
+ * That alone would leave `_recv_event` blocked indefinitely on an idle
+ * stream (it has no per-call timeout by default), so the flag would go
+ * unread until the next packet arrives — which may be never. The main
+ * loop instead checks the flag FROM MAIN (not from signal context) and
+ * only THEN calls `_cancel`, via `cancel_if_shutdown_requested` (see its
+ * doc below) — checked after every delivered event (bounds Ctrl-C
+ * latency to about one inter-event gap on a BUSY stream) and on every
+ * `?x-recvtimeout=<ms>` expiry (see `url_with_recv_timeout` below; bounds
+ * it on an IDLE stream, where there's no event to hang the check off of).
+ * Both are needed — see `cancel_if_shutdown_requested`'s doc for why
+ * relying on the timeout alone leaves a busy stream unresponsive.
+ *
+ * A production consumer (or the Swift wrapper this example is written
+ * for) that wants near-instant cancellation regardless of traffic would
+ * instead run a small control thread that calls `_cancel` directly once
+ * notified — that IS a safe pattern (lock-free, callable from any normal
+ * thread — just not from a signal handler), and is the real shape a
+ * cross-thread Swift cancellation API would use. This example uses
+ * polling instead because it needs no extra thread.
  * ---------------------------------------------------------------------- */
-static volatile tst_managed_demux_receiver_t *g_receiver = NULL;
 static volatile sig_atomic_t g_shutdown_requested = 0;
 
 static void on_sigint(int sig) {
     (void) sig;
     g_shutdown_requested = 1;
-
-    /*
-     * Why call cancel from the signal handler instead of just setting a
-     * flag the main loop polls?
-     *   `tst_managed_demux_receiver_recv_event` blocks indefinitely (no
-     *   per-call timeout unless `?x-recvtimeout=<ms>` was set on the URL).
-     *   A flag-only handler would leave the blocked thread parked until
-     *   the NEXT packet arrives, which may be never. `_cancel` closes the
-     *   underlying socket, which unblocks a thread parked in `_recv_event`
-     *   within about one libsrt I/O cycle (roughly 3-10 ms) regardless of
-     *   whether more data ever shows up.
-     *
-     *   `_cancel` is safe to call here specifically because it is
-     *   lock-free and callable from any thread/context — it does not
-     *   acquire the data-path mutex that a concurrent `_recv_event` may be
-     *   holding, and it performs no heap allocation. `_close`, by
-     *   contrast, DOES acquire that mutex and then frees the handle — it
-     *   is NOT safe to call from here (or from any thread racing a
-     *   blocked `_recv_event`): see the cancel→close ordering note above
-     *   `main()`'s cleanup step below.
-     *
-     *   The cast drops `volatile`; safe because `tst_managed_demux_receiver_cancel`
-     *   is documented **Idempotent** (tstrans.h) — a second Ctrl-C, a
-     *   re-sent SIGINT, or this handler re-entering before the first call
-     *   returns are all fine, not just the single-call case. `signal()`
-     *   doesn't block SIGINT for the handler's own duration on Linux (it
-     *   isn't SA_RESTART/BSD semantics), so re-entrancy here is a real
-     *   possibility this relies on the library's guarantee for, not an
-     *   assumption we get to make ourselves. The handle's lifetime spans
-     *   all of `main()`, so the pointer itself stays valid regardless.
-     */
-    tst_managed_demux_receiver_cancel((tst_managed_demux_receiver_t *) g_receiver);
 }
 
 /* ── small formatting helpers ────────────────────────────────────────────── */
@@ -490,6 +492,78 @@ static void print_reconnect_discontinuity(const tst_event_t *ev) {
             event_tag(ev->kind));
 }
 
+/* ── shutdown-flag → cancel bridge ───────────────────────────────────────── */
+
+/*
+ * If SIGINT has been requested, call `_cancel` now. Safe to call here
+ * because this only ever runs on the main thread (from the recv loop
+ * below), never from on_sigint itself — see that handler's doc for why
+ * that distinction matters. Lock-free and idempotent, so it's fine to
+ * call this more than once as the flag stays set across iterations.
+ *
+ * Checked from TWO call sites in the recv loop, not just one:
+ *   - after EVERY delivered event (rc == 0) — this is what makes Ctrl-C
+ *     responsive on a BUSY stream. `?x-recvtimeout` (see
+ *     url_with_recv_timeout) only fires when `_recv_event` would
+ *     otherwise have nothing to return; under continuous traffic (e.g.
+ *     Recipe 2's 30fps stream, an event every ~33ms) it may never
+ *     expire at all, so relying on it alone would leave Ctrl-C
+ *     unresponsive for the ENTIRE duration of a busy stream — verified
+ *     empirically this session before this second call site was added.
+ *   - on every `?x-recvtimeout` expiry (TST_E_BUFFER_FULL) — this is
+ *     what makes Ctrl-C responsive on an IDLE stream, where there is no
+ *     event to hang the check off of.
+ */
+static void cancel_if_shutdown_requested(tst_managed_demux_receiver_t *rx) {
+    if (g_shutdown_requested) {
+        tst_managed_demux_receiver_cancel(rx);
+    }
+}
+
+/* ── URL helper: guarantee a responsive Ctrl-C ───────────────────────────── */
+
+/*
+ * Return a malloc'd copy of `url` with `x-recvtimeout=<timeout_ms>`
+ * appended to its query string (`?x-recvtimeout=` if `url` has no query
+ * string yet, `&x-recvtimeout=` if it already does) — UNLESS `url`
+ * already sets `x-recvtimeout` itself, in which case a plain copy is
+ * returned so the caller's own value wins.
+ *
+ * Why this example adds it unconditionally: the on_sigint handler above
+ * cannot safely call `_cancel` (or anything else) from signal context, so
+ * responsive Ctrl-C depends entirely on `_recv_event` returning on its
+ * own periodically so the main loop can poll `g_shutdown_requested`. This
+ * key is what makes that happen — see `TST_E_BUFFER_FULL` in the recv
+ * loop below for the other half of the mechanism.
+ *
+ * Caller must free() the returned pointer.
+ */
+static char *url_with_recv_timeout(const char *url, int timeout_ms) {
+    if (strstr(url, "x-recvtimeout") != NULL) {
+        size_t len = strlen(url) + 1;
+        char *out = malloc(len);
+        if (!out) {
+            fprintf(stderr, "out of memory building URL\n");
+            exit(1);
+        }
+        memcpy(out, url, len);
+        return out;
+    }
+
+    const char *sep = (strchr(url, '?') != NULL) ? "&" : "?";
+    /* strlen("x-recvtimeout=") + up to 10 digits for a 32-bit ms value +
+     * NUL; snprintf truncation is not a concern at this size but the
+     * buffer is sized to fit the actual formatted result exactly. */
+    size_t needed = strlen(url) + strlen(sep) + strlen("x-recvtimeout=") + 11 + 1;
+    char *out = malloc(needed);
+    if (!out) {
+        fprintf(stderr, "out of memory building URL\n");
+        exit(1);
+    }
+    snprintf(out, needed, "%s%sx-recvtimeout=%d", url, sep, timeout_ms);
+    return out;
+}
+
 /* ── main ─────────────────────────────────────────────────────────────────── */
 
 static void print_usage(const char *prog) {
@@ -514,12 +588,21 @@ int main(int argc, char **argv) {
     const char *url = argv[1];
 
     /* Install the handler before opening the receiver — there must be
-     * no window where Ctrl-C can't reach a cancel. signal() (not
+     * no window where Ctrl-C can't at least set the flag. signal() (not
      * sigaction) matches recv_rtp.c's convention for this crate's C
      * examples; its one-shot-reset-to-SIG_DFL quirk on some platforms
-     * doesn't matter here because g_shutdown_requested plus the single
-     * `_cancel` call are all we need. */
+     * doesn't matter here because the handler only ever writes
+     * g_shutdown_requested, never re-arms or touches signal disposition
+     * itself. */
     signal(SIGINT, on_sigint);
+
+    /*
+     * See url_with_recv_timeout's doc above: this is what makes Ctrl-C
+     * responsive now that on_sigint can't call `_cancel` itself. 500ms
+     * is short enough for a responsive Ctrl-C without meaningfully
+     * increasing the `_recv_event` wakeup rate under normal traffic.
+     */
+    char *url_buf = url_with_recv_timeout(url, 500);
 
     /*
      * `policy = NULL` selects the library's default `tst_reconnect_policy_t`
@@ -533,21 +616,16 @@ int main(int argc, char **argv) {
      * comment's "Caller mode vs listener mode" section for why there's no
      * separate `_open_listener` branch here.
      */
-    tst_managed_demux_receiver_t *rx = tst_managed_demux_receiver_open(url, NULL);
+    tst_managed_demux_receiver_t *rx = tst_managed_demux_receiver_open(url_buf, NULL);
     if (!rx) {
         fprintf(stderr,
                 "tst_managed_demux_receiver_open(\"%s\") failed: %s\n",
-                url,
+                url_buf,
                 tst_get_last_error_str());
+        free(url_buf);
         return 1;
     }
-
-    /* Publish for the signal handler. Not mutex-guarded: SIGINT cannot
-     * arrive before this store retires in practice (the handler was
-     * installed above, but the process has not yet received any signal),
-     * and `volatile` stops the compiler from hoisting the handler's read
-     * across it. */
-    g_receiver = rx;
+    free(url_buf);
 
     fprintf(stderr, "opened: %s\n", url);
     fprintf(stderr, "waiting for events. Press Ctrl-C to stop.\n");
@@ -603,6 +681,36 @@ int main(int argc, char **argv) {
                     break;
             }
             fflush(stdout);
+            /* See cancel_if_shutdown_requested's doc above: checking
+             * here (not just on TST_E_BUFFER_FULL below) is what keeps
+             * Ctrl-C responsive while the stream is actively busy. */
+            cancel_if_shutdown_requested(rx);
+            continue;
+        }
+
+        if (rc == TST_E_BUFFER_FULL) {
+            /*
+             * `?x-recvtimeout` expiry (see url_with_recv_timeout above) —
+             * RETRYABLE, not an error: the transport is alive, this call
+             * simply had no event ready within the deadline. This is the
+             * periodic wakeup that keeps Ctrl-C responsive on an IDLE
+             * stream (see cancel_if_shutdown_requested's doc above for
+             * why the rc==0 call site above ALSO exists — this one alone
+             * is not enough under continuous traffic).
+             *
+             * `continue` rather than breaking here: the NEXT
+             * `_recv_event` call is what actually observes the
+             * now-cancelled transport (once cancel_if_shutdown_requested
+             * has called `_cancel`) and returns `TST_E_CLOSED`, which is
+             * also the point at which the library records the CANCELLED
+             * end-reason (see `tst_managed_demux_receiver_end_reason`'s
+             * doc) — breaking here directly, without that follow-up
+             * call, would leave the end-reason unrecorded (still NONE).
+             * Falling through to the existing `TST_E_CLOSED` branch below
+             * reuses that already-correct exit path instead of
+             * duplicating it.
+             */
+            cancel_if_shutdown_requested(rx);
             continue;
         }
 
@@ -624,6 +732,16 @@ int main(int argc, char **argv) {
             break;
         }
         if (rc == TST_E_CLOSED) {
+            /* Reached the call after cancel_if_shutdown_requested (see
+             * its doc above) has called `_cancel` from the main thread —
+             * from either call site (the rc==0 or TST_E_BUFFER_FULL
+             * branch above). The `g_shutdown_requested ? " (SIGINT)"` tag
+             * below is accurate because that's currently the only caller
+             * of `_cancel` in this example — kept as its own branch
+             * rather than folded into either call site because it is
+             * also the generic exit point for ANY cross-thread `_cancel`
+             * caller (e.g. a control-thread canceller, per the doc above
+             * `on_sigint`). */
             fprintf(stderr,
                     "\nreceiver cancelled%s; %" PRIu64 " events received\n",
                     g_shutdown_requested ? " (SIGINT)" : "",
@@ -656,17 +774,19 @@ int main(int argc, char **argv) {
      * `_close`.
      *
      * cancel-then-close, not close-from-the-handler: `_cancel` (called
-     * from `on_sigint` above) only closes the underlying socket and is
-     * safe to race a blocked `_recv_event` — that's the whole point of
-     * it being lock-free. `_close`, by contrast, acquires the data-path
-     * mutex and then frees the allocation; calling it while another
-     * thread might still be inside `_recv_event` is a use-after-free
-     * race. The safe sequence, which this file follows end to end, is:
-     * signal handler calls `_cancel` (async-signal-path, any thread) →
-     * the blocked `_recv_event` call in the loop above wakes with
-     * `TST_E_CLOSED` and the loop `break`s → only THEN, back on the main
-     * thread that owns the handle, do we read end-reason and `_close`.
-     * `_close` is never called from the signal handler.
+     * from the TST_E_BUFFER_FULL branch above, on the main thread) only
+     * closes the underlying socket and is safe to race a blocked
+     * `_recv_event` — that's the whole point of it being lock-free.
+     * `_close`, by contrast, acquires the data-path mutex and then frees
+     * the allocation; calling it while another thread might still be
+     * inside `_recv_event` is a use-after-free race. The safe sequence,
+     * which this file follows end to end, is: the signal handler sets
+     * `g_shutdown_requested` ONLY (async-signal-safe) → the main thread's
+     * next `?x-recvtimeout` wakeup observes the flag and calls `_cancel`
+     * itself → the FOLLOWING `_recv_event` call wakes with `TST_E_CLOSED`
+     * and the loop `break`s → only THEN do we read end-reason and
+     * `_close`. Neither `_cancel` nor `_close` is ever called from the
+     * signal handler — see `on_sigint`'s doc above for why that matters.
      */
     enum tst_stream_end_reason reason = TST_STREAM_END_REASON_NONE;
     int er_rc = tst_managed_demux_receiver_end_reason(rx, &reason);

@@ -1,0 +1,4 @@
+module TSTrans {
+    header "tstrans.h"
+    export *
+}

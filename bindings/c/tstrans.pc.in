@@ -6,5 +6,5 @@ includedir=${prefix}/include
 Name: tstrans
 Description: C ABI for the tstrans sender pipeline (MPEG-TS + KLV over SRT)
 Version: @VERSION@
-Libs: -L${libdir} -ltstrans -lpthread -lstdc++ -ldl -lm
+Libs: -L${libdir} -ltstrans -lpthread @PLATFORM_LIBS@ -lm
 Cflags: -I${includedir}

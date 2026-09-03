@@ -75,9 +75,14 @@ build_slice() {
   echo "  inputs: libtstrans.a + $(printf '%s ' "${native_libs[@]##*/}")"
   # Sanity: architecture + that our C ABI symbols and libsrt's are both present.
   lipo -info "${out_dir}/libtstrans.a" 2>/dev/null | sed 's/^/  arch: /' || true
-  local tst_syms srt_syms
-  tst_syms="$(nm -gjU "${out_dir}/libtstrans.a" 2>/dev/null | grep -c '_tst_' || true)"
-  srt_syms="$(nm -gjU "${out_dir}/libtstrans.a" 2>/dev/null | grep -c '_srt_' || true)"
+  # `nm -g` lists external symbols; a defined C function shows as ` T _name`.
+  # Match on the ` T ` type letter (LLVM and BSD nm agree on it) rather than
+  # -U/-j, whose meaning differs across nm variants (that ambiguity made an
+  # earlier `-gjU` check count zero on a lib that DID contain the symbols).
+  local nm_out tst_syms srt_syms
+  nm_out="$(nm -g "${out_dir}/libtstrans.a" 2>/dev/null || true)"
+  tst_syms="$(printf '%s\n' "$nm_out" | grep -cE ' T _tst_' || true)"
+  srt_syms="$(printf '%s\n' "$nm_out" | grep -cE ' T _srt_' || true)"
   echo "  symbols: tst_*=${tst_syms} srt_*=${srt_syms}"
   [ "${tst_syms}" -gt 0 ] || die "no _tst_* symbols in merged lib for $slice"
   [ "${srt_syms}" -gt 0 ] || die "no _srt_* symbols in merged lib for $slice (libsrt did not link)"

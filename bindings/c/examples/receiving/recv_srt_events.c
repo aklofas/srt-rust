@@ -193,10 +193,15 @@ static void on_sigint(int sig) {
      *   blocked `_recv_event`): see the cancel→close ordering note above
      *   `main()`'s cleanup step below.
      *
-     *   The cast drops `volatile`; safe because `_cancel` is called
-     *   exactly once per process lifetime from this handler (SIGINT is
-     *   typically delivered once during interactive Ctrl-C use) and the
-     *   handle's lifetime spans all of `main()`.
+     *   The cast drops `volatile`; safe because `tst_managed_demux_receiver_cancel`
+     *   is documented **Idempotent** (tstrans.h) — a second Ctrl-C, a
+     *   re-sent SIGINT, or this handler re-entering before the first call
+     *   returns are all fine, not just the single-call case. `signal()`
+     *   doesn't block SIGINT for the handler's own duration on Linux (it
+     *   isn't SA_RESTART/BSD semantics), so re-entrancy here is a real
+     *   possibility this relies on the library's guarantee for, not an
+     *   assumption we get to make ourselves. The handle's lifetime spans
+     *   all of `main()`, so the pointer itself stays valid regardless.
      */
     tst_managed_demux_receiver_cancel((tst_managed_demux_receiver_t *) g_receiver);
 }

@@ -66,20 +66,37 @@ fn native_sanitizer_cflags() -> Option<String> {
 /// the crate emits (cmake takes the last `-D`), and pins the correct values.
 ///
 /// The whole body is gated on `target.contains("apple-ios")`, so linux / macos
-/// / windows builds are completely unaffected. Only reachable on a macOS host
-/// with the iOS SDK (Apple cross-compilation cannot run off a Mac).
+/// / windows builds are completely unaffected. The gate is on the TARGET triple,
+/// not the host — Apple cross-compilation only actually works on a macOS host
+/// with the Xcode iOS SDK, so we fail early with a clear message if an
+/// `apple-ios` target is attempted from a non-Darwin host rather than letting
+/// cmake fail obscurely on a missing SDK.
 fn apply_apple_ios(cfg: &mut cmake::Config, target: &str) {
     if !target.contains("apple-ios") {
         return;
     }
-    // `aarch64-apple-ios-sim` → simulator SDK; `aarch64-apple-ios` → device SDK.
-    let sysroot = if target.ends_with("-sim") {
+    let host = env::var("HOST").unwrap_or_default();
+    assert!(
+        host.contains("apple-darwin"),
+        "cross-compiling to {target} needs a macOS host with the Xcode iOS SDK \
+         (HOST={host}); Apple cross-compilation cannot run on this platform"
+    );
+    // Simulator SDK for the `-sim` triples AND for `x86_64-apple-ios` (there is
+    // no x86_64 iOS *device*, so that triple is a simulator); device SDK otherwise.
+    let sysroot = if target.ends_with("-sim") || target.starts_with("x86_64-apple-ios") {
         "iphonesimulator"
     } else {
         "iphoneos"
     };
+    // CMAKE_OSX_ARCHITECTURES uses Apple arch names — map Rust's `aarch64` → `arm64`;
+    // `x86_64` is already the Apple name. Derived from the target, not hard-coded,
+    // so future non-arm64 iOS slices configure correctly.
+    let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default().as_str() {
+        "aarch64" => "arm64".to_string(),
+        other => other.to_string(),
+    };
     cfg.define("CMAKE_SYSTEM_NAME", "iOS")
-        .define("CMAKE_OSX_ARCHITECTURES", "arm64")
+        .define("CMAKE_OSX_ARCHITECTURES", arch.as_str())
         .define("CMAKE_OSX_SYSROOT", sysroot)
         // A conservative floor; raise via the build script if a consumer needs
         // a newer minimum. Bitcode is intentionally left off (removed from the

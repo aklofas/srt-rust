@@ -84,7 +84,17 @@ fn apply_apple_ios(cfg: &mut cmake::Config, target: &str) {
         // A conservative floor; raise via the build script if a consumer needs
         // a newer minimum. Bitcode is intentionally left off (removed from the
         // toolchain in Xcode 14+).
-        .define("CMAKE_OSX_DEPLOYMENT_TARGET", "13.0");
+        .define("CMAKE_OSX_DEPLOYMENT_TARGET", "13.0")
+        // In cross-compile mode (which CMAKE_SYSTEM_NAME triggers) CMake
+        // re-roots find_library/find_path/find_package into the SDK sysroot
+        // and, by default, IGNORES CMAKE_PREFIX_PATH — so libsrt's
+        // `find_package(MbedTLS)` (CMakeLists.txt:394) can't see the vendored
+        // mbedTLS we just built + pointed CMAKE_PREFIX_PATH at, and configure
+        // fails "Could NOT find MbedTLS". `...MODE_*=BOTH` makes find_* search
+        // the host prefix AND the sysroot, so our private mbedTLS is found.
+        .define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "BOTH")
+        .define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH")
+        .define("CMAKE_FIND_ROOT_PATH_MODE_PACKAGE", "BOTH");
 }
 
 /// Build the vendored mbedTLS to a private install prefix.

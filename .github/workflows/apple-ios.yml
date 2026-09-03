@@ -10,6 +10,15 @@ name: apple-ios
 
 on:
   workflow_dispatch:
+  # Also validate on any PR that touches the Apple build tooling — the
+  # spike must be proven on a real macOS runner before merge, and a
+  # `workflow_dispatch`-only workflow can't be dispatched until it's on the
+  # default branch. Scoped to the Apple paths so it never burdens unrelated
+  # PRs (the expensive macos-14 job stays off the normal push/PR path).
+  pull_request:
+    paths:
+      - "scripts/apple/**"
+      - ".github/workflows/apple-ios.yml"
 
 permissions:
   contents: read

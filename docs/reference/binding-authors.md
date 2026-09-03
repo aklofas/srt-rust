@@ -411,6 +411,41 @@ baseline (by design)" for the full rationale.
         RTSP-converted path); deadline expiry surfaces as the existing
         `TST_E_BUFFER_FULL` (-4), retryable — the same code SRT's
         recv-deadline expiry already returns to C consumers.
+    - `21` — Apple/VideoToolbox-consumer surface (three independent
+      additions, all additive — no existing symbol, signature, or struct
+      layout changed):
+      - **ST 0601 decode:** opaque `TstSt0601` (owned decode result) +
+        `tst_st0601_decode` / `_geometry` / `_get_f64` / `_get_u64` /
+        `_state` / `_free`. `TstSt0601FieldState` enum (`Present = 0`,
+        `Absent = 1`, `Sentinel = 2` for the MISB `INT_MIN` absent-value
+        convention, `ImapbSpecial = 3` for an ST 1201.5 IMAPB special
+        [±infinity / NaN / `BelowMin` / `AboveMax`], `WrongType = 4`
+        returned only by the typed getters, never by `tst_st0601_state`
+        itself) reports per-tag presence; `TstSt0601Geometry` is a
+        `#[repr(C)]` struct bundling the common
+        lat/lon/alt/heading/pitch/roll/hfov accessor group (each field
+        paired with its own `_state` byte) behind one call. Two new
+        error codes: `TstError::WrongType` (-47, a typed accessor called
+        against a tag whose mapped field has a different native Rust
+        type — the getter refuses a lossy cast) and `TstError::KlvDecode`
+        (-48, `tst_st0601_decode` structural-parse failure; message
+        carries `KlvDecodeError`'s `Display`, every variant collapsing
+        to this one code).
+      - **Annex-B / parameter-set helpers:** `tst_annexb_to_length_prefixed`
+        (Annex-B start-code NAL stream → caller-provided length-prefixed
+        output buffer, `length_size`-configurable) + opaque `TstParamSets`
+        with `tst_param_sets_extract` / `_count` / `_get` / `_free`
+        (SPS/PPS/VPS extraction from a parameter-set NAL stream).
+      - **Managed-receiver lifecycle:** `tst_managed_demux_receiver_end_reason`
+        (`TST_HAS_SRT`) reuses the existing (ABI 20) `TstStreamEndReason`
+        enum rather than adding a new one — `crate::receiver::demux_receiver::managed`
+        gained a `convert_recv_end_reason` mapping `tst-pipeline`'s own
+        `RecvEndReason` (new Rust-side type, `tst-pipeline`'s recv
+        analogue of `tst_rtp::StreamEndReason`) onto the shared C enum.
+        `tst_managed_demux_receiver_get_reconnect_stats` (`TST_HAS_SRT`)
+        likewise reuses the existing `tst_managed_transport_stats_t`
+        struct from ABI 20. `tst_demux_config_set_unwrap_timestamps`
+        (unconditional) is a new demuxer-config setter.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 

@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 20` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 21` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -262,6 +262,22 @@
  *   `TST_E_BUFFER_FULL` / `TST_E_INVALID_CONFIG` / `TST_E_TOO_LARGE` /
  *   `TST_E_NOT_FOUND`. Unconditional module, matching Task 7. See
  *   `bindings/c/core/src/codec_framing.rs`.
+ *
+ *   Task 9 (same arc, additive within `21` — no further bump): managed
+ *   SRT demux-receiver lifecycle parity, both `TST_HAS_SRT`-gated —
+ *   `tst_managed_demux_receiver_end_reason` reuses the existing (ABI
+ *   20) `TstStreamEndReason` enum via a new
+ *   `tst-pipeline`-side `RecvEndReason` type (the recv analogue of
+ *   `tst_rtp::StreamEndReason`, mapped onto the shared C enum by
+ *   `convert_recv_end_reason`) rather than adding a new one, and
+ *   `tst_managed_demux_receiver_get_reconnect_stats` reuses the
+ *   existing `tst_managed_transport_stats_t` struct from ABI 20,
+ *   closing the send/recv asymmetry both left open. Also
+ *   `tst_demux_config_set_unwrap_timestamps` (unconditional, no
+ *   feature gate), a new demuxer-config setter. No new C types or
+ *   error codes. See
+ *   `bindings/c/core/src/receiver/demux_receiver/managed.rs` and
+ *   `bindings/c/core/src/demux_config.rs`.
  */
 #define TST_ABI_VERSION_MINOR 21
 
@@ -1356,6 +1372,13 @@ typedef struct tst_muxer_t tst_muxer_t;
  * [`tst_param_sets_extract`] — see [`nal_framing::extract_parameter_sets`].
  * Immutable once built; no separate `_close`, only
  * [`tst_param_sets_free`].
+ *
+ * Deliberately a bare `Box<ParameterSets>`, *not* the crate's
+ * mutex-backed `Handle<T>` that [`crate::klv_st0601::TstSt0601`] uses —
+ * `ParameterSets` has no mutation surface and no `_close`, so there is
+ * nothing for a `Handle`'s lock to protect; a plain `Box` is the
+ * simpler choice, equally sound for a handle that is only ever read
+ * then freed.
  */
 typedef struct tst_param_sets_t tst_param_sets_t;
 

@@ -5565,8 +5565,18 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  * the bare-transport layer is semantically end-of-stream). The managed
  * version does NOT apply that mapping: `ManagedRecvTransport`
  * already retries internally on Broken, so a Broken that reaches this
- * function means all reconnect attempts have been exhausted — that is
- * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
+ * function is the inner-cancel-mutex-poisoned path — a hard transport
+ * failure (`TST_E_TRANSPORT`), not an end-of-stream.
+ *
+ * **Reconnect budget exhaustion is a different path, and it is NOT
+ * `TST_E_TRANSPORT`:** when the configured reconnect policy gives up,
+ * `ManagedRecvTransport` latches its inner transport `Closed` (the same
+ * state a clean peer close leaves it in — SRT cannot tell "peer hung up"
+ * from "peer never came back" at this layer), and this function returns
+ * `TST_E_END_OF_STREAM`, exactly like a clean end of stream. This family
+ * has no end-reason getter (that's demux-only), so a clean teardown and
+ * a give-up-after-retries are indistinguishable from this return value
+ * alone.
  */
 int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *out_packet);
 #endif
@@ -5802,8 +5812,18 @@ struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open_listener(const 
  * the bare-transport layer is semantically end-of-stream). The managed
  * version does NOT apply that mapping: `ManagedRecvTransport`
  * already retries internally on Broken, so a Broken that reaches this
- * function means all reconnect attempts have been exhausted — that is
- * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
+ * function is the inner-cancel-mutex-poisoned path — a hard transport
+ * failure (`TST_E_TRANSPORT`), not an end-of-stream.
+ *
+ * **Reconnect budget exhaustion is a different path, and it is NOT
+ * `TST_E_TRANSPORT`:** when the configured reconnect policy gives up,
+ * `ManagedRecvTransport` latches its inner transport `Closed` (the same
+ * state a clean peer close leaves it in — SRT cannot tell "peer hung up"
+ * from "peer never came back" at this layer), and this function returns
+ * `TST_E_END_OF_STREAM`, exactly like a clean end of stream. This family
+ * has no end-reason getter (that's demux-only), so a clean teardown and
+ * a give-up-after-retries are indistinguishable from this return value
+ * alone.
  */
 
 int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,

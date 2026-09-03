@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Verify that bindings/c/include/tstrans.h has between 7 and 10 section
-# dividers (// ─── NAME ──────) and that every divider name is unique.
+# Verify that bindings/c/include/tstrans.h has between 7 and 10 sections,
+# marked by `// ─── NAME ──────` dividers, and that every divider name is
+# unique.
 #
 # Plan B's add_section_dividers post-process is specified to emit 7
 # required sections (INTROSPECTION, MUX SENDER, TS SENDER, RAW SENDER,

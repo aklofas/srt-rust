@@ -198,10 +198,19 @@ fn u64_field(ls: &UasDatalinkLs, tag: u32) -> Option<u64> {
 /// no getter-type context (see [`TstSt0601FieldState::WrongType`]'s
 /// doc).
 fn compute_state(ls: &UasDatalinkLs, tag: u32) -> TstSt0601FieldState {
-    let present = match field_kind(tag) {
-        Some(FieldKind::U64) => u64_field(ls, tag).is_some(),
-        Some(FieldKind::F64) => f64_field(ls, tag).is_some(),
-        None => false,
+    // A tag outside the C contract table is unconditionally `Absent` —
+    // `sentinel_tags`/`imapb_specials` are only meaningful for tags this
+    // module maps (see `TstSt0601FieldState::Absent`'s doc and the module
+    // doc's "Three-way None preservation" section). Gating here, before
+    // either side-channel is consulted, is what keeps an unmapped tag
+    // Absent even when `ls` happens to carry it in one of those Vecs.
+    let kind = match field_kind(tag) {
+        Some(k) => k,
+        None => return TstSt0601FieldState::Absent,
+    };
+    let present = match kind {
+        FieldKind::U64 => u64_field(ls, tag).is_some(),
+        FieldKind::F64 => f64_field(ls, tag).is_some(),
     };
     if present {
         return TstSt0601FieldState::Present;
@@ -619,21 +628,15 @@ pub unsafe extern "C" fn tst_st0601_state(p: *const TstSt0601, tag: u32) -> TstS
         let Some(handle) = (unsafe { p.as_ref() }) else {
             return TstSt0601FieldState::Absent;
         };
-        // Handle::with_inner_ref's closure must return i32 (the crate's
-        // handle-lifecycle rc convention) — encode the state as its own
-        // discriminant and decode it back below. This reuses
-        // with_inner_ref's Closed/poisoned-mutex/panic handling (all of
-        // which fall through to the `_ => Absent` arm) rather than
-        // re-implementing lock + panic isolation here.
-        let code = handle
+        // `with_inner_ref_silent` (unlike `with_inner_ref`) never calls
+        // `set_last_error`/`record_panic_caught` on its closed/panic
+        // paths — required for this function's "never touches the
+        // last-error channel" contract above to actually hold on a
+        // closed handle (only reachable after a prior caught panic, see
+        // this type's doc — it has no separate `_close`).
+        handle
             .inner
-            .with_inner_ref(|ls| compute_state(ls, tag) as i32);
-        match code {
-            0 => TstSt0601FieldState::Present,
-            2 => TstSt0601FieldState::Sentinel,
-            3 => TstSt0601FieldState::ImapbSpecial,
-            _ => TstSt0601FieldState::Absent,
-        }
+            .with_inner_ref_silent(TstSt0601FieldState::Absent, |ls| compute_state(ls, tag))
     })
 }
 
@@ -779,6 +782,30 @@ mod tests {
         assert_eq!(state, TstSt0601FieldState::Absent);
 
         unsafe { tst_st0601_free(p) };
+    }
+
+    /// Regression for the compute_state gate order: a tag NOT in the C
+    /// contract table (`field_kind` returns `None`) must report `Absent`
+    /// even when the underlying `UasDatalinkLs` happens to carry it in
+    /// `sentinel_tags` / `imapb_specials` — those side-channels are only
+    /// meaningful for tags this module maps. Hand-built rather than via a
+    /// real decode: no fixture naturally carries an unmapped tag in
+    /// either Vec (a real ST 0601 decode only ever populates them for
+    /// tags the model type knows about), so this constructs the
+    /// otherwise-impossible-via-decode case directly to exercise the
+    /// gate.
+    #[test]
+    fn state_absent_for_unmapped_tag_even_when_in_sentinel_or_imapb() {
+        let mut ls = tst_core::UasDatalinkLs::default();
+        // Tag 1 (checksum) is not in the C contract table (see
+        // `field_kind`); tag 200 is not a real ST 0601 tag at all,
+        // covering both "unmapped but real" and "unmapped and bogus".
+        ls.sentinel_tags.push(1);
+        ls.imapb_specials
+            .push((200, tst_core::klv::imapb::ImapbSpecial::PositiveInfinity));
+
+        assert_eq!(compute_state(&ls, 1), TstSt0601FieldState::Absent);
+        assert_eq!(compute_state(&ls, 200), TstSt0601FieldState::Absent);
     }
 
     #[test]

@@ -86,7 +86,7 @@ build_slice() {
 
   # 3. Extract each rlib's object files into its own subdir (object names collide
   #    across rlibs otherwise), skipping rlib metadata members (*.rmeta / lib.rmeta).
-  local objroot; objroot="$(mktemp -d "${APPLE_OUT%/}/.objs-${slice}.XXXXXX")"
+  local objroot; objroot="$(mktemp -d)"  # scratch (default TMPDIR); removed below
   local -a objs=()
   local i=0 o
   for r in "${rlibs[@]}"; do

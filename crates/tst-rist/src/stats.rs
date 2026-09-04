@@ -184,6 +184,14 @@ pub(crate) extern "C" fn stats_trampoline(
 /// Create the shared stats accumulator and register the librist stats callback
 /// on `ctx`.
 ///
+/// Call this BEFORE `rist_start`. librist >= 0.2.20's protocol thread re-reads
+/// the stats interval lock-free on every loop tick (deliberately, so a
+/// late registration takes effect), while `rist_stats_callback_set` writes it
+/// under librist's `stats_lock` — registering after the thread is running is
+/// a data race (TSan-caught on the 2026-08-31 nightly, 4 tst-rist loopback
+/// tests). Pre-start registration is also how every librist reference tool
+/// orders it; the interval propagates to receiver flows created later.
+///
 /// Returns `(arc, raw)`: store `arc` in the transport for [`stats()`] snapshots,
 /// and reclaim `raw` (`Arc::from_raw`) EXACTLY ONCE in `close()` AFTER
 /// `rist_destroy` (which joins the protocol thread, so no callback can be in
@@ -197,7 +205,8 @@ pub(crate) fn register_stats_callback(
 ) -> (Arc<Mutex<RistStats>>, *mut c_void) {
     let stats = Arc::new(Mutex::new(RistStats::default()));
     let stats_arg = Arc::into_raw(stats.clone()) as *mut c_void;
-    // SAFETY: ctx is a started rist_ctx; stats_arg is a live leaked Arc ref that
+    // SAFETY: ctx is a live rist_ctx (created, not yet started — see the doc
+    // above); stats_arg is a live leaked Arc ref that
     // outlives registration (reclaimed only at close, after rist_destroy).
     let _rc = unsafe {
         rist_sys::rist_stats_callback_set(ctx, STATS_INTERVAL_MS, Some(stats_trampoline), stats_arg)

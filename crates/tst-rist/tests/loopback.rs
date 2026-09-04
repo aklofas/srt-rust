@@ -134,6 +134,23 @@ fn simple_profile_unicast_loopback_round_trip() {
             &got[..8.min(got.len())]
         );
     }
+
+    // The stats callback is registered before rist_start (see
+    // stats::register_stats_callback for why the order matters); prove it
+    // still fires from that position by polling until librist's 1 s report
+    // cadence has counted the sends. Bounded wait, not a timing assertion.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let s = send.stats();
+        if s.packets_sent >= 1 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "sender stats never populated after the round trip: {s:?}"
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 #[cfg(feature = "mbedtls")]

@@ -56,6 +56,15 @@ race:tokio::runtime::io::scheduled_io
 # https://github.com/aklofas/ts-transformer/actions/runs/32334048232
 # Remove/re-test: on any librist bump — delete this block, dispatch
 # tsan-native, re-add only what re-fires.
+# 2026-09-03 re-test on librist 0.2.20 (the 0.2.20 bump, PR #168, skipped
+# this step): local tsan-native build with the block deleted, after the
+# tst-rist register-before-start fix — classes 1 + 2 re-fire (3 reports:
+# rist_receiver_recv_data rist-common.c:642 vs receiver_pthread_dataout
+# rist-common.c:4538; ctx_del/evsocket_destroy libevsocket.c:92/352 vs
+# the evsocket_create mutex init), class 3 did not fire in that run but
+# is timing-dependent — block kept whole. The race that was NEW in
+# 0.2.20 (sender_pthread_protocol vs rist_stats_callback_set) was a
+# tst-rist call-order bug, fixed in code, deliberately NOT suppressed.
 race:rist_receiver_recv_data
 race:rist_receiver_associate_flow
 race:receiver_pthread_dataout

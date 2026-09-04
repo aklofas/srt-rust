@@ -27,7 +27,13 @@
 //! ports (no cross-test port contention) and are written with generous
 //! tolerances (or no wall-clock assertion at all) rather than tight
 //! timing checks, so ordinary CPU contention from sibling tests shouldn't
-//! flake them. `outage_windows_produce_periodic_gaps` is the one with
+//! flake them. (`transparent_relay_preserves_order_and_bytes` DID flake
+//! under macOS runner load in 2026-08/09 — its original fixed 3s windows
+//! vs. a sleep-paced send loop, see its own comment — and is now
+//! sender-completion-driven with an explicitly stopped proxy: THAT is
+//! the deterministic shape to copy, rather than promoting a test into
+//! the `network` group to hide a wall-clock dependency.)
+//! `outage_windows_produce_periodic_gaps` is the one with
 //! any real wall-clock-shape assertion (gap counts between arrivals) —
 //! if it's ever observed to flake under load, promoting it into the
 //! `network` group (rename to include e.g. `round_trip`, or add a
@@ -43,6 +49,8 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -110,7 +118,9 @@ fn send_with_retry(
 /// Spawn `proxy::run` on its own thread and block until it reports its
 /// bound listen address via `on_bound` — the in-process bound-address
 /// discovery these tests use instead of parsing the CLI's stdout JSON
-/// line.
+/// line. Also returns the proxy's stop flag: set it to end the relay
+/// promptly once a test's traffic is done (tests that simply wait out
+/// `run_seconds` ignore it).
 fn spawn_proxy(
     listen: SocketAddr,
     forward: SocketAddr,
@@ -120,24 +130,30 @@ fn spawn_proxy(
 ) -> (
     SocketAddr,
     thread::JoinHandle<Result<proxy::ProxyStats, String>>,
+    Arc<AtomicBool>,
 ) {
     let (tx, rx) = mpsc::channel();
-    let handle = thread::spawn(move || {
-        proxy::run(
-            listen,
-            forward,
-            cfg,
-            stats_json,
-            Some(run_seconds),
-            Some(Box::new(move |addr| {
-                let _ = tx.send(addr);
-            })),
-        )
-    });
+    let stop = Arc::new(AtomicBool::new(false));
+    let handle = {
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || {
+            proxy::run(
+                listen,
+                forward,
+                cfg,
+                stats_json,
+                Some(run_seconds),
+                Some(Box::new(move |addr| {
+                    let _ = tx.send(addr);
+                })),
+                Some(stop),
+            )
+        })
+    };
     let bound = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("proxy must report its bound address via on_bound");
-    (bound, handle)
+    (bound, handle, stop)
 }
 
 /// Transparent mode (`ImpairConfig::default()`, i.e. loss/dup/reorder/
@@ -152,12 +168,23 @@ fn transparent_relay_preserves_order_and_bytes() {
         .expect("set_read_timeout");
     let dest_addr = dest_sock.local_addr().expect("destination local_addr");
 
-    let (proxy_addr, proxy_handle) = spawn_proxy(
+    // The proxy is stopped explicitly (`proxy_stop`, below) the moment
+    // the receiver is done, so `run_seconds` here is only a safety net
+    // against a wedged test — NOT a window the traffic has to fit inside.
+    // This test's original shape (proxy window 3s, receiver deadline 3s,
+    // both fixed before the first send) was its macOS CI flake: 4
+    // failures in 2026-08-31..09-04, every one pure tail loss (492-497
+    // of 500, in order). The 500 x 500us pacing sleeps below oversleep
+    // to a full scheduler timeslice on a loaded runner, the send loop
+    // overran 3s, and whichever window expired first truncated the
+    // tail. Reproduced locally by widening the pace to 6.5ms/packet:
+    // 458/500, same shape.
+    let (proxy_addr, proxy_handle, proxy_stop) = spawn_proxy(
         "127.0.0.1:0".parse().unwrap(),
         dest_addr,
         ImpairConfig::default(),
         None,
-        3,
+        30,
     );
 
     let payloads: Vec<Vec<u8>> = (0..500u32)
@@ -173,11 +200,32 @@ fn transparent_relay_preserves_order_and_bytes() {
     // outage-window test's own note for the closely related "arrival
     // timing gets destroyed by batch-draining" failure mode this same
     // pattern avoids).
+    //
+    // The receiver's end condition is derived from the SENDER, not the
+    // wall clock: it reads until it has every packet, or until the
+    // sender has been finished for `TAIL_GRACE` (the in-flight tail has
+    // had that long to land). `SAFETY_CAP` only bounds a genuinely
+    // broken relay so the failure is a clear message, not a hang.
+    let (send_done_tx, send_done_rx) = mpsc::channel::<Instant>();
     let receiver = thread::spawn(move || {
+        const TAIL_GRACE: Duration = Duration::from_secs(2);
+        const SAFETY_CAP: Duration = Duration::from_secs(20);
+        let started = Instant::now();
         let mut received = Vec::with_capacity(expected_count);
         let mut buf = [0u8; 256];
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while received.len() < expected_count && Instant::now() < deadline {
+        let mut send_done_at: Option<Instant> = None;
+        while received.len() < expected_count {
+            if send_done_at.is_none() {
+                send_done_at = send_done_rx.try_recv().ok();
+            }
+            if send_done_at.is_some_and(|t| t.elapsed() >= TAIL_GRACE) {
+                break;
+            }
+            assert!(
+                started.elapsed() < SAFETY_CAP,
+                "receiver hit its {SAFETY_CAP:?} safety cap with {}/{expected_count} packets",
+                received.len()
+            );
             match dest_sock.recv(&mut buf) {
                 Ok(n) => received.push(buf[..n].to_vec()),
                 Err(e)
@@ -191,26 +239,42 @@ fn transparent_relay_preserves_order_and_bytes() {
         received
     });
 
-    // A small per-send pace (500us -> ~250ms total for 500 packets)
-    // rather than firing all 500 in a zero-delay tight loop: this
-    // single-threaded proxy's recv/decide/send loop has real per-packet
-    // syscall + scheduling overhead, and an instantaneous burst this
-    // size can outrun it fast enough to overflow the LISTEN socket's own
-    // kernel receive buffer before the proxy ever gets scheduled to
-    // drain it — genuine UDP behavior, not a proxy bug, but not what
-    // this test means to exercise either (it's checking transparent-mode
+    // A small per-send pace (500us/packet, ~250ms total) rather than
+    // firing all 500 in a zero-delay tight loop: this single-threaded
+    // proxy's recv/decide/send loop has real per-packet syscall +
+    // scheduling overhead, and an instantaneous burst this size can
+    // outrun it fast enough to overflow the LISTEN socket's own kernel
+    // receive buffer before the proxy ever gets scheduled to drain it —
+    // genuine UDP behavior, not a proxy bug, but not what this test
+    // means to exercise either (it's checking transparent-mode
     // byte/order fidelity, not this crate's raw burst throughput
     // ceiling).
+    //
+    // Paced against an ABSOLUTE schedule (the outage-window test's
+    // pattern), sleeping only while ahead of it: a late wakeup is
+    // absorbed by the following iterations instead of accumulating, so
+    // the whole send phase is bounded by ~250ms plus real syscall time —
+    // never 500 x (however far one sleep overshoots on a loaded runner).
+    const PACE: Duration = Duration::from_micros(500);
     let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender socket");
-    for p in &payloads {
+    let send_start = Instant::now();
+    for (i, p) in payloads.iter().enumerate() {
         sender
             .send_to(p, proxy_addr)
             .expect("send datagram to proxy");
-        thread::sleep(Duration::from_micros(500));
+        let target = PACE * (i as u32 + 1);
+        let elapsed = send_start.elapsed();
+        if target > elapsed {
+            thread::sleep(target - elapsed);
+        }
     }
+    let _ = send_done_tx.send(Instant::now());
 
-    let received = join_with_timeout(receiver, Duration::from_secs(10));
+    let received = join_with_timeout(receiver, Duration::from_secs(25));
 
+    // Everything the receiver was ever going to see has landed (or the
+    // grace expired): end the proxy now and collect its stats.
+    proxy_stop.store(true, Ordering::Relaxed);
     let stats =
         join_with_timeout(proxy_handle, Duration::from_secs(10)).expect("proxy::run must succeed");
 
@@ -237,7 +301,7 @@ fn spoofed_third_party_datagram_does_not_hijack_the_return_path() {
         .expect("set_read_timeout");
     let dest_addr = dest_sock.local_addr().expect("destination local_addr");
 
-    let (proxy_addr, proxy_handle) = spawn_proxy(
+    let (proxy_addr, proxy_handle, _proxy_stop) = spawn_proxy(
         "127.0.0.1:0".parse().unwrap(),
         dest_addr,
         ImpairConfig::default(),
@@ -322,7 +386,7 @@ fn client_relearns_after_a_genuine_quiet_period() {
         .expect("set_read_timeout");
     let dest_addr = dest_sock.local_addr().expect("destination local_addr");
 
-    let (proxy_addr, proxy_handle) = spawn_proxy(
+    let (proxy_addr, proxy_handle, _proxy_stop) = spawn_proxy(
         "127.0.0.1:0".parse().unwrap(),
         dest_addr,
         ImpairConfig::default(),
@@ -432,7 +496,7 @@ fn outage_windows_produce_periodic_gaps() {
         outage_dur_s: 1,
         ..ImpairConfig::default()
     };
-    let (proxy_addr, proxy_handle) = spawn_proxy(
+    let (proxy_addr, proxy_handle, _proxy_stop) = spawn_proxy(
         "127.0.0.1:0".parse().unwrap(),
         dest_addr,
         cfg,
@@ -591,7 +655,7 @@ fn unwritable_stats_path_does_not_fail_the_relay() {
         "the whole point of this test is that this directory does NOT exist"
     );
 
-    let (proxy_addr, proxy_handle) = spawn_proxy(
+    let (proxy_addr, proxy_handle, _proxy_stop) = spawn_proxy(
         "127.0.0.1:0".parse().unwrap(),
         dest_addr,
         ImpairConfig::default(),
@@ -663,7 +727,7 @@ fn srt_round_trip_through_lossy_proxy_recovers_via_retransmission() {
         ..ImpairConfig::default()
     };
     let forward_addr: SocketAddr = format!("127.0.0.1:{listener_port}").parse().unwrap();
-    let (proxy_addr, proxy_handle) =
+    let (proxy_addr, proxy_handle, _proxy_stop) =
         spawn_proxy("127.0.0.1:0".parse().unwrap(), forward_addr, cfg, None, 15);
 
     let send_url = format!("srt://127.0.0.1:{}", proxy_addr.port());

@@ -35,7 +35,16 @@ fn oversized_content_length_gets_413_response() {
 
     let mut tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
     tcp.set_nodelay(true).unwrap();
+    // BOTH timeouts are set right after connect, before the first write
+    // (all three tests in this file). The server closes the connection as
+    // soon as it rejects a header block, and on macOS a setsockopt on a
+    // socket the peer has already reset fails with EINVAL (the protocol
+    // control block is gone) — setting the read timeout only AFTER the
+    // request/junk write was this file's CI flake (3x on macos-arm64 in
+    // 2026-08-31..09-04, every one `set_read_timeout` -> "Invalid
+    // argument" within ~10ms, i.e. the 413+close had already landed).
     tcp.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
 
     // Send the malicious request: OPTIONS with a 2 GB declared body.
     let request = b"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\nContent-Length: 2000000000\r\n\r\n";
@@ -53,7 +62,6 @@ fn oversized_content_length_gets_413_response() {
 
     // Now read the server's response. Expect a 413 status line
     // (or at minimum, a closed connection = EOF or reset).
-    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let start = Instant::now();
     let mut response_buf = Vec::with_capacity(512);
     let mut got_413 = false;
@@ -143,6 +151,7 @@ fn valid_large_body_request_is_accepted() {
     let mut tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
     tcp.set_nodelay(true).unwrap();
     tcp.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
 
     // OPTIONS with a 100 KiB body. The server tolerates (ignores) the body
     // and returns 200 OK with a Public header. 100 KiB > 64 KiB header cap
@@ -156,7 +165,6 @@ fn valid_large_body_request_is_accepted() {
     request.extend_from_slice(&body);
     tcp.write_all(&request).unwrap();
 
-    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let mut response_buf = Vec::with_capacity(512);
     loop {
         let mut chunk = [0u8; 256];
@@ -197,6 +205,7 @@ fn over_cap_body_request_gets_413() {
     let mut tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
     tcp.set_nodelay(true).unwrap();
     tcp.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
 
     // Content-Length = 1 MiB + 1, just over MAX_RTSP_BODY_BYTES. The full
     // header block terminates immediately (CRLFCRLF present), so the server
@@ -205,7 +214,6 @@ fn over_cap_body_request_gets_413() {
     let request = format!("OPTIONS * RTSP/1.0\r\nCSeq: 1\r\nContent-Length: {over}\r\n\r\n");
     tcp.write_all(request.as_bytes()).unwrap();
 
-    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let mut response_buf = Vec::with_capacity(512);
     let mut got_413 = false;
     let mut got_close = false;

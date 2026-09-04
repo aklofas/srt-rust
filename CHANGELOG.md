@@ -105,8 +105,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tst-rist loopback tests). Registration now precedes `rist_start`, the
   order librist's own tools use; a `rist_start` failure now also
   reclaims the callback's leaked `Arc` ref instead of leaking it. No
-  API or behavior change for callers — stats populate exactly as before
-  (now covered by a loopback assertion).
+  API or behavior change for callers; the callback was verified to fire
+  from the new position by instrumenting it in a local loopback run
+  (`RistStats` has no public observable for callback execution on a
+  lossless loopback — its inline counters are exact regardless).
 - **C docs: managed-receiver budget-exhaustion contract.** The module
   doc and `tst_managed_demux_receiver_recv_event` (plus the sibling
   `tst_managed_receiver_recv_packet` / `tst_managed_raw_receiver_recv`)

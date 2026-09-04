@@ -667,7 +667,7 @@ fn run_proxy(args: &[String]) -> ! {
         outage_dur_s,
     };
 
-    match proxy::run(listen, forward, cfg, stats_json, run_seconds, None) {
+    match proxy::run(listen, forward, cfg, stats_json, run_seconds, None, None) {
         Ok(stats) => {
             eprintln!(
                 "proxy: forwarded={} dropped={} duped={} reordered={}",

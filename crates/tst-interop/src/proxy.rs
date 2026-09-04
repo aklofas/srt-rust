@@ -85,6 +85,8 @@ use std::collections::BinaryHeap;
 use std::io::ErrorKind;
 use std::net::{SocketAddr, UdpSocket};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -317,6 +319,13 @@ fn write_stats_atomic(path: &Path, stats: &ProxyStats) -> Result<(), String> {
 /// right after bind) with the same address — the in-process alternative
 /// this crate's own tests use instead of parsing stdout (spawn `run` on
 /// a thread, learn the bound port from the callback via a channel).
+///
+/// `stop`, if given, ends the relay on the next poll tick (within
+/// `RECV_POLL`) once set — the in-process way a test ends a proxy the
+/// moment its traffic is done instead of waiting out `run_seconds` or,
+/// worse, racing it (`run_seconds` then serves purely as a safety net).
+/// Queued delayed packets are flushed exactly as on the `run_seconds`
+/// exit.
 pub fn run(
     listen: SocketAddr,
     forward: SocketAddr,
@@ -324,6 +333,7 @@ pub fn run(
     stats_json: Option<PathBuf>,
     run_seconds: Option<u64>,
     on_bound: Option<Box<dyn FnOnce(SocketAddr) + Send>>,
+    stop: Option<Arc<AtomicBool>>,
 ) -> Result<ProxyStats, String> {
     let socket = UdpSocket::bind(listen).map_err(|e| format!("proxy bind {listen}: {e}"))?;
     socket
@@ -369,6 +379,12 @@ pub fn run(
             if Instant::now() >= dl {
                 break;
             }
+        }
+        if stop
+            .as_ref()
+            .is_some_and(|s| s.load(AtomicOrdering::Relaxed))
+        {
+            break;
         }
 
         match socket.recv_from(&mut buf) {

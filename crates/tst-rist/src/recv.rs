@@ -149,19 +149,28 @@ impl RistRecvTransport {
             // ctx_guard drops here → rist_destroy(ctx)
         }
 
+        // Register the librist stats callback BEFORE rist_start (interval,
+        // leak-one-Arc-ref + reclaim-at-close contract live in
+        // stats::register_stats_callback). The order is load-bearing: librist
+        // >= 0.2.20's protocol thread re-reads the stats interval lock-free on
+        // every tick, so registering once that thread is running is a data
+        // race (TSan-caught on the 2026-08-31 nightly). librist's own tools
+        // register before start too.
+        let (stats, stats_arg) = crate::stats::register_stats_callback(ctx);
+
         // ===== Start the session =====
         let rc = unsafe { rist_sys::rist_start(ctx) };
         if rc != 0 {
+            // Mirror close(): rist_destroy first (no protocol thread ever ran,
+            // so no callback can be in flight), then reclaim the leaked Arc
+            // ref exactly once — there is no Self for close() to do it.
+            drop(ctx_guard);
+            unsafe { drop(Arc::from_raw(stats_arg as *const Mutex<RistStats>)) };
             return Err(RistError::Ffi {
                 code: rc,
                 function: "rist_start",
             });
-            // ctx_guard drops here → rist_destroy(ctx)
         }
-
-        // Register the librist stats callback (interval, leak-one-Arc-ref +
-        // reclaim-at-close contract live in stats::register_stats_callback).
-        let (stats, stats_arg) = crate::stats::register_stats_callback(ctx);
 
         // All setup succeeded — ctx ownership transfers to Self; disarm the guard.
         ctx_guard.disarm();

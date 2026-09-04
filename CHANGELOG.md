@@ -96,6 +96,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **tst-rist: stats callback registered before `rist_start`.** Both
+  `RistTransport` and `RistRecvTransport` registered the librist stats
+  callback *after* starting the session. librist 0.2.20's protocol
+  thread re-reads the stats interval lock-free on every tick, so that
+  order was a data race against the already-running thread (caught by
+  the nightly TSan job on the first run after the 0.2.20 bump; four
+  tst-rist loopback tests). Registration now precedes `rist_start`, the
+  order librist's own tools use; a `rist_start` failure now also
+  reclaims the callback's leaked `Arc` ref instead of leaking it. No
+  API or behavior change for callers — stats populate exactly as before
+  (now covered by a loopback assertion).
 - **C docs: managed-receiver budget-exhaustion contract.** The module
   doc and `tst_managed_demux_receiver_recv_event` (plus the sibling
   `tst_managed_receiver_recv_packet` / `tst_managed_raw_receiver_recv`)

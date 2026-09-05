@@ -351,7 +351,7 @@ jobs:
         run: bash scripts/check/repo/fixture-hashes.sh
 
       - name: Check cross-binding scenario fixtures (generated golden drift)
-        # Runs gen_scenarios --check to ensure committed fixture goldens match
+        # Runs gen-scenarios --check to ensure committed fixture goldens match
         # what the current tst-core produces. Source-text + Rust check only;
         # gated to linux-x86_64 (cross-platform runners would add no signal
         # and the mux/demux output is platform-independent).
@@ -535,7 +535,7 @@ jobs:
         #
         # Exit 0 = all 3 scenarios matched committed goldens (C ABI parity).
         # Exit non-zero = C adapter output diverged from a golden — signals a
-        # real C-binding bug or a golden that needs regeneration via gen_scenarios.
+        # real C-binding bug or a golden that needs regeneration via gen-scenarios.
         #
         # Linux-only: libtstrans.so is a Linux cdylib (macOS/Windows use dylib/dll);
         # gcc + LD_LIBRARY_PATH conventions are Linux-specific in this step.

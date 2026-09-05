@@ -15,7 +15,7 @@ import org.tstrans.CodecParseException;
 
 class H266Test {
     // Hand-crafted minimal H.266 fixtures — the exact bytes the tst_core Rust
-    // unit tests + gen_h266_fixtures feed (crates/tst-core/tests/fixtures/codec/
+    // unit tests + gen-h266-fixtures feed (crates/tst-core/tests/fixtures/codec/
     // h266/h266_320x240_main10_{sps,vps,pps}.bin). 320x240 Main10 profile,
     // level 4.0 (63), 8-bit 4:2:0, no VUI / no timing_hrd. Asserted values
     // reused verbatim from codec/h266/tests/sps.rs and vps.rs / pps.rs.

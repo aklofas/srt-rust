@@ -7,7 +7,7 @@
 //!   p95    > 100 ms
 //!
 //! Usage:
-//!     cargo run -p tst-core --bin measure_pcr_jitter -- <input.ts>
+//!     cargo run -p tst-core --bin measure-pcr-jitter -- <input.ts>
 //!
 //! PCR extraction is inlined (parse_ts_packet is pub(super); the
 //! relevant bits are documented at ISO/IEC 13818-1 §2.4.3.4 / §2.4.3.5).

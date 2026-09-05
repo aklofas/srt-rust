@@ -1,8 +1,8 @@
 //! Generate hand-crafted AV1 OBU fixtures for unit tests.
-//! Run via `cargo run -p tst-core --bin gen_av1_fixtures`.
+//! Run via `cargo run -p tst-core --bin gen-av1-fixtures`.
 //!
 //! Fixtures land at `crates/tst-core/tests/fixtures/codec/av1/`. Same
-//! hand-crafting rationale as gen_h266_fixtures.
+//! hand-crafting rationale as gen-h266-fixtures.
 
 use std::fs;
 use std::path::{Path, PathBuf};

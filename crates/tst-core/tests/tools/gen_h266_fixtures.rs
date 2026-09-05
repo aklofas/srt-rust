@@ -1,5 +1,5 @@
 //! Generate hand-crafted H.266 parameter-set fixtures for unit tests.
-//! Run via `cargo run -p tst-core --bin gen_h266_fixtures`.
+//! Run via `cargo run -p tst-core --bin gen-h266-fixtures`.
 //!
 //! Fixtures land at `crates/tst-core/tests/fixtures/codec/h266/`. Tests
 //! load them and assert the parsed fields. Hand-crafting is preferred

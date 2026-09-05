@@ -8,7 +8,7 @@
 //! the muxer must work to emit these, and the resulting fixtures
 //! then guard against future regressions in either side (mux + demux).
 //!
-//! Run: `cargo run -p tst-core --bin gen_subtitle_fixtures -- <output-dir>`.
+//! Run: `cargo run -p tst-core --bin gen-subtitle-fixtures -- <output-dir>`.
 //! `regen.sh` invokes this with the fixtures dir as argv[1].
 //!
 //! Payloads are intentionally synthetic — none of these contain real

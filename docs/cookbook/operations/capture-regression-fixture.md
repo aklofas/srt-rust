@@ -10,7 +10,7 @@ When the gitignored corpus surfaces a parser or demuxer bug, preserve a
 minimal reproducer as a committed regression test:
 
 ```bash
-cargo run -p tst-core --bin corpus_to_fixture -- \
+cargo run -p tst-core --bin corpus-to-fixture -- \
   --input ~/path/to/sensitive_sample.ts \
   --pid 0x1011 \
   --packets 1000..2000 \

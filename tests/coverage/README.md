@@ -38,7 +38,7 @@ the three adapters run in these places (the `c`/`python` cargo features on
 empty — the C/Python adapters live in their own crates' test/example surfaces):
 
 - **Rust adapter** — `crates/tst-integration/tests/rust_scenarios.rs`; runs in the
-  default workspace test (Tier A) + `scripts/check/repo/scenarios.sh` (`gen_scenarios
+  default workspace test (Tier A) + `scripts/check/repo/scenarios.sh` (`gen-scenarios
   --check`) guards golden/manifest drift.
 - **C adapter** — `bindings/c/examples/scenarios/run_scenarios.c`; compiled +
   run against `libtstrans` in a dedicated linux-x86_64 CI step.

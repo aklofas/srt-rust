@@ -58,7 +58,7 @@ const H266_SPS_RBSP: &[u8] =
 
 /// Synthetic AV1 Sequence Header OBU payload (Main profile, 320×240, 8-bit
 /// 4:2:0). These 10 bytes come from the fixture generator
-/// (`gen_av1_fixtures`) and are the same bytes used by
+/// (`gen-av1-fixtures`) and are the same bytes used by
 /// `codec::av1::sequence_header` unit tests.
 const AV1_SEQ_HDR: &[u8] =
     include_bytes!("../tests/fixtures/codec/av1/av1_320x240_main_seq_header.bin");

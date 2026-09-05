@@ -1,5 +1,5 @@
 //! Generate synthetic ST 0601 fixture files into tests/fixtures/st0601/.
-//! Run via: `cargo run -p tst-core --bin gen_synthetic_fixtures`.
+//! Run via: `cargo run -p tst-core --bin gen-synthetic-fixtures`.
 //! Idempotent — running it again produces byte-identical output.
 
 #![allow(clippy::field_reassign_with_default)]

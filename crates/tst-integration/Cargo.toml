@@ -4,7 +4,13 @@ version.workspace = true
 edition = "2024"
 rust-version = "1.85"
 publish = false
-description = "Cross-binding scenario harness: golden-envelope contract + scenarios that the Rust, Python, and C adapters all reproduce byte-for-byte, with a gen_scenarios --check drift rail. Not for external consumption."
+description = "Cross-binding scenario harness: golden-envelope contract + scenarios that the Rust, Python, and C adapters all reproduce byte-for-byte, with a gen-scenarios --check drift rail. Not for external consumption."
+
+# Kebab-case target name (cargo::non_kebab_case_bins) over an unchanged
+# src/bin/ file, so the path the privacy rail scans stays put.
+[[bin]]
+name = "gen-scenarios"
+path = "src/bin/gen_scenarios.rs"
 
 [features]
 default = []

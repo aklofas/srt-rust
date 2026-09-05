@@ -8,7 +8,7 @@
 //! logic + the demuxer's wrap-handling.
 //!
 //! Usage:
-//!     cargo run -p tst-core --bin gen_pts_rollover_fixture -- <output.ts> [duration_secs]
+//!     cargo run -p tst-core --bin gen-pts-rollover-fixture -- <output.ts> [duration_secs]
 
 use std::env;
 use std::fs::File;

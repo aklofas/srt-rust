@@ -75,7 +75,7 @@ harness = false
 # Not part of the published library surface — they live under tests/tools/ and
 # regenerate the fixtures consumed by integration tests.
 [[bin]]
-name  = "gen_synthetic_fixtures"
+name  = "gen-synthetic-fixtures"
 required-features = ["std"]
 path  = "tests/tools/gen_synthetic_fixtures.rs"
 test  = false
@@ -83,7 +83,7 @@ bench = false
 doc   = false
 
 [[bin]]
-name  = "gen_subtitle_fixtures"
+name  = "gen-subtitle-fixtures"
 required-features = ["std"]
 path  = "tests/tools/gen_subtitle_fixtures.rs"
 test  = false
@@ -91,7 +91,7 @@ bench = false
 doc   = false
 
 [[bin]]
-name  = "gen_h266_fixtures"
+name  = "gen-h266-fixtures"
 required-features = ["std"]
 path  = "tests/tools/gen_h266_fixtures.rs"
 test  = false
@@ -99,7 +99,7 @@ bench = false
 doc   = false
 
 [[bin]]
-name  = "gen_av1_fixtures"
+name  = "gen-av1-fixtures"
 required-features = ["std"]
 path  = "tests/tools/gen_av1_fixtures.rs"
 test  = false
@@ -107,7 +107,7 @@ bench = false
 doc   = false
 
 [[bin]]
-name  = "gen_pts_rollover_fixture"
+name  = "gen-pts-rollover-fixture"
 required-features = ["std"]
 path  = "tests/tools/gen_pts_rollover_fixture.rs"
 test  = false
@@ -115,7 +115,7 @@ bench = false
 doc   = false
 
 [[bin]]
-name  = "measure_pcr_jitter"
+name  = "measure-pcr-jitter"
 required-features = ["std"]
 path  = "tests/tools/measure_pcr_jitter.rs"
 test  = false
@@ -123,19 +123,19 @@ bench = false
 doc   = false
 
 [[bin]]
-name  = "corpus_to_fixture"
+name  = "corpus-to-fixture"
 required-features = ["std"]
 path  = "tests/tools/corpus_to_fixture.rs"
 
 [[bin]]
-name  = "strip_conformance_parameter_sets"
+name  = "strip-conformance-parameter-sets"
 required-features = ["std"]
 path  = "tests/tools/strip_conformance_parameter_sets.rs"
 bench = false
 doc   = false
 
 [[bin]]
-name  = "trace_h265_sps"
+name  = "trace-h265-sps"
 required-features = ["std"]
 path  = "tests/tools/trace_h265_sps.rs"
 test  = false

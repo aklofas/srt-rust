@@ -53,7 +53,7 @@ test uses exactly this fixture to verify both halves.
 ```
 
 Wrapper around `SRT_FORCE_VENDORED=1 cargo run -p tst-core --bin
-gen_subtitle_fixtures --release -- <this-dir>`. Idempotent —
+gen-subtitle-fixtures --release -- <this-dir>`. Idempotent —
 running it again produces byte-identical output (the muxer's PSI
 cadence + continuity counters are deterministic when no real-time
 clock is involved).

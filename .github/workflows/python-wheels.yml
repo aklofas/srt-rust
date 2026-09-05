@@ -105,6 +105,11 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           working-directory: bindings/python
           args: --release --out dist --features rtp,srt,udp,tcp,hls,rist,tls
+          # The container runs as root by design; without this every pip
+          # call inside it — ours below AND the action's own (it pip-installs
+          # cffi in the rust-cross aarch64 image) — prints pip's "Running pip
+          # as the 'root' user" warning. Env, not a flag, so it reaches both.
+          docker-options: -e PIP_ROOT_USER_ACTION=ignore
           before-script-linux: |
             # The manylinux base image is minimal: unlike the GitHub-hosted
             # ubuntu/macOS/windows runners it ships NO clang/libclang, which
@@ -128,10 +133,8 @@ jobs:
             # package installs the binary as `ninja` — RHEL's `ninja-build`
             # package names it `ninja-build`, which rist-sys's `which("ninja")`
             # check would miss (the x86_64 image happens to also ship `ninja`).
-            # --root-user-action=ignore: the container runs as root by design;
-            # without it pip prints its "Running pip as the 'root' user" warning.
-            python3 -m pip install --upgrade --root-user-action=ignore meson ninja \
-              || pip3 install --upgrade --root-user-action=ignore meson ninja
+            python3 -m pip install --upgrade meson ninja \
+              || pip3 install --upgrade meson ninja
             # aarch64 is cross-compiled inside the x86_64 manylinux container.
             # The cmake C build uses the cross gcc fine, but srt-sys/rist-sys's
             # bindgen runs clang with host include paths and can't find the

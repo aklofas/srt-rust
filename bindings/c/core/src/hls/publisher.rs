@@ -667,8 +667,10 @@ unsafe fn write_cstr_to_buf(s: &str, buf: *mut c_char, buf_len: usize) -> libc::
     }
     // SAFETY: buf is valid for buf_len bytes (caller contract) and
     // bytes.len() + 1 <= buf_len from the guard above.
+    // `.cast()` rather than `as *mut u8`: `c_char` is `u8` on linux-aarch64,
+    // where that `as` is a same-type cast clippy rejects (`unnecessary_cast`).
     unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
         *buf.add(bytes.len()) = 0;
     }
     bytes.len() as libc::c_int

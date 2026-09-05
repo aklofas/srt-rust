@@ -42,10 +42,18 @@ ARDIR=$(cd "$(dirname "$AR")" && pwd)
 INC=$(cd bindings/c/include && pwd)
 
 echo "==> compiling + linking firmware.elf"
+# -z noexecstack: newlib's crtn.o ships without a .note.GNU-stack section, and
+# binutils >= 2.39 warns "missing .note.GNU-stack section implies executable
+# stack" whenever it has to infer the stack flags. Stating them explicitly is
+# a no-op for a bare-metal image and silences the (deprecated-behaviour) warning.
+# --no-warn-rwx-segments: the same binutils release also warns when a LOAD
+# segment is RWX, which mps2_an386.ld's single flash+RAM image is by design
+# (toolchains built with the warning enabled — e.g. xPack 14.x — show it;
+# Ubuntu's arm-none-eabi build does not).
 ( cd "$FW" && arm-none-eabi-gcc \
     -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
     -Os -ffunction-sections -fdata-sections --specs=nano.specs --specs=rdimon.specs \
-    -T mps2_an386.ld -Wl,--gc-sections -I "$INC" \
+    -T mps2_an386.ld -Wl,--gc-sections -Wl,-z,noexecstack -Wl,--no-warn-rwx-segments -I "$INC" \
     startup.c main.c \
     -Wl,--start-group "-L$ARDIR" -ltstrans_firmware -lc -lm -lrdimon -Wl,--end-group \
     -o firmware.elf )

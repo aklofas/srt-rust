@@ -65,6 +65,15 @@ pub(crate) mod c_types {
 // contract is one-handle-per-task (see handle.rs module docs) — the lock
 // exists to satisfy Sync, not to arbitrate cross-task sharing.
 // ---------------------------------------------------------------------------
+// `spin` (this seam) and `critical-section` (the no_std last-error slot in
+// error.rs) are referenced only under no_std, and Cargo cannot express
+// "dependency only when a feature is OFF" — so on std builds they look unused
+// to cargo's (nightly) `unused_dependencies` lint. The conventional
+// `use … as _` marks them as deliberately present.
+#[cfg(feature = "std")]
+use critical_section as _;
+#[cfg(feature = "std")]
+use spin as _;
 #[cfg(not(feature = "std"))]
 pub(crate) mod nostd_mutex {
     //! Single-core no_std lock seam mirroring `std::sync::Mutex`'s surface

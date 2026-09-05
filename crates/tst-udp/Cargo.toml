@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Raw MPEG-TS over UDP (unicast + multicast) for the tstrans pipeline"
-readme = "README.md"
 keywords = ["udp", "multicast", "mpeg-ts", "streaming"]
 categories = ["multimedia::video", "network-programming"]
 

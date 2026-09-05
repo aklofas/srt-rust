@@ -7,7 +7,6 @@ license      = { workspace = true }
 authors      = { workspace = true }
 repository   = { workspace = true }
 description  = "TS Transformer core: pure MPEG-TS mux/demux, KLV (MISB ST 0601), codec parameter-set parsers, and transport trait definitions."
-readme       = "README.md"
 keywords     = ["mpeg-ts", "klv", "misb", "mux", "demux"]
 categories   = ["multimedia::video", "parser-implementations", "no-std"]
 

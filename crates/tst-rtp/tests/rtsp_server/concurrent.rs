@@ -213,7 +213,7 @@ fn unauth_connection_burst_never_exceeds_max_sessions() {
 /// exactly what made the burst test above flake on loaded CI runners —
 /// its 20 ms-cadence poll occasionally landed inside the window when the
 /// accept loop was preempted between the two atomics). The CAS
-/// reservation (`fetch_update`, increment only while below the cap) makes
+/// reservation (compare-exchange loop, increment only while below the cap) makes
 /// the gauge invariant structural: the counter can never exceed the cap,
 /// so this test is deterministic-pass on correct code.
 ///

@@ -7,7 +7,6 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
-readme      = "README.md"
 keywords    = ["mbedtls", "vendored", "source"]
 categories  = ["external-ffi-bindings"]
 exclude = [

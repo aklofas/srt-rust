@@ -19,6 +19,13 @@
 #[cfg(feature = "std")]
 pub(crate) type ShellMutex<T> = std::sync::Mutex<T>;
 
+// `spin` is referenced only by the no_std backend below, and Cargo cannot
+// express "dependency only when a feature is OFF" — so on std builds it looks
+// unused to cargo's (nightly) `unused_dependencies` lint. The conventional
+// `use … as _` marks it as deliberately present.
+#[cfg(feature = "std")]
+use spin as _;
+
 #[cfg(not(feature = "std"))]
 pub(crate) use no_std_impl::ShellMutex;
 

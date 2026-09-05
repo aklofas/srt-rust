@@ -92,7 +92,7 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                         // spawns faster than the spawned tasks get polled to
                         // increment, so every accept read the same low count and
                         // all passed the check, blowing past the cap. The CAS
-                        // reservation (`fetch_update`) only increments while below
+                        // reservation (compare-exchange loop) only increments while below
                         // the cap, so the counter NEVER exceeds `max_sessions`,
                         // even transiently — `stats().active_sessions` reads this
                         // same atomic, and the earlier fetch_add-then-fetch_sub
@@ -103,18 +103,25 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                         // EVERY exit path (including a TLS-handshake failure that
                         // returns before the session loop runs — the leak the old
                         // in-session `fetch_sub` couldn't cover).
-                        // `fetch_update` carries a nightly-only deprecation in
-                        // favor of `try_update`, which is NOT available on the
-                        // pinned 1.85 toolchain — do not migrate until the
-                        // workspace MSRV moves past `try_update`'s
-                        // stabilization (tracked as a dated ROADMAP rider so
-                        // the next toolchain bump doesn't trip clippy here).
-                        let reserved = state
-                            .active_sessions
-                            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                                (n < state.builder.max_sessions).then_some(n + 1)
-                            })
-                            .is_ok();
+                        // Hand-rolled compare-exchange loop rather than
+                        // `fetch_update`: that helper is deprecated on nightly in
+                        // favor of `try_update`, which the pinned 1.85 toolchain
+                        // does not have, and the loop is all `fetch_update` does.
+                        let mut n = state.active_sessions.load(Ordering::Relaxed);
+                        let reserved = loop {
+                            if n >= state.builder.max_sessions {
+                                break false;
+                            }
+                            match state.active_sessions.compare_exchange_weak(
+                                n,
+                                n + 1,
+                                Ordering::Relaxed,
+                                Ordering::Relaxed,
+                            ) {
+                                Ok(_) => break true,
+                                Err(current) => n = current,
+                            }
+                        };
                         if !reserved {
                             tracing::warn!(
                                 target: "tst_rtp::server",

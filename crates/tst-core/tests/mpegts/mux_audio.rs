@@ -77,7 +77,7 @@ fn three_stream_program_audio_video_klv_routing() {
     // Confirm PESs land on the correct PIDs.
     let pids: std::collections::BTreeSet<u16> = buf[..n]
         .chunks_exact(188)
-        .map(|p| (((p[1] as u16 & 0x1F) << 8) | p[2] as u16))
+        .map(|p| ((p[1] as u16 & 0x1F) << 8) | p[2] as u16)
         .collect();
     assert!(pids.contains(&0x100), "video PID present");
     assert!(pids.contains(&0x200), "klv PID present");

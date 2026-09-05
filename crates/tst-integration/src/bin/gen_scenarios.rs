@@ -183,14 +183,14 @@ fn run_check(fixtures_dir: &Path) {
         let committed_re = toml::to_string(&committed_parsed).expect("re-serialise");
         if sha256_hex(fresh_toml.as_bytes()) != sha256_hex(committed_re.as_bytes()) {
             eprintln!(
-                "STALE: scenarios.toml differs\n  committed: {}\nRun `cargo run -p tst-integration --bin gen_scenarios` to update.",
+                "STALE: scenarios.toml differs\n  committed: {}\nRun `cargo run -p tst-integration --bin gen-scenarios` to update.",
                 committed_manifest_path.display()
             );
             drift_found = true;
         }
     } else {
         eprintln!(
-            "MISSING: committed scenarios.toml not found at {}\nRun `cargo run -p tst-integration --bin gen_scenarios` to create it.",
+            "MISSING: committed scenarios.toml not found at {}\nRun `cargo run -p tst-integration --bin gen-scenarios` to create it.",
             committed_manifest_path.display()
         );
         drift_found = true;
@@ -201,7 +201,7 @@ fn run_check(fixtures_dir: &Path) {
 
     if drift_found {
         eprintln!(
-            "\nScenario fixtures are stale.  Run:\n  cargo run -p tst-integration --bin gen_scenarios\nto regenerate them."
+            "\nScenario fixtures are stale.  Run:\n  cargo run -p tst-integration --bin gen-scenarios\nto regenerate them."
         );
         std::process::exit(1);
     }

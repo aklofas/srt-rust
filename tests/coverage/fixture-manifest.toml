@@ -17,13 +17,13 @@
 [[group]]
 root = "crates/tst-core/tests/fixtures/st0601"
 origin = "synthetic"
-generator = "cargo run -p tst-core --bin gen_synthetic_fixtures"
+generator = "cargo run -p tst-core --bin gen-synthetic-fixtures"
 no_private_corpus = true
 
 [[group]]
 root = "crates/tst-core/tests/fixtures/subtitles"
 origin = "synthetic"
-generator = "cargo run -p tst-core --bin gen_subtitle_fixtures (+ fixtures/subtitles/regen.sh)"
+generator = "cargo run -p tst-core --bin gen-subtitle-fixtures (+ fixtures/subtitles/regen.sh)"
 no_private_corpus = true
 
 [[group]]
@@ -35,7 +35,7 @@ no_private_corpus = true
 [[group]]
 root = "crates/tst-core/tests/fixtures/codec/av1"
 origin = "synthetic"
-generator = "cargo run -p tst-core --bin gen_av1_fixtures"
+generator = "cargo run -p tst-core --bin gen-av1-fixtures"
 no_private_corpus = true
 
 [[group]]
@@ -47,7 +47,7 @@ no_private_corpus = true
 [[group]]
 root = "crates/tst-core/tests/fixtures/conformance"
 origin = "derived"
-generator = "cargo run -p tst-core --bin strip_conformance_parameter_sets (RBSP bodies stripped from official ITU-T JVT/JCT-VC/JVET + AOMedia conformance bitstreams; see conformance/manifest.toml for upstream URLs + sha256)"
+generator = "cargo run -p tst-core --bin strip-conformance-parameter-sets (RBSP bodies stripped from official ITU-T JVT/JCT-VC/JVET + AOMedia conformance bitstreams; see conformance/manifest.toml for upstream URLs + sha256)"
 no_private_corpus = true
 
 # Generated inventory of fuzz targets (provenance: our fuzz harnesses).
@@ -59,10 +59,10 @@ no_private_corpus = true
 
 # Cross-binding scenario harness goldens (WS-5). Committed input artifacts +
 # golden.json per scenario + the generated scenarios.toml manifest. Regenerate
-# with the generator below; gen_scenarios --check (scripts/check/repo/scenarios.sh)
+# with the generator below; gen-scenarios --check (scripts/check/repo/scenarios.sh)
 # fails CI if the committed set drifts. Synthetic-only by construction.
 [[group]]
 root = "crates/tst-integration/tests/fixtures/scenarios"
 origin = "synthetic"
-generator = "cargo run -p tst-integration --bin gen_scenarios"
+generator = "cargo run -p tst-integration --bin gen-scenarios"
 no_private_corpus = true

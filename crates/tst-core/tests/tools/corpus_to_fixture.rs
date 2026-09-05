@@ -1,4 +1,4 @@
-//! corpus_to_fixture — extract a minimal TS-packet sub-sequence from a `.ts`
+//! corpus-to-fixture — extract a minimal TS-packet sub-sequence from a `.ts`
 //! file as a committed regression fixture. Optional Rust shim generation.
 //!
 //! See `docs/cookbook/operations/capture-regression-fixture.md` and
@@ -6,7 +6,7 @@
 //!
 //! Usage:
 //!
-//!   cargo run -p tst-core --bin corpus_to_fixture -- \
+//!   cargo run -p tst-core --bin corpus-to-fixture -- \
 //!     --input /path/to/sample.ts \
 //!     --pid 0x1011 \
 //!     --packets 1000..2000 \
@@ -232,10 +232,10 @@ fn emit_shim(args: &Args) -> Result<(), String> {
     // The shim uses Demuxer::feed(&[u8]) which handles sync internally and
     // accepts an arbitrary byte slice — simpler for fixture playback.
     let source = format!(
-        r#"//! Auto-generated regression shim from corpus_to_fixture.
+        r#"//! Auto-generated regression shim from corpus-to-fixture.
 //!
 //! To regenerate after a parser bugfix:
-//!   1. Re-run corpus_to_fixture against the same input + same flags.
+//!   1. Re-run corpus-to-fixture against the same input + same flags.
 //!   2. `cargo test -p tst-core --test regression_{slug}`.
 //!
 //! Add domain-specific assertions below the smoke-test as the bug fix

@@ -64,7 +64,7 @@ static HEAP: Heap = Heap::empty();
 const HEAP_SIZE: usize = 256 * 1024;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-/// Committed, CI-guarded golden produced by `gen_scenarios`. Resolved relative
+/// Committed, CI-guarded golden produced by `gen-scenarios`. Resolved relative
 /// to this file: `embedded/baremetal-qemu/src/` → `../../../crates/tst-integration/...`.
 static GOLDEN: &[u8] =
     include_bytes!("../../../crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");

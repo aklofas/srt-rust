@@ -48,10 +48,10 @@ They live alongside the tests at `crates/tst-core/tests/tools/` and are
 declared as `[[bin]]` targets in `tst-core`:
 
 ```sh
-cargo run -p tst-core --bin gen_synthetic_fixtures
-cargo run -p tst-core --bin gen_subtitle_fixtures -- crates/tst-core/tests/fixtures/subtitles
-cargo run -p tst-core --bin gen_h266_fixtures
-cargo run -p tst-core --bin gen_av1_fixtures
+cargo run -p tst-core --bin gen-synthetic-fixtures
+cargo run -p tst-core --bin gen-subtitle-fixtures -- crates/tst-core/tests/fixtures/subtitles
+cargo run -p tst-core --bin gen-h266-fixtures
+cargo run -p tst-core --bin gen-av1-fixtures
 ```
 
 Re-run them only when the encoder is intentionally changed; commit the

@@ -1,7 +1,7 @@
-corpus_to_fixture — extract a minimal TS-packet sub-sequence as a regression fixture.
+corpus-to-fixture — extract a minimal TS-packet sub-sequence as a regression fixture.
 
 Usage:
-  cargo run -p tst-core --bin corpus_to_fixture -- \
+  cargo run -p tst-core --bin corpus-to-fixture -- \
     --input PATH --out PATH [--pid HEXDEC] [--packets START..END] [--emit-shim]
 
 Required:

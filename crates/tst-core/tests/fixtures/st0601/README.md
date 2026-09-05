@@ -4,7 +4,7 @@ Committed `.klv` fixtures used by `tests/klv_st0601.rs`.
 
 ## Synthetic
 
-Generated via `cargo run -p tst-core --bin gen_synthetic_fixtures`. Re-run any time
+Generated via `cargo run -p tst-core --bin gen-synthetic-fixtures`. Re-run any time
 the encoder is intentionally changed; commit the diff alongside the change.
 
 | File | Description |

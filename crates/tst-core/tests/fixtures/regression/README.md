@@ -9,9 +9,9 @@ or demuxer bug in `tst-core`. Each fixture has:
 
 After capturing a fixture, the workflow is:
 
-1. Run `corpus_to_fixture` against the original (gitignored) `.ts` file:
+1. Run `corpus-to-fixture` against the original (gitignored) `.ts` file:
    ```bash
-   cargo run -p tst-core --bin corpus_to_fixture -- \
+   cargo run -p tst-core --bin corpus-to-fixture -- \
      --input ../path/to/sensitive.ts \
      --pid 0x1011 \
      --packets 1234..5678 \

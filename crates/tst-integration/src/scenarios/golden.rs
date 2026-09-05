@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 /// Root golden envelope.
 ///
-/// Written to `tests/fixtures/scenarios/<id>/golden.json` by `gen_scenarios`.
+/// Written to `tests/fixtures/scenarios/<id>/golden.json` by `gen-scenarios`.
 /// Deserialized and compared struct-equal by the Rust adapter tests.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Golden {

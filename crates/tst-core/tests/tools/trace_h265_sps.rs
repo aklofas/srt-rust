@@ -3,7 +3,7 @@
 //! conformance test suite.
 //!
 //! Usage:
-//!   cargo run -p tst-core --bin trace_h265_sps -- <path-to-sps.bin>
+//!   cargo run -p tst-core --bin trace-h265-sps -- <path-to-sps.bin>
 //!
 //! Output (stdout) is a sequence of lines, one per major SPS field:
 //!   <decimal-bit-position>  <field-name>  <value>
@@ -32,7 +32,7 @@ use tst_core::codec::CodecParseError;
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
-        eprintln!("usage: trace_h265_sps <path-to-sps-rbsp.bin>");
+        eprintln!("usage: trace-h265-sps <path-to-sps-rbsp.bin>");
         return ExitCode::from(2);
     }
     let rbsp = match fs::read(&args[1]) {

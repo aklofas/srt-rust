@@ -9,9 +9,9 @@
 //! for integration tests in the same package, so no recursive
 //! `cargo run` and no PATH lookup are needed.
 //!
-//! The test chains the two binaries: gen_pts_rollover_fixture writes
-//! a tmp .ts, measure_pcr_jitter reads it and asserts cadence.
-//! Chaining is required because measure_pcr_jitter exits non-zero
+//! The test chains the two binaries: gen-pts-rollover-fixture writes
+//! a tmp .ts, measure-pcr-jitter reads it and asserts cadence.
+//! Chaining is required because measure-pcr-jitter exits non-zero
 //! on median > 67ms or p95 > 100ms — running it on an arbitrary
 //! checked-in fixture would be flaky. The muxer-generated output is
 //! guaranteed cadence-clean.
@@ -25,7 +25,7 @@ fn pts_rollover_fixture_passes_pcr_jitter_threshold() {
         std::fs::remove_file(&tmp).expect("clear stale tmp file");
     }
 
-    let gen_bin = env!("CARGO_BIN_EXE_gen_pts_rollover_fixture");
+    let gen_bin = env!("CARGO_BIN_EXE_gen-pts-rollover-fixture");
     let gen_status = Command::new(gen_bin)
         .arg(tmp.to_str().expect("utf-8 tmp path"))
         // The generator's initial PTS is 5s before the 33-bit rollover boundary.
@@ -33,11 +33,11 @@ fn pts_rollover_fixture_passes_pcr_jitter_threshold() {
         // exercise the wrap path on both sides without bloating the fixture.
         .arg("8")
         .status()
-        .expect("spawn gen_pts_rollover_fixture");
+        .expect("spawn gen-pts-rollover-fixture");
 
     assert!(
         gen_status.success(),
-        "gen_pts_rollover_fixture exited non-zero: {gen_status:?}",
+        "gen-pts-rollover-fixture exited non-zero: {gen_status:?}",
     );
     let bytes = std::fs::metadata(&tmp).expect("output exists").len();
     assert!(bytes > 0, "fixture is empty");
@@ -47,11 +47,11 @@ fn pts_rollover_fixture_passes_pcr_jitter_threshold() {
         "fixture is not 188-byte-aligned ({bytes} bytes)"
     );
 
-    let measure_bin = env!("CARGO_BIN_EXE_measure_pcr_jitter");
+    let measure_bin = env!("CARGO_BIN_EXE_measure-pcr-jitter");
     let measure_output = Command::new(measure_bin)
         .arg(&tmp)
         .output()
-        .expect("spawn measure_pcr_jitter");
+        .expect("spawn measure-pcr-jitter");
 
     let cleanup = || {
         std::fs::remove_file(&tmp).ok();
@@ -60,7 +60,7 @@ fn pts_rollover_fixture_passes_pcr_jitter_threshold() {
     if !measure_output.status.success() {
         cleanup();
         panic!(
-            "measure_pcr_jitter exited non-zero on muxer output: {:?}\nstdout: {}\nstderr: {}",
+            "measure-pcr-jitter exited non-zero on muxer output: {:?}\nstdout: {}\nstderr: {}",
             measure_output.status,
             String::from_utf8_lossy(&measure_output.stdout),
             String::from_utf8_lossy(&measure_output.stderr),
@@ -68,7 +68,7 @@ fn pts_rollover_fixture_passes_pcr_jitter_threshold() {
     }
     assert!(
         !measure_output.stdout.is_empty(),
-        "measure_pcr_jitter produced no stdout",
+        "measure-pcr-jitter produced no stdout",
     );
 
     cleanup();

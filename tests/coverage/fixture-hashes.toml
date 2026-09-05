@@ -240,7 +240,7 @@ sha256 = "9cec60336f6fbc2146c2c034176dd9df456bbb79a31ceed6d2f52195f6525d69"
 
 [[file]]
 path = "crates/tst-core/tests/fixtures/subtitles/README.md"
-sha256 = "1835f92b05afd1e38271cb467d8097c0ec2dec72b430b4ffbf92270fb24f8104"
+sha256 = "5cd6c7412e75fa4ce53ca43b1425c57c291c08ed85f24df484b1d74ac4da9b0b"
 
 [[file]]
 path = "crates/tst-core/tests/fixtures/subtitles/cea708_standalone.ts"

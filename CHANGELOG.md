@@ -94,6 +94,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `apple-ios` GitHub Actions workflow (`macos-14`). C-ABI path; the UniFFI
   Swift binding + SPM package remain deferred to `tst-uniffi`.
 
+### Changed
+
+- **Maintainer tool binaries renamed to kebab-case.** The ten `[[bin]]`
+  targets that regenerate or inspect fixtures — `gen-synthetic-fixtures`,
+  `gen-subtitle-fixtures`, `gen-h266-fixtures`, `gen-av1-fixtures`,
+  `gen-pts-rollover-fixture`, `measure-pcr-jitter`, `corpus-to-fixture`,
+  `strip-conformance-parameter-sets`, `trace-h265-sps` (tst-core) and
+  `gen-scenarios` (tst-integration) — were `snake_case`, which nightly
+  cargo's `non_kebab_case_bins` lint now flags on every run. Source files
+  and behavior are unchanged; only the `cargo run --bin <name>` spelling
+  moves. Not part of the library API.
+- **tst-jni builds an `rlib` alongside its `cdylib`** (as tst-py already
+  did), so `cargo test --doc --workspace` no longer warns that doctests
+  are unsupported for the crate. Nothing links the rlib; `libtstjni.so`
+  is the same build.
+- **CI logs are warning-free, and stay that way where the toolchain is
+  pinned.** Every tst-c single-feature combo now also runs
+  `clippy -D warnings`, so feature-subset dead code in the C core fails
+  the build instead of accumulating as warnings (16 such bodies had). The
+  RTSP server's session-cap reserve is a plain compare-exchange loop now
+  (drops nightly's `fetch_update` deprecation without needing `try_update`,
+  which the 1.85 toolchain lacks; behavior identical). The 11 published
+  manifests drop their explicit `readme` keys (cargo infers them), and the
+  GitHub Actions majors moved off the deprecated Node 20 runtime.
+
 ### Fixed
 
 - **tst-rist: stats callback registered before `rist_start`.** Both

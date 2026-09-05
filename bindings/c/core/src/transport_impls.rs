@@ -13,6 +13,10 @@
 //! - This module requires `std` (all transport features gate on it).
 //! - The functions are generic via monomorphization; they do NOT add new
 //!   symbols to the ABI.
+//! - A body consumed by only some transport families carries a `#[cfg]`
+//!   matching exactly those families (and so do the imports only it needs):
+//!   CI runs `clippy -D warnings` per single-feature combo, so an ungated
+//!   body with no caller in that combo is a hard failure, not a warning.
 //!
 //! Organization:
 //! - MuxSender (push/stats)
@@ -22,20 +26,28 @@
 
 use std::sync::Mutex;
 
-use tst_core::mpegts::common::{Pts90khz, TS_PACKET_SIZE};
+use tst_core::mpegts::common::Pts90khz;
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist"))]
+use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_core::transport::{RecvTransport, Transport};
-use tst_pipeline::{
-    DemuxReceiver, ManagedDemuxReceiver, MuxSender, RawReceiver, RawSender, Receiver, Sender,
-    ShellErrorKind,
-};
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist"))]
+use tst_pipeline::ShellErrorKind;
+use tst_pipeline::{DemuxReceiver, MuxSender, Receiver, Sender};
+#[cfg(feature = "srt")]
+use tst_pipeline::{ManagedDemuxReceiver, RawReceiver, RawSender};
 
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist"))]
+use crate::error::record_eos;
+#[cfg(feature = "srt")]
+use crate::error::record_internal;
 use crate::error::{
-    TstError, record_eos, record_internal, record_mux_error, record_not_available,
-    record_not_found, record_shell_error, set_last_error, tst_get_last_error,
+    TstError, record_mux_error, record_not_available, record_not_found, record_shell_error,
+    set_last_error, tst_get_last_error,
 };
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist"))]
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
 
@@ -384,6 +396,7 @@ pub(crate) fn mux_sender_reset_stats<T: Transport>(h: &Handle<MuxSender<T>>) -> 
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstManagedTransportStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn managed_get_reconnect_stats<S>(
     h: &Handle<S>,
     sh: &tst_pipeline::ManagedStatsHandle,
@@ -413,6 +426,7 @@ pub(crate) unsafe fn managed_get_reconnect_stats<S>(
 ///
 /// # Safety
 /// `bytes` must be readable for `len` bytes.
+#[cfg(any(feature = "rtp", feature = "udp", feature = "tcp", feature = "rist"))]
 pub(crate) unsafe fn sender_send_ts<T: Transport>(
     h: &Handle<Sender<T>>,
     bytes: *const u8,
@@ -486,6 +500,7 @@ pub(crate) fn sender_reset_stats<T: Transport>(h: &Handle<Sender<T>>) -> i32 {
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstRawSendStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn raw_sender_get_stats<T: Transport>(
     h: &Handle<RawSender<T>>,
     out: *mut crate::stats::TstRawSendStats,
@@ -508,6 +523,7 @@ pub(crate) unsafe fn raw_sender_get_stats<T: Transport>(
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn raw_sender_get_socket_stats<T: Transport>(
     h: &Handle<RawSender<T>>,
     out: *mut crate::stats::TstSocketStats,
@@ -528,6 +544,7 @@ pub(crate) unsafe fn raw_sender_get_socket_stats<T: Transport>(
 }
 
 /// Generic body for `tst_*_sender_reset_stats` on a `RawSender<T>` handle.
+#[cfg(feature = "srt")]
 pub(crate) fn raw_sender_reset_stats<T: Transport>(h: &Handle<RawSender<T>>) -> i32 {
     h.with_inner_mut(|s| {
         s.reset_stats();
@@ -547,6 +564,7 @@ pub(crate) fn raw_sender_reset_stats<T: Transport>(h: &Handle<RawSender<T>>) -> 
 ///
 /// # Safety
 /// `buf` must be writable for `buf_len` bytes; `out_n` must be non-null.
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist"))]
 pub(crate) unsafe fn receiver_recv_ts<R: RecvTransport>(
     h: &Handle<Receiver<R>>,
     buf: *mut u8,
@@ -643,6 +661,7 @@ pub(crate) fn receiver_reset_stats<R: RecvTransport>(h: &Handle<Receiver<R>>) ->
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstRawRecvStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn raw_receiver_get_stats<R: RecvTransport>(
     h: &Handle<RawReceiver<R>>,
     out: *mut crate::stats::TstRawRecvStats,
@@ -662,6 +681,7 @@ pub(crate) unsafe fn raw_receiver_get_stats<R: RecvTransport>(
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn raw_receiver_get_socket_stats<R: RecvTransport>(
     h: &Handle<RawReceiver<R>>,
     out: *mut crate::stats::TstSocketStats,
@@ -682,6 +702,7 @@ pub(crate) unsafe fn raw_receiver_get_socket_stats<R: RecvTransport>(
 }
 
 /// Generic body for `tst_*_receiver_reset_stats` on a `RawReceiver<R>` handle.
+#[cfg(feature = "srt")]
 pub(crate) fn raw_receiver_reset_stats<R: RecvTransport>(h: &Handle<RawReceiver<R>>) -> i32 {
     h.with_inner_mut(|rx| {
         rx.reset_stats();
@@ -705,6 +726,7 @@ pub(crate) fn raw_receiver_reset_stats<R: RecvTransport>(h: &Handle<RawReceiver<
 ///
 /// # Safety
 /// `out_event` must be a valid writable `*mut TstEvent` when non-null.
+#[cfg(any(feature = "udp", feature = "tcp", feature = "rist"))]
 pub(crate) unsafe fn demux_receiver_next_event_no_cancel<R: RecvTransport>(
     inner: &Handle<DemuxReceiver<R>>,
     arena: &Mutex<EventArena>,
@@ -906,6 +928,7 @@ pub(crate) unsafe fn demux_receiver_get_stream_stats<R: RecvTransport>(
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstDemuxReceiverStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn managed_demux_receiver_get_stats<R: RecvTransport>(
     h: &Handle<ManagedDemuxReceiver<R>>,
     out: *mut crate::stats::TstDemuxReceiverStats,
@@ -925,6 +948,7 @@ pub(crate) unsafe fn managed_demux_receiver_get_stats<R: RecvTransport>(
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn managed_demux_receiver_get_socket_stats<R: RecvTransport>(
     h: &Handle<ManagedDemuxReceiver<R>>,
     out: *mut crate::stats::TstSocketStats,
@@ -948,6 +972,7 @@ pub(crate) unsafe fn managed_demux_receiver_get_socket_stats<R: RecvTransport>(
 ///
 /// # Safety
 /// `out` must be a valid writable `*mut TstStreamCodecStats` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn managed_demux_receiver_get_stream_codec_stats<R: RecvTransport>(
     h: &Handle<ManagedDemuxReceiver<R>>,
     pid: u16,
@@ -971,6 +996,7 @@ pub(crate) unsafe fn managed_demux_receiver_get_stream_codec_stats<R: RecvTransp
 ///
 /// # Safety
 /// `out_epoch_micros` must be a valid writable `*mut u64` when non-null.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn managed_demux_receiver_get_stream_last_seen_micros<R: RecvTransport>(
     h: &Handle<ManagedDemuxReceiver<R>>,
     pid: u16,
@@ -996,6 +1022,7 @@ pub(crate) unsafe fn managed_demux_receiver_get_stream_last_seen_micros<R: RecvT
 ///
 /// Clears the borrowed `stream_stats_buf` snapshot before resetting, same
 /// invalidation contract as the plain receiver's `demux_receiver_reset_stats`.
+#[cfg(feature = "srt")]
 pub(crate) fn managed_demux_receiver_reset_stats<R: RecvTransport>(
     inner: &Handle<ManagedDemuxReceiver<R>>,
     stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,
@@ -1014,6 +1041,7 @@ pub(crate) fn managed_demux_receiver_reset_stats<R: RecvTransport>(
 ///
 /// # Safety
 /// `out_array` and `out_count` must be valid non-null pointers.
+#[cfg(feature = "srt")]
 pub(crate) unsafe fn managed_demux_receiver_get_stream_stats<R: RecvTransport>(
     inner: &Handle<ManagedDemuxReceiver<R>>,
     stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,

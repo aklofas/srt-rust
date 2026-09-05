@@ -477,14 +477,21 @@ jobs:
         # against the stripped cdylib and fails with `undefined reference to
         # tst_muxer_open`. Keeping the all-features build last re-syncs the
         # cdylib to the test's feature set.
+        #
+        # Each combo ALSO runs `clippy -D warnings`: the workspace clippy step
+        # above lints default features only (all transports OFF), so a
+        # tst-c-core body that only some families call is invisible to it —
+        # 16 such bodies accumulated as `dead_code` warnings on every
+        # single-feature build until the 2026-09-05 sweep. Check mode reuses
+        # this combo's build-script outputs, so it costs seconds per combo.
+        # bash (not pwsh) so a failing combo stops the step on windows too.
+        shell: bash
         run: |
-          cargo build -p tst-c --no-default-features --features srt
-          cargo build -p tst-c --no-default-features --features rtp
-          cargo build -p tst-c --no-default-features --features udp
-          cargo build -p tst-c --no-default-features --features tcp
-          cargo build -p tst-c --no-default-features --features hls
-          cargo build -p tst-c --no-default-features --features rist
-          cargo build -p tst-c --no-default-features --features udp,tcp,hls,rist
+          for feats in srt rtp udp tcp hls rist udp,tcp,hls,rist; do
+            cargo build -p tst-c --no-default-features --features "$feats"
+            cargo clippy -p tst-c -p tst-c-core --all-targets --no-default-features \
+              --features "tst-c/$feats" -- -D warnings
+          done
 
       - name: cargo build (all crate types, all-features)
         # `cargo test` only rebuilds the rlib of crates with multiple

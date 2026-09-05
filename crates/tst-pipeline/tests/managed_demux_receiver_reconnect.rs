@@ -705,3 +705,159 @@ fn end_reason_first_writer_wins_across_repeated_terminal_calls() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Test 6 — `reconnecting()` is TRUE during an outage, FALSE once the fresh
+// inner is installed, and latches TRUE again after the budget is exhausted.
+// ---------------------------------------------------------------------------
+
+/// Observes the transient `reconnecting == true` state that
+/// [`ManagedRecvTransport`] holds while its inner is absent.
+///
+/// Why a signaling harness: the reconnect loop runs on the caller's
+/// thread inside `recv_bytes`, and the synchronous factories used by
+/// the tests above return immediately — the flag flips true and back
+/// to false inside ONE `recv_event` call, so no other thread can catch
+/// it set. Here the factory BLOCKS on a channel until a watcher thread
+/// has seen the flag through `reconnecting_handle()`, then releases it.
+/// That turns a timing race into a handshake: the window cannot close
+/// until the watcher says it has looked.
+///
+/// Sequence:
+/// 1. main drives `recv_event`; the phase-1 inner exhausts `Broken`,
+///    the decorator drops it, stores `reconnecting = true`, and calls
+///    the factory — which blocks on `gate_rx` (still on main's thread).
+/// 2. the watcher polls the handle until it reads `true`, snapshots
+///    `reconnects_handle()` at that instant (must still be 0 — nothing
+///    has been rebuilt yet), then sends on `gate_tx`.
+/// 3. the factory returns the phase-2 inner; the decorator stores
+///    `reconnecting = false` and bumps the counter. The next
+///    `recv_event` surfaces `ReconnectDiscontinuity` after exactly one
+///    `recv_bytes` on the fresh inner (its first chunk locks the syncer
+///    outright), so the phase-2 inner cannot have exhausted yet and
+///    main asserts `reconnecting() == false` deterministically.
+/// 4. phase 2 exhausts; the factory fails on every further call; the
+///    budget gives up → `Ok(None)`. The flag stays latched `true` with
+///    `is_alive() == false` — the documented give-up contract.
+///
+/// The watcher's poll loop has a deadline and ALWAYS releases the gate
+/// on exit, so a regression that never sets the flag fails the
+/// `observed` assertion instead of wedging the test.
+#[test]
+fn reconnecting_flag_true_during_outage_false_after_rebuild_latched_after_giveup() {
+    let phase1: Vec<[u8; 188]> = (0..8).map(|i| ts_packet_tei(0x100, i as u8)).collect();
+    let inner = ScriptedInner {
+        chunks: vec![pack_chunk(&phase1)].into(),
+        on_exhaust: TransportError::Broken {
+            msg: "phase 1 ended (test)".into(),
+            errno_code: None,
+        },
+    };
+
+    let (gate_tx, gate_rx) = std::sync::mpsc::channel::<()>();
+    let calls = Arc::new(AtomicU32::new(0));
+    let calls_cl = calls.clone();
+    let factory = Box::new(move || -> Result<ScriptedInner, TransportError> {
+        let n = calls_cl.fetch_add(1, Ordering::SeqCst);
+        if n == 0 {
+            // Hold the outage open until the watcher has seen
+            // `reconnecting == true`. A dropped sender (watcher gave
+            // up) also returns here — the receiver loop never wedges.
+            let _ = gate_rx.recv();
+            let a: Vec<[u8; 188]> = (0..8).map(|i| ts_packet_tei(0x200, i as u8)).collect();
+            let b: Vec<[u8; 188]> = (0..8)
+                .map(|i| ts_packet_tei(0x200, (i + 8) as u8))
+                .collect();
+            Ok(ScriptedInner {
+                chunks: vec![pack_chunk(&a), pack_chunk(&b)].into(),
+                on_exhaust: TransportError::Broken {
+                    msg: "phase 2 ended (test)".into(),
+                    errno_code: None,
+                },
+            })
+        } else {
+            Err(TransportError::Broken {
+                msg: "peer gone for good (test)".into(),
+                errno_code: None,
+            })
+        }
+    });
+
+    let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(2)));
+    let mut rx = ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default());
+
+    // Obtain-before-drive: the same shape a binding uses before boxing
+    // the receiver, and the only way another thread can read the flag
+    // while this thread is blocked inside `recv_event`.
+    let reconnecting = rx.reconnecting_handle();
+    let reconnects = rx.reconnects_handle();
+    assert!(
+        !rx.reconnecting(),
+        "fresh receiver must not be reconnecting"
+    );
+
+    let watcher = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut observed = None;
+        while std::time::Instant::now() < deadline {
+            if reconnecting.load(Ordering::Acquire) {
+                observed = Some(reconnects.load(Ordering::Acquire));
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        // Release the gate whether or not the flag was seen so the
+        // receiver loop always terminates; `observed` carries the verdict.
+        let _ = gate_tx.send(());
+        observed
+    });
+
+    let mut saw_reconnect = false;
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        assert!(iters < 1000, "test loop should bound");
+        match rx.recv_event() {
+            Ok(Some(DemuxEvent::ReconnectDiscontinuity)) => {
+                saw_reconnect = true;
+                // Step 3: the fresh inner is installed and has served
+                // exactly one chunk — the flag must already be clear.
+                assert!(
+                    !rx.reconnecting(),
+                    "flag must be clear once the fresh inner is installed"
+                );
+                assert_eq!(rx.reconnects_count(), 1);
+                assert!(rx.is_alive());
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(e) => panic!("unexpected receiver error: {e:?}"),
+        }
+    }
+    let observed = watcher.join().expect("watcher thread panicked");
+
+    // Step 2: the watcher saw the transient true state, and at that
+    // instant no rebuild had succeeded yet.
+    assert_eq!(
+        observed,
+        Some(0),
+        "watcher must observe reconnecting == true before any rebuild succeeds"
+    );
+    assert!(saw_reconnect, "ReconnectDiscontinuity must surface");
+
+    // Step 4: budget exhausted — the flag latches true and stays there.
+    assert!(
+        rx.reconnecting(),
+        "flag must stay latched after the reconnect budget is exhausted"
+    );
+    assert!(!rx.is_alive(), "budget exhaustion closes the receiver");
+    assert_eq!(
+        rx.end_reason_handle().get(),
+        Some(RecvEndReason::ReconnectExhausted)
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        3,
+        "one gated rebuild + two failed attempts before give-up"
+    );
+}

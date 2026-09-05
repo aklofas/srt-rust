@@ -75,12 +75,12 @@ use super::last_error_msg;
 /// IS covered without any real socket by `tst-pipeline`'s
 /// `crates/tst-pipeline/tests/managed_demux_receiver_reconnect.rs`
 /// (`ScriptedInner`-injected `RecvTransport`, deterministic, no timing
-/// dependency) — though note that suite doesn't assert `reconnecting()`
-/// transitioning true→false either; a live true→false flip has no
-/// coverage anywhere in the tree today, at either layer. Closing that
-/// gap belongs in a dedicated `tst-pipeline`-level test using the same
-/// `ScriptedInner` harness (outside this task's file scope), not a
-/// real-socket C-level test.
+/// dependency), and so is the `reconnecting()` true→false→latched-true
+/// flip, by that suite's
+/// `reconnecting_flag_true_during_outage_false_after_rebuild_latched_after_giveup`:
+/// a channel-gated factory holds the outage open until a watcher thread
+/// has seen the flag, so the transient state is a handshake, not a
+/// timing window. The C layer therefore asserts only the baseline.
 #[test]
 fn managed_demux_receiver_end_reason_reconnect_stats_and_unwrap_config() {
     let (port_tx, port_rx) = mpsc::channel::<u16>();

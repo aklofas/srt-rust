@@ -128,8 +128,10 @@ jobs:
             # package installs the binary as `ninja` — RHEL's `ninja-build`
             # package names it `ninja-build`, which rist-sys's `which("ninja")`
             # check would miss (the x86_64 image happens to also ship `ninja`).
-            python3 -m pip install --upgrade meson ninja \
-              || pip3 install --upgrade meson ninja
+            # --root-user-action=ignore: the container runs as root by design;
+            # without it pip prints its "Running pip as the 'root' user" warning.
+            python3 -m pip install --upgrade --root-user-action=ignore meson ninja \
+              || pip3 install --upgrade --root-user-action=ignore meson ninja
             # aarch64 is cross-compiled inside the x86_64 manylinux container.
             # The cmake C build uses the cross gcc fine, but srt-sys/rist-sys's
             # bindgen runs clang with host include paths and can't find the
@@ -148,7 +150,7 @@ jobs:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-linux-${{ matrix.target }}
           path: bindings/python/dist/*.whl
@@ -193,9 +195,20 @@ jobs:
 
       # librist's vendored build is meson + ninja-driven (NOT cmake). The
       # macOS runner ships cmake + perl but not meson/ninja — install via brew
-      # (mirrors the gating ci.yml macOS prerequisites step).
+      # (mirrors the gating ci.yml macOS prerequisites step, including its
+      # `brew list` guard: `brew install` on an already-present formula —
+      # ninja is on the image now — emits an "already installed" warning).
       - name: Install librist build prerequisites (meson + ninja)
-        run: brew install meson ninja
+        run: |
+          # The macos-14 image ships a pre-tapped third-party `aws/tap`, and
+          # Homebrew 6 requires explicit tap trust: until it is untapped every
+          # brew call prints a `::warning::` annotation about it. Nothing here
+          # uses that tap. (Observed 2026-09-05; drop when the image stops
+          # shipping it.)
+          brew untap aws/tap >/dev/null 2>&1 || true
+          for pkg in meson ninja; do
+            brew list --formula "$pkg" >/dev/null 2>&1 || brew install "$pkg"
+          done
 
       - uses: PyO3/maturin-action@v1
         with:
@@ -207,7 +220,7 @@ jobs:
           RIST_FORCE_VENDORED: "1"
           MACOSX_DEPLOYMENT_TARGET: "11.0"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-macos-${{ matrix.target }}
           path: bindings/python/dist/*.whl
@@ -255,7 +268,7 @@ jobs:
         env:
           SRT_FORCE_VENDORED: "1"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-windows-x86_64
           path: bindings/python/dist/*.whl
@@ -281,7 +294,7 @@ jobs:
           working-directory: bindings/python
           args: --out dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: bindings/python/dist/*.tar.gz
@@ -305,7 +318,7 @@ jobs:
       # https://docs.pypi.org/trusted-publishers/
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

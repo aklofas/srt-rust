@@ -252,7 +252,7 @@ jobs:
         # if-no-files-found: warn covers the results.json/.md pair on that
         # same early-failure path without failing this step.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: interop-evidence
           path: |

@@ -272,7 +272,16 @@ tsp_analyze_counters_zero() {
 #     (gstbaseparse via h265parse — h265-klv), each followed by an
 #     "ERROR debug information: ..." companion line naming the emitting
 #     base-class function (excluded by that function name, the stable
-#     anchor across GStreamer builds' differing source paths). av1-klv-*
+#     anchor across GStreamer builds' differing source paths). The audio
+#     profile's AAC filler yields the same "No valid frames decoded
+#     before end of stream" through gstaudiodecoder (via avdec_aac),
+#     whose companion line names gst_audio_decoder_sink_eventfunc — a
+#     different suffix from the video/parse base classes, so it slipped
+#     past the anchor above and FAILed decode/gst-play/audio on 3 of 4
+#     PR #185 runs (2026-09-05; identical harness, tool versions and
+#     runner image on the one PASS — the EOS report is timing-dependent
+#     against the headless pulsesink failure, the phrasing is not).
+#     av1-klv-*
 #     and h266-klv produce NO output at all under --quiet (GStreamer
 #     1.24 wires no AV1-in-TS / VVC decode path in playbin, so no
 #     decoder ever instantiates to complain) — nothing to exclude.
@@ -284,7 +293,7 @@ tsp_analyze_counters_zero() {
 # word — re-verified against the same captured logs (12 profiles x
 # ffplay/vlc/mpv) this was originally built from: identical PASS/FAIL
 # outcome per cell before and after tightening.
-DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.|Error while decoding frame!|No valid frames (decoded|found) before end of stream|debug information: .*gst_(video_decoder|base_parse)_sink_event_default'
+DECODE_PAYLOAD_NOISE='crop values invalid|sps_id [0-9]+ out of range|non-existing (PPS|SPS) [0-9]+ referenced|decode_slice_header error|no frame!|vps_video_parameter_set_id out of range|Failed to read unit [0-9]+ \(type [0-9]+\)|Failed to parse picture unit|PPS id [0-9]+ not available|PPS id out of range|Error parsing NAL unit #[0-9]+|Error decoding the extradata|Reserved bit set|Number of bands \([0-9]+\) exceeds limit \([0-9]+\)|Scalefactor \([-0-9]+\) out of range|channel element [0-9.]+ is not allocated|Error decoding audio\.|Error while decoding frame!|No valid frames (decoded|found) before end of stream|debug information: .*gst_((video_decoder|base_parse)_sink_event_default|audio_decoder_sink_eventfunc)'
 
 # gst-play-specific: headless-sandbox audio-sink setup noise, observed
 # only on the `audio` profile (the sole fixture with an audio track, so

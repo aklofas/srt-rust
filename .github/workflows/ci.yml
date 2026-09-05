@@ -495,8 +495,11 @@ jobs:
         run: |
           for feats in srt rtp udp tcp hls rist udp,tcp,hls,rist; do
             cargo build -p tst-c --no-default-features --features "$feats"
+            # Scope EVERY feature to tst-c (`a,b` -> `tst-c/a,tst-c/b`): with
+            # two -p packages a bare name would apply to both, and tst-c's
+            # features forward to tst-c-core's anyway.
             cargo clippy -p tst-c -p tst-c-core --all-targets --no-default-features \
-              --features "tst-c/$feats" -- -D warnings
+              --features "tst-c/${feats//,/,tst-c/}" -- -D warnings
           done
 
       - name: cargo build (all crate types, all-features)

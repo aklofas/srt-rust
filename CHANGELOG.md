@@ -104,7 +104,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `gen-scenarios` (tst-integration) — were `snake_case`, which nightly
   cargo's `non_kebab_case_bins` lint now flags on every run. Source files
   and behavior are unchanged; only the `cargo run --bin <name>` spelling
-  moves. Not part of the library API.
+  moves. Not part of the library API. Older entries below quote the
+  snake_case spellings that were current at the time; substitute the
+  kebab-case name when running one of those commands on current HEAD.
 - **tst-jni builds an `rlib` alongside its `cdylib`** (as tst-py already
   did), so `cargo test --doc --workspace` no longer warns that doctests
   are unsupported for the crate. Nothing links the rlib; `libtstjni.so`

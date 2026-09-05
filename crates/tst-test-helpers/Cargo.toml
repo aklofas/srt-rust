@@ -6,6 +6,7 @@ rust-version = "1.85"
 publish     = false
 description = "Internal test helpers shared across tst-core, tst-pipeline, tst-srt. Not for external consumption."
 license     = "MIT OR Apache-2.0"
+repository.workspace = true
 
 [dependencies]
 tst-core = { path = "../tst-core" }

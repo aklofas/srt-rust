@@ -28,7 +28,7 @@ use crate::rtsp::server::handlers;
 
 /// RAII guard for one reserved `active_sessions` slot.
 ///
-/// The accept loop reserves a slot atomically (a CAS `fetch_update` that
+/// The accept loop reserves a slot atomically (a compare-exchange loop that
 /// increments only while below `max_sessions`, so the counter never
 /// overshoots the cap — over-cap connections are refused without touching
 /// it) *before* spawning the per-session task, then moves this guard into

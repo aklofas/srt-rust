@@ -7,6 +7,14 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+[lints.cargo]
+# Fuzz targets keep cargo-fuzz's snake_case convention: each name must equal
+# its fuzz_targets/*.rs stem, which oss-fuzz/build.sh and
+# tests/coverage/fuzz-targets.toml key on. This workspace only ever builds on
+# nightly, so the (nightly-only) lints table is safe here — stable cargo would
+# warn "unused manifest key" on it.
+non_kebab_case_bins = "allow"
+
 [dependencies]
 libfuzzer-sys = "0.4"
 tst-core      = { path = ".." }

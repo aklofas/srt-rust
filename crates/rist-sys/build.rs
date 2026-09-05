@@ -156,7 +156,9 @@ fn write_meson_cross_file() -> Option<PathBuf> {
     );
     let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("meson-cross.ini");
     std::fs::write(&path, content).expect("write meson cross-file");
-    println!("cargo:warning=rist-sys: meson cross-file for {target} (cpu_family={arch})");
+    // Breadcrumb for cross-build forensics (lands in the build-script stderr
+    // capture, `cargo build -vv`), deliberately NOT a `cargo:warning`.
+    eprintln!("rist-sys: meson cross-file for {target} (cpu_family={arch})");
     Some(path)
 }
 

@@ -7,7 +7,6 @@ license      = { workspace = true }
 authors      = { workspace = true }
 repository   = { workspace = true }
 description  = "TS Transformer pipeline shells: Sender, MuxSender, RawSender, Receiver, DemuxReceiver, RawReceiver, ManagedTransport, reconnect strategies."
-readme       = "README.md"
 keywords     = ["mpeg-ts", "streaming", "sender", "receiver"]
 categories   = ["multimedia::video", "network-programming"]
 

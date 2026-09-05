@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Raw MPEG-TS over TCP (caller + listener, plain + TLS via rustls) for the tstrans pipeline"
-readme = "README.md"
 keywords = ["tcp", "tls", "mpeg-ts", "streaming"]
 categories = ["multimedia::video", "network-programming"]
 

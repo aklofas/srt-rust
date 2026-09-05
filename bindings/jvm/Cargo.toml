@@ -13,7 +13,11 @@ repository.workspace   = true
 # cdylib output is `libtstjni.so` (lib name `tstjni`); JNI symbol mangling
 # resolves `Java_org_tstrans_Version_versionString` from this object.
 name       = "tstjni"
-crate-type = ["cdylib"]
+# `rlib` alongside the cdylib (as tst-py does): a cdylib-only lib makes
+# `cargo test --doc --workspace` warn "doc tests are not supported for crate
+# type(s) `cdylib`" on every run, and `doctest = false` alone does not silence
+# it. Nothing links the rlib.
+crate-type = ["cdylib", "rlib"]
 doctest    = false
 
 [features]

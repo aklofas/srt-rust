@@ -6,7 +6,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-readme = "README.md"
 keywords = ["hls", "mpeg-ts", "streaming", "playlist"]
 categories = ["multimedia::video", "web-programming"]
 

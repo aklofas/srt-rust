@@ -1252,7 +1252,7 @@ the trigger that would unblock it.
 
 - **Status:** Partially resolved (entry refreshed 2026-09-06; the
   earlier text predated the receiver C ABI). The URL parser at
-  `tst-srt/src/url.rs` accepts `mode=caller` (the default) and
+  `crates/tst-srt/src/url.rs` accepts `mode=caller` (the default) and
   `mode=listener`; `mode=rendezvous` is still rejected with
   `UrlError::UnsupportedMode`. Listener dispatch is wired on every
   RECEIVER entry point: the C `tst_*receiver_open` family routes a

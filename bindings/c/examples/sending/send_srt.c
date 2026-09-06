@@ -37,9 +37,12 @@
  *       override here — the URL is the whole story.
  *
  * Caller-only: every `tst_*sender_open` in the C ABI dials OUT as an SRT
- * caller. There is no listener-mode sender (the receiver family has
- * `_open_listener`; senders do not) — the last table row below shows what
- * `?mode=listener` does when handed to a sender. See
+ * caller and never consults the parsed `mode` — `?mode=listener` is
+ * SILENTLY IGNORED by senders. With a host present the sender just dials
+ * it (and succeeds if a listener is there); the empty-host form is the one
+ * that fails, and the last table row below shows how. There is no
+ * listener-mode sender (the receiver family has `_open_listener`; senders
+ * do not). See
  * `docs/project/deferred-features.md` ("SRT URL mode dispatch") and
  * `send_srt_ts_file.c` for the practical consequence.
  *
@@ -275,9 +278,11 @@ int main(int argc, char **argv) {
      *   option validation  right key, right type, value outside the option's
      *                      legal range (pbkeylen is 16 / 24 / 32)
      *   listener on sender parses fine (the receiver family honours it) but a
-     *                      sender has no listener path — it tries to DIAL the
-     *                      URL's empty host, which fails address lookup, i.e.
-     *                      TST_E_TRANSPORT, NOT TST_E_INVALID_CONFIG. A
+     *                      sender ignores `mode` entirely and DIALS whatever host
+     *                      the URL names — here the empty host, which fails
+     *                      address lookup, i.e. TST_E_TRANSPORT, NOT
+     *                      TST_E_INVALID_CONFIG. Give it a real host and it
+     *                      connects as a caller as if `mode` were absent. A
      *                      documented sharp edge, not a validation error.
      */
     static const struct { const char *label; const char *url; } cases[] = {

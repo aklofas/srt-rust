@@ -1260,9 +1260,13 @@ the trigger that would unblock it.
   `_open_listener` variants force it regardless of the URL. It is NOT
   wired on the sender side: every `tst_*sender_open` in the C ABI
   (plain, mux, raw, and the managed variants) dials out as an SRT
-  caller, and a `?mode=listener` URL handed to one parses fine but then
-  fails at connect time (address lookup on the empty host,
-  `TST_E_TRANSPORT`) rather than at validation. The Rust API is
+  caller and never looks at the parsed `mode` — `?mode=listener` is
+  SILENTLY IGNORED. With a host present (`srt://1.2.3.4:9000?mode=listener`)
+  the sender simply dials `1.2.3.4:9000` as a caller, and succeeds if a
+  listener is there (verified 2026-09-06); only the empty-host form
+  (`srt://:9000?mode=listener`) fails, and it fails at connect time
+  (address lookup on the empty host, `TST_E_TRANSPORT`), not at
+  validation. The Rust API is
   unaffected — build a `Listener`, wrap the accepted `Socket` in
   `SrtTransport`, as `examples/sending/srt_serve_ts_file.rs` does.
 - **Why deferred (sender side):** a listener-mode sender is the

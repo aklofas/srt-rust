@@ -13,10 +13,11 @@
  * with ONE deliberate difference that changes the deployment shape:
  *
  *   The Rust example is an SRT LISTENER ("VLC dials in"). The C ABI's
- *   sender family is CALLER-ONLY — `tst_sender_open` always dials out, and
- *   there is no `_open_listener` on the sender side (only receivers have
- *   one; see `docs/project/deferred-features.md`, "SRT URL mode
- *   dispatch"). So this example dials a listening receiver instead:
+ *   sender family is CALLER-ONLY — `tst_sender_open` always dials out and
+ *   silently ignores a `?mode=listener` key, and there is no
+ *   `_open_listener` on the sender side (only receivers have one; see
+ *   `docs/project/deferred-features.md`, "SRT URL mode dispatch"). So this
+ *   example dials a listening receiver instead:
  *   `recv_ts_to_file.c`, `recv_demux_to_console.c`, `srt-live-transmit`,
  *   or a VLC / ffplay configured in listener mode
  *   (`srt://:9000?mode=listener`). The pacing logic is identical.

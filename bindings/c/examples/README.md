@@ -213,7 +213,9 @@ LD_LIBRARY_PATH=../../target/debug /tmp/send_srt
 
 Verified 2026-09-06: 18,800 bytes land in `/tmp/out.ts`; the table's last
 row (`srt://:9000?mode=listener` handed to a sender) fails at connect
-time, not validation — the C sender family is caller-only, see §11.
+time, not validation — senders ignore `mode` entirely and dial whatever
+host the URL names (with a real host they connect as a caller as if the
+key were absent). The C sender family is caller-only, see §11.
 
 ### 10. `sending/send_srt_encrypted.c` — passphrase-encrypted send + receive in one process
 

@@ -22,6 +22,19 @@
 # local pre-push runner's test-allfeatures phase, and the correct cold build
 # otherwise.
 #
+# Header-staleness trap (found the first time this rail ran in the local
+# ratchets sweep): tst-c's build.rs writes ONE header path,
+# <target>/<profile>/include/tstrans.h, for whatever feature set it was
+# last run with — and cargo only reruns build.rs when the unit is not fresh.
+# So after any narrower tst-c build (e.g. no-srt-symbol-leak.sh's
+# `--features srt`), an already-cached all-features build is "fresh", build.rs
+# is skipped, and the srt-only header stays on disk while the all-features
+# cdylib is up to date. We therefore PROBE the header with the preprocessor
+# after building and, if any TST_HAS_* is missing, touch one of build.rs's
+# `rerun-if-changed` inputs (cbindgen.toml; mtime only, git sees no change)
+# to force cbindgen to rerun, then probe again and fail closed if it is
+# still wrong.
+#
 # Linux-only: libtstrans.so is a Linux cdylib and the examples are Linux-only
 # by build convention (see bindings/c/examples/README.md). On any other host
 # the rail reports SKIP and exits 0 so the local rail sweep on macOS stays
@@ -41,7 +54,10 @@ WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 cd "$WORKSPACE_ROOT"
 
 EXAMPLES_DIR="bindings/c/examples"
-LIB_DIR="target/debug"
+# Honor CARGO_TARGET_DIR (CI caches and out-of-tree builds set it); cargo's
+# default is ./target. tst-c's build.rs emits the header next to the cdylib
+# under <target>/<profile>/, so both paths follow the same root.
+LIB_DIR="${CARGO_TARGET_DIR:-target}/debug"
 # The header must be the one cbindgen emitted for THIS build: the committed
 # bindings/c/include/tstrans.h is the `--features srt,rtp` rendering (see
 # bindings/c/tests header_drift), so it defines only TST_HAS_SRT/RTP and the
@@ -49,14 +65,40 @@ LIB_DIR="target/debug"
 INCLUDE_DIR="$LIB_DIR/include"
 CC="${CC:-cc}"
 
+build_all_features() {
+    SRT_FORCE_VENDORED="${SRT_FORCE_VENDORED:-1}" \
+    RIST_FORCE_VENDORED="${RIST_FORCE_VENDORED:-1}" \
+        cargo build -p tst-c --all-features --quiet
+}
+
+# Ask the preprocessor whether the header on disk is the all-features
+# rendering. Test the VALUES, not definedness: the header's tail defines every
+# feature macro it did not get from the build to 0 (so consumer code can write
+# `#if TST_HAS_UDP`), which makes `defined(TST_HAS_UDP)` true in every
+# rendering. The examples' own guards test `TST_HAS_<X> == 0` for the same
+# reason.
+header_is_all_features() {
+    printf '#include "tstrans.h"\n#if !(TST_HAS_SRT && TST_HAS_RTP && TST_HAS_UDP && TST_HAS_TCP && TST_HAS_HLS && TST_HAS_RIST)\n#error stale\n#endif\n' \
+        | "$CC" -fsyntax-only -x c -I "$INCLUDE_DIR" - 2>/dev/null
+}
+
 echo "examples-compile: building libtstrans (all features)..."
-SRT_FORCE_VENDORED="${SRT_FORCE_VENDORED:-1}" \
-RIST_FORCE_VENDORED="${RIST_FORCE_VENDORED:-1}" \
-    cargo build -p tst-c --all-features --quiet
+build_all_features
 
 if [ ! -f "$LIB_DIR/libtstrans.so" ] || [ ! -f "$INCLUDE_DIR/tstrans.h" ]; then
     echo "examples-compile: FAIL — $LIB_DIR/libtstrans.so or $INCLUDE_DIR/tstrans.h not produced" >&2
     exit 1
+fi
+
+if ! header_is_all_features; then
+    echo "examples-compile: $INCLUDE_DIR/tstrans.h is a narrower-feature rendering (a" \
+         "narrower tst-c build ran since the all-features one); forcing cbindgen to rerun..."
+    touch bindings/c/cbindgen.toml
+    build_all_features
+    if ! header_is_all_features; then
+        echo "examples-compile: FAIL — header still lacks TST_HAS_* defines after a forced regen" >&2
+        exit 1
+    fi
 fi
 
 # -Wall -Werror: the flags every example's header documents. Examples that

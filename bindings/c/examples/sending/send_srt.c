@@ -77,14 +77,22 @@
 /* ── Constants ─────────────────────────────────────────────────────────── */
 
 /*
- * Default destination. `latency=120` is the SRT TSBPD budget in ms (both
- * peers negotiate the max of their two values; 120 ms is a sane LAN
- * default). `streamid` is the caller's SRTO_STREAMID — an opaque routing /
+ * Default destination. `latency` is the SRT TSBPD budget in ms (both peers
+ * negotiate the max of their two values; 120 ms is a sane LAN default).
+ * `streamid` is the caller's SRTO_STREAMID — an opaque routing /
  * authorization key a multi-publisher listener reads after accept. Neither
  * is required; they are here so the URL shows the two knobs almost every
  * deployment sets.
+ *
+ * DEFAULT_LATENCY_MS is spliced into the URL AND sizes the pre-close drain
+ * in Step 3, so the two cannot drift apart. If you pass your own URL with a
+ * larger `?latency=`, raise the drain to match (`send_srt_ts_file.c` takes
+ * `--latency-ms` and derives its drain from it for exactly this reason).
  */
-#define DEFAULT_URL   "srt://127.0.0.1:7000?latency=120&streamid=send-srt-demo"
+#define DEFAULT_LATENCY_MS 120
+#define STR_(x) #x
+#define STR(x)  STR_(x)
+#define DEFAULT_URL   "srt://127.0.0.1:7000?latency=" STR(DEFAULT_LATENCY_MS) "&streamid=send-srt-demo"
 
 /* MPEG-TS packet size + sync byte + null PID — see send_udp.c for the
  * byte-level rationale; the synthetic payload is the same null packet. */
@@ -236,8 +244,10 @@ int main(int argc, char **argv) {
          * Give the tail of the stream one latency window (+ margin) to be
          * ACKed before close tears the link down; closing instantly races
          * the last datagrams and the listener may see a truncated tail.
+         * Sized from DEFAULT_LATENCY_MS — see the constant's comment if you
+         * override the URL with a larger `?latency=`.
          */
-        usleep((120 + 200) * 1000);
+        usleep((DEFAULT_LATENCY_MS + 200) * 1000);
         tst_sender_close(sender);
         fprintf(stderr, "[send_srt] sent %d TS packets (%d bytes), flushed, closed.\n",
                 sent, sent * TS_PACKET_SIZE);

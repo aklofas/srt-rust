@@ -25,7 +25,12 @@ Use the header cbindgen generated for the feature set you just built
 (`target/debug/include/tstrans.h`). The committed `include/tstrans.h` is the
 `--features srt,rtp` rendering: it only defines `TST_HAS_SRT` / `TST_HAS_RTP`,
 so the udp / tcp / hls / rist examples stop at their `#error` guard against it.
-Examples that spawn threads add `-lpthread`.
+One trap: that generated header reflects the LAST tst-c build, and cargo only
+reruns cbindgen when the build is not fresh — so if you build with fewer
+features and then re-run the all-features build from cache, the narrower
+header stays on disk. `touch bindings/c/cbindgen.toml` before rebuilding
+forces it to regenerate (the rail below does this for you). Examples that
+spawn threads add `-lpthread`.
 
 To compile every example in one go (what CI does on the linux leg):
 

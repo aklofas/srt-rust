@@ -14,22 +14,24 @@ cd bindings/c
 # Transports are opt-in. The offline mux/demux examples build with a bare
 # `cargo build`; the transport examples (sending/, receiving/, the rtp/srt
 # scenarios) need their feature: e.g. --features srt,rtp (or udp/tcp/hls/rist).
-cargo build --features srt,rtp   # produces target/debug/libtstrans.{so,a} + target/debug/include/tstrans.h
+cargo build --features srt,rtp   # produces ../../target/debug/libtstrans.{so,a} + ../../target/debug/include/tstrans.h
 gcc -I ../../target/debug/include -L ../../target/debug \
     -Wall -Werror -o /tmp/<name> \
     examples/<category>/<name>.c -ltstrans
 LD_LIBRARY_PATH=../../target/debug /tmp/<name>
 ```
 
-Use the header cbindgen generated for the feature set you just built
-(`target/debug/include/tstrans.h`). The committed `include/tstrans.h` is the
+Use the header cbindgen generated for the feature set you just built — the
+workspace's `target/debug/include/tstrans.h`, i.e. `../../target/debug/include`
+from `bindings/c`, as in the `gcc -I` line above. The committed `include/tstrans.h` is the
 `--features srt,rtp` rendering: it only defines `TST_HAS_SRT` / `TST_HAS_RTP`,
 so the udp / tcp / hls / rist examples stop at their `#error` guard against it.
 One trap: that generated header reflects the LAST tst-c build, and cargo only
 reruns cbindgen when the build is not fresh — so if you build with fewer
 features and then re-run the all-features build from cache, the narrower
-header stays on disk. `touch bindings/c/cbindgen.toml` before rebuilding
-forces it to regenerate (the rail below does this for you). Examples that
+header stays on disk. `touch cbindgen.toml` (here in `bindings/c`; it is
+`bindings/c/cbindgen.toml` from the workspace root) before rebuilding forces
+it to regenerate — the rail below does this for you. Examples that
 spawn threads add `-lpthread`.
 
 To compile every example in one go (what CI does on the linux leg):

@@ -428,9 +428,17 @@ int main(void) {
     struct timespec deadline;
     clock_gettime(CLOCK_REALTIME, &deadline);
     deadline.tv_sec += PEER_JOIN_SECS;
-    if (pthread_timedjoin_np(peer_thread, NULL, &deadline) == ETIMEDOUT) {
-        fprintf(stderr, "FAIL: peer thread did not exit within %d s (rounds_done=%d)\n",
-                PEER_JOIN_SECS, peer.rounds_done);
+    int jrc = pthread_timedjoin_np(peer_thread, NULL, &deadline);
+    if (jrc != 0) {
+        /* Any non-zero return means the peer was NOT joined (timeout or a
+         * join error alike) — see managed_reconnect.c. */
+        if (jrc == ETIMEDOUT) {
+            fprintf(stderr, "FAIL: peer thread did not exit within %d s (rounds_done=%d)\n",
+                    PEER_JOIN_SECS, peer.rounds_done);
+        } else {
+            fprintf(stderr, "FAIL: pthread_timedjoin_np: %s (rounds_done=%d)\n",
+                    strerror(jrc), peer.rounds_done);
+        }
         fflush(stderr);
         _exit(5);
     }

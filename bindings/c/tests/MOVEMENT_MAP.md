@@ -60,6 +60,7 @@ unchanged (484) and the test leaf-name multiset is byte-identical before/after
 | --- | --- |
 | `demux_receiver_loopback.rs` | `receiving/demux_receiver_loopback.rs` |
 | `live_pair.rs` | `receiving/live_pair.rs` |
+| (new 2026-09-06) | `receiving/managed_listener_cancel.rs` |
 | `raw_receiver_loopback.rs` | `receiving/raw_receiver_loopback.rs` |
 | `ts_receiver_loopback.rs` | `receiving/ts_receiver_loopback.rs` |
 

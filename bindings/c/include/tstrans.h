@@ -5574,7 +5574,9 @@ struct tst_managed_receiver_t *tst_managed_receiver_open(const char *srt_url,
  * `_listener` suffix is authoritative. On peer disconnect the managed
  * wrapper re-binds a fresh listener socket and accepts the next
  * incoming connection. Note: the re-bind + re-accept may block
- * significantly between attempts depending on the reconnect policy.
+ * significantly between attempts depending on the reconnect policy;
+ * `_cancel` wakes both the backoff wait and a re-accept parked with no
+ * peer, so a cancel lands promptly in that window too.
  *
  * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
  * requirement for an explicit `?mode=listener` does not apply here because
@@ -5819,7 +5821,9 @@ struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open(const char *srt
  * `_listener` suffix is authoritative. On peer disconnect the managed
  * wrapper re-binds a fresh listener socket and accepts the next
  * incoming connection. Note: the re-bind + re-accept may block
- * significantly between attempts depending on the reconnect policy.
+ * significantly between attempts depending on the reconnect policy;
+ * `_cancel` wakes both the backoff wait and a re-accept parked with no
+ * peer, so a cancel lands promptly in that window too.
  *
  * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
  * requirement for an explicit `?mode=listener` does not apply here because

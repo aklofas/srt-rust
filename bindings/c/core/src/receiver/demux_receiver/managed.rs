@@ -250,9 +250,16 @@ fn managed_open_listener_inner(
     let host = url.host.clone();
     let port = url.port;
     let cfg_for_relisten = listener_cfg.clone();
+    // The factory's re-accept is reachable by `_cancel` through this slot
+    // (see `listen_srt_cancellable`); the managed cancel handle fires it.
+    let factory_cancel = Arc::new(tst_pipeline::FactoryCancel::new());
+    let fc = Arc::clone(&factory_cancel);
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
-        Box::new(move || crate::receiver::listen::listen_srt(&host, port, &cfg_for_relisten));
-    let managed = ManagedRecvTransport::new(initial, factory, policy);
+        Box::new(move || {
+            crate::receiver::listen::listen_srt_cancellable(&host, port, &cfg_for_relisten, &fc)
+        });
+    let managed =
+        ManagedRecvTransport::new_with_factory_cancel(initial, factory, policy, factory_cancel);
     finish_managed_open(managed, opts)
 }
 

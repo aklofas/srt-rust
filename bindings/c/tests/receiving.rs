@@ -9,6 +9,8 @@
 mod demux_receiver_loopback;
 #[path = "receiving/live_pair.rs"]
 mod live_pair;
+#[path = "receiving/managed_listener_cancel.rs"]
+mod managed_listener_cancel;
 #[path = "receiving/raw_receiver_loopback.rs"]
 mod raw_receiver_loopback;
 #[path = "receiving/ts_receiver_loopback.rs"]

@@ -8,7 +8,8 @@
 //! port are not handled — single-accept matches the connection-oriented
 //! shape of every other entry point in `tst-c`.
 
-use tst_pipeline::TransportError;
+use std::sync::Arc;
+use tst_pipeline::{FactoryCancel, TransportError};
 use tst_srt::Listener;
 use tst_srt::SrtTransport;
 use tst_srt::config::ListenerConfig;
@@ -45,4 +46,50 @@ pub(crate) fn listen_srt(
         errno_code: None,
     })?;
     Ok(SrtTransport::new(socket))
+}
+
+/// [`listen_srt`] for the MANAGED listener factories: the same bind +
+/// single accept, but reachable by `_cancel` while it blocks.
+///
+/// A managed receiver in listener mode re-runs its factory after a peer
+/// disconnect, and that factory parks in `Listener::accept()` until the
+/// next peer shows up — before this helper existed, `_cancel` could not
+/// reach that listener and a SIGINT handler had nothing to wake it with
+/// (ROADMAP "cancellable managed-listener re-accept"). The listener's
+/// `cancel_handle()` is published into the shared [`FactoryCancel`] slot
+/// around the accept; the managed transport's cancel handle fires the
+/// slot, the accept returns, and this reports `ExplicitClose` so the
+/// managed transport surfaces the caller-initiated close on its next turn.
+///
+/// Order of checks: bail before binding if already cancelled (no socket
+/// for a cancelled receiver); after the accept, any error while the slot
+/// is cancelled is the cancel (`AcceptError::ListenerClosed` today —
+/// not depended on), not a transport fault.
+pub(crate) fn listen_srt_cancellable(
+    host: &str,
+    port: u16,
+    cfg: &ListenerConfig,
+    cancel: &FactoryCancel,
+) -> Result<SrtTransport, TransportError> {
+    if cancel.is_cancelled() {
+        return Err(TransportError::ExplicitClose);
+    }
+    let bind_host = if host.is_empty() { "0.0.0.0" } else { host };
+    let addr = format!("{bind_host}:{port}");
+    let mut listener =
+        Listener::bind_with(cfg, addr.as_str()).map_err(|e| TransportError::Broken {
+            msg: format!("bind: {e}"),
+            errno_code: None,
+        })?;
+    cancel.install(Arc::new(listener.cancel_handle()));
+    let accepted = listener.accept();
+    cancel.clear();
+    match accepted {
+        Ok((socket, _peer)) => Ok(SrtTransport::new(socket)),
+        Err(_) if cancel.is_cancelled() => Err(TransportError::ExplicitClose),
+        Err(e) => Err(TransportError::Broken {
+            msg: format!("accept: {e}"),
+            errno_code: None,
+        }),
+    }
 }

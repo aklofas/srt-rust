@@ -353,9 +353,26 @@ impl core::marker::UnsafeUnpin for tst_pipeline::managed_demux_receiver::Managed
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 pub mod tst_pipeline::managed_receive
+pub struct tst_pipeline::managed_receive::FactoryCancel
+impl tst_pipeline::managed_receive::FactoryCancel
+pub fn tst_pipeline::managed_receive::FactoryCancel::cancel(&self)
+pub fn tst_pipeline::managed_receive::FactoryCancel::clear(&self)
+pub fn tst_pipeline::managed_receive::FactoryCancel::install(&self, alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>)
+pub fn tst_pipeline::managed_receive::FactoryCancel::is_cancelled(&self) -> bool
+pub fn tst_pipeline::managed_receive::FactoryCancel::new() -> Self
+impl core::default::Default for tst_pipeline::managed_receive::FactoryCancel
+pub fn tst_pipeline::managed_receive::FactoryCancel::default() -> tst_pipeline::managed_receive::FactoryCancel
+impl !core::marker::Freeze for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::Send for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::Sync for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::Unpin for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::UnsafeUnpin for tst_pipeline::managed_receive::FactoryCancel
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::FactoryCancel
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::FactoryCancel
 pub struct tst_pipeline::managed_receive::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(R, alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, tst_pipeline::reconnect::ReconnectPolicy) -> Self
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new_with_factory_cancel(R, alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, tst_pipeline::reconnect::ReconnectPolicy, alloc::sync::Arc<tst_pipeline::managed_receive::FactoryCancel>) -> Self
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnecting_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicBool>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
@@ -1622,6 +1639,22 @@ impl core::marker::Unpin for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::marker::UnsafeUnpin for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverStats
+pub struct tst_pipeline::FactoryCancel
+impl tst_pipeline::managed_receive::FactoryCancel
+pub fn tst_pipeline::managed_receive::FactoryCancel::cancel(&self)
+pub fn tst_pipeline::managed_receive::FactoryCancel::clear(&self)
+pub fn tst_pipeline::managed_receive::FactoryCancel::install(&self, alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>)
+pub fn tst_pipeline::managed_receive::FactoryCancel::is_cancelled(&self) -> bool
+pub fn tst_pipeline::managed_receive::FactoryCancel::new() -> Self
+impl core::default::Default for tst_pipeline::managed_receive::FactoryCancel
+pub fn tst_pipeline::managed_receive::FactoryCancel::default() -> tst_pipeline::managed_receive::FactoryCancel
+impl !core::marker::Freeze for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::Send for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::Sync for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::Unpin for tst_pipeline::managed_receive::FactoryCancel
+impl core::marker::UnsafeUnpin for tst_pipeline::managed_receive::FactoryCancel
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::FactoryCancel
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::FactoryCancel
 pub struct tst_pipeline::GapBuffer
 pub tst_pipeline::GapBuffer::bytes_dropped: u64
 pub tst_pipeline::GapBuffer::messages_dropped: u64
@@ -1687,6 +1720,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiv
 pub struct tst_pipeline::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(R, alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, tst_pipeline::reconnect::ReconnectPolicy) -> Self
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new_with_factory_cancel(R, alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, tst_pipeline::reconnect::ReconnectPolicy, alloc::sync::Arc<tst_pipeline::managed_receive::FactoryCancel>) -> Self
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnecting_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicBool>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>

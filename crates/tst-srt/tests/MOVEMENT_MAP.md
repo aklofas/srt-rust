@@ -71,6 +71,7 @@ tst-core +16, tst-pipeline +3 (net zero).
 | `handshake.rs` | `loopback/handshake.rs` |
 | `ipv6_loopback.rs` | `loopback/ipv6_loopback.rs` |
 | `listener_accept_timeout.rs` | `loopback/listener_accept_timeout.rs` |
+| (new 2026-09-06) | `loopback/listener_cancel.rs` |
 | `maxbw_roundtrip.rs` | `loopback/maxbw_roundtrip.rs` |
 | `payload_limit.rs` | `loopback/payload_limit.rs` |
 | `srto_sender.rs` | `loopback/srto_sender.rs` |

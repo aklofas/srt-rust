@@ -69,12 +69,97 @@
 //!   higher-level shell (`DemuxReceiver`) is responsible for calling
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
+use crate::reconnect::background::Shutdown;
 use crate::reconnect::{ReconnectMode, ReconnectPolicy};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use tracing::{debug, info, warn};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
+
+/// Cross-thread wake for a [`ManagedRecvTransport`] reconnect factory that
+/// blocks — the listener-mode re-accept, where the factory sits in
+/// `Listener::accept()` until a peer shows up and nothing else can reach
+/// that listener.
+///
+/// The factory calls [`install`](Self::install) with the handle that can
+/// unblock it (a `Listener::cancel_handle()`) right before blocking and
+/// [`clear`](Self::clear) right after. The managed transport's own cancel
+/// handle calls [`cancel`](Self::cancel), which fires whatever is installed
+/// and latches, so an `install` that lands after the cancel fires the handle
+/// immediately — closing the race where the cancel arrives between the
+/// factory's bind and its install. Once cancelled, the factory should
+/// return `TransportError::ExplicitClose` and the managed transport reports
+/// the caller-initiated close on its next turn.
+///
+/// Share one `Arc<FactoryCancel>` between the factory closure and
+/// [`ManagedRecvTransport::new_with_factory_cancel`].
+#[derive(Default)]
+pub struct FactoryCancel {
+    state: Mutex<FactoryCancelState>,
+}
+
+#[derive(Default)]
+struct FactoryCancelState {
+    cancelled: bool,
+    handle: Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>,
+}
+
+impl FactoryCancel {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Publish the handle that can wake the factory's current blocking
+    /// call. Fires it at once if [`cancel`](Self::cancel) already ran.
+    pub fn install(&self, handle: Arc<dyn tst_core::transport::TransportCancel + Send + Sync>) {
+        let fire_now = {
+            let mut s = self.lock();
+            if s.cancelled {
+                true
+            } else {
+                s.handle = Some(Arc::clone(&handle));
+                false
+            }
+        };
+        // Outside the lock: the handle may close a socket.
+        if fire_now {
+            handle.cancel();
+        }
+    }
+
+    /// Forget the installed handle (the blocking call returned).
+    pub fn clear(&self) {
+        self.lock().handle = None;
+    }
+
+    /// Latch cancelled and fire the installed handle, if any.
+    pub fn cancel(&self) {
+        let handle = {
+            let mut s = self.lock();
+            s.cancelled = true;
+            s.handle.take()
+        };
+        if let Some(h) = handle {
+            h.cancel();
+        }
+    }
+
+    /// `true` once [`cancel`](Self::cancel) has run. A factory checks this
+    /// before binding (skip the whole attempt) and after its blocking call
+    /// returns with an error (report `ExplicitClose`, not a transport fault).
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.lock().cancelled
+    }
+
+    // Recover on poison: the state is two plain fields, never left
+    // half-updated by a panic; cancel is best-effort by contract.
+    fn lock(&self) -> MutexGuard<'_, FactoryCancelState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
 
 /// Receive-side reconnect decorator.
 ///
@@ -146,6 +231,14 @@ pub struct ManagedRecvTransport<R: RecvTransport> {
     /// understating a send budget is safe; understating a recv ceiling
     /// was the PR #97 bug class.
     last_live_max_payload: usize,
+    /// Interruptible backoff wait: `cancel_handle().cancel()` and `close()`
+    /// signal it so a wait between reconnect attempts ends at once instead
+    /// of riding out the full delay (the send side's PR #158 shape).
+    shutdown: Arc<Shutdown>,
+    /// Slot the reconnect factory installs its wake handle into while it
+    /// blocks (listener re-accept); fired by the cancel handle. `None` for
+    /// factories that never block on anything cancel can reach.
+    factory_cancel: Option<Arc<FactoryCancel>>,
 }
 
 impl<R: RecvTransport> ManagedRecvTransport<R> {
@@ -158,6 +251,29 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
         inner: R,
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
         policy: ReconnectPolicy,
+    ) -> Self {
+        Self::build(inner, factory, policy, None)
+    }
+
+    /// Like [`new`](Self::new), with a [`FactoryCancel`] slot shared with
+    /// the factory so a cancel can reach a factory that blocks (a
+    /// listener-mode re-accept). The managed transport's cancel handle
+    /// fires the slot; the factory installs its wake handle into it around
+    /// its blocking call.
+    pub fn new_with_factory_cancel(
+        inner: R,
+        factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
+        policy: ReconnectPolicy,
+        factory_cancel: Arc<FactoryCancel>,
+    ) -> Self {
+        Self::build(inner, factory, policy, Some(factory_cancel))
+    }
+
+    fn build(
+        inner: R,
+        factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
+        policy: ReconnectPolicy,
+        factory_cancel: Option<Arc<FactoryCancel>>,
     ) -> Self {
         if policy.mode == ReconnectMode::Background {
             // Recv-side has no gap buffer and no background worker — there
@@ -185,6 +301,8 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
             reconnects: Arc::new(AtomicU64::new(0)),
             reconnecting: Arc::new(AtomicBool::new(false)),
             last_live_max_payload,
+            shutdown: Arc::new(Shutdown::new()),
+            factory_cancel,
         }
     }
 
@@ -298,7 +416,15 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                         "backoff before next attempt",
                     );
                 }
-                std::thread::sleep(delay);
+                // Interruptible: a cross-thread cancel (or close) signals
+                // `shutdown` and this returns early instead of riding out
+                // the delay — with the default exponential policy that
+                // could be 10 s of ignoring a Ctrl-C.
+                if self.shutdown.wait_timeout(delay) {
+                    self.closed = true;
+                    self.explicit_close = true;
+                    return Err(TransportError::ExplicitClose);
+                }
                 match (self.factory)() {
                     Ok(t) => {
                         // Plan B mutex sweep (recoverable path): poisoned
@@ -368,6 +494,7 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
         // subsequent recv_bytes calls return ExplicitClose (not Closed).
         self.closed = true;
         self.explicit_close = true;
+        self.shutdown.signal();
         if let Some(t) = self.inner.as_mut() {
             t.close();
         }
@@ -377,6 +504,8 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
         Some(Arc::new(ManagedRecvCancel {
             cancelled: self.cancelled.clone(),
             inner_cancel: self.inner_cancel.clone(),
+            shutdown: Arc::clone(&self.shutdown),
+            factory_cancel: self.factory_cancel.clone(),
         }))
     }
 
@@ -391,12 +520,20 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
 struct ManagedRecvCancel {
     cancelled: Arc<std::sync::atomic::AtomicBool>,
     inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>>,
+    shutdown: Arc<Shutdown>,
+    factory_cancel: Option<Arc<FactoryCancel>>,
 }
 
 impl tst_core::transport::TransportCancel for ManagedRecvCancel {
     fn cancel(&self) {
         self.cancelled
             .store(true, std::sync::atomic::Ordering::Release);
+        // Wake a backoff wait and a factory parked in re-accept; both are
+        // no-ops when nothing is waiting there.
+        self.shutdown.signal();
+        if let Some(fc) = &self.factory_cancel {
+            fc.cancel();
+        }
         let inner = self.inner_cancel.lock().ok().and_then(|mut g| g.take());
         if let Some(c) = inner {
             c.cancel();

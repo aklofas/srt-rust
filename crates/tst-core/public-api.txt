@@ -9,6 +9,8 @@ impl core::clone::Clone for tst_core::cancel::SrtCancelHandle
 pub fn tst_core::cancel::SrtCancelHandle::clone(&self) -> tst_core::cancel::SrtCancelHandle
 impl core::fmt::Debug for tst_core::cancel::SrtCancelHandle
 pub fn tst_core::cancel::SrtCancelHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl tst_core::transport::TransportCancel for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::cancel(&self)
 impl core::marker::Freeze for tst_core::cancel::SrtCancelHandle
 impl core::marker::Send for tst_core::cancel::SrtCancelHandle
 impl core::marker::Sync for tst_core::cancel::SrtCancelHandle
@@ -6945,6 +6947,8 @@ pub fn alloc::boxed::Box<T>::send_bytes(&mut self, &[u8]) -> core::result::Resul
 pub fn alloc::boxed::Box<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub trait tst_core::transport::TransportCancel: core::marker::Send + core::marker::Sync
 pub fn tst_core::transport::TransportCancel::cancel(&self)
+impl tst_core::transport::TransportCancel for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::cancel(&self)
 pub mod tst_core::url
 pub mod tst_core::url::common
 #[non_exhaustive] pub enum tst_core::url::common::UrlError
@@ -7536,6 +7540,8 @@ impl core::clone::Clone for tst_core::cancel::SrtCancelHandle
 pub fn tst_core::cancel::SrtCancelHandle::clone(&self) -> tst_core::cancel::SrtCancelHandle
 impl core::fmt::Debug for tst_core::cancel::SrtCancelHandle
 pub fn tst_core::cancel::SrtCancelHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl tst_core::transport::TransportCancel for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::cancel(&self)
 impl core::marker::Freeze for tst_core::cancel::SrtCancelHandle
 impl core::marker::Send for tst_core::cancel::SrtCancelHandle
 impl core::marker::Sync for tst_core::cancel::SrtCancelHandle
@@ -7745,3 +7751,5 @@ pub fn alloc::boxed::Box<T>::send_bytes(&mut self, &[u8]) -> core::result::Resul
 pub fn alloc::boxed::Box<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub trait tst_core::TransportCancel: core::marker::Send + core::marker::Sync
 pub fn tst_core::TransportCancel::cancel(&self)
+impl tst_core::transport::TransportCancel for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::cancel(&self)

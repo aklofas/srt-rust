@@ -24,6 +24,8 @@ mod handshake;
 mod ipv6_loopback;
 #[path = "loopback/listener_accept_timeout.rs"]
 mod listener_accept_timeout;
+#[path = "loopback/listener_cancel.rs"]
+mod listener_cancel;
 #[path = "loopback/maxbw_roundtrip.rs"]
 mod maxbw_roundtrip;
 #[path = "loopback/payload_limit.rs"]

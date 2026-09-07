@@ -81,6 +81,16 @@ impl SrtCancelHandle {
     }
 }
 
+/// A `SrtCancelHandle` is itself a [`TransportCancel`](crate::transport::TransportCancel):
+/// this lets a `Listener`'s handle (the cross-thread wake for a parked
+/// `accept()`) be installed wherever a `dyn TransportCancel` is expected —
+/// notably a managed receiver's reconnect-factory cancel slot.
+impl crate::transport::TransportCancel for SrtCancelHandle {
+    fn cancel(&self) {
+        SrtCancelHandle::cancel(self);
+    }
+}
+
 impl core::fmt::Debug for SrtCancelHandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SrtCancelHandle")

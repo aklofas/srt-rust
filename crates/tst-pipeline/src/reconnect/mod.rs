@@ -11,7 +11,7 @@
 //! per-outage worker thread (`ReconnectMode::Background`). On
 //! reconnect success, drains the gap buffer before resuming new sends.
 
-mod background;
+pub(crate) mod background;
 mod gap_buffer;
 mod recv_end_reason;
 

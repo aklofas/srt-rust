@@ -124,7 +124,7 @@ pub use dyn_aliases::{
 #[cfg(feature = "std")]
 pub use managed_demux_receiver::{ManagedDemuxReceiver, ManagedDemuxReceiverConfig};
 #[cfg(feature = "std")]
-pub use managed_receive::ManagedRecvTransport;
+pub use managed_receive::{FactoryCancel, ManagedRecvTransport};
 #[cfg(feature = "std")]
 pub use mux_publisher::{MuxPublisher, MuxPublisherError, MuxPublisherStats};
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderStats};

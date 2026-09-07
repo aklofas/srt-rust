@@ -6044,6 +6044,90 @@ bindings = ["java:org.tstrans.srt.ManagedReceiver"]
 scenario_ids = []
 tier = "A"
 
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::FactoryCancel"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::managed_receive::FactoryCancel"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::managed_receive::FactoryCancel::new"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::managed_receive::FactoryCancel::install"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::managed_receive::FactoryCancel::clear"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::managed_receive::FactoryCancel::cancel"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::managed_receive::FactoryCancel::is_cancelled"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_cancel_factory.rs"]
+# Used internally by the C ABI / Python / JVM managed listener factories (no
+# direct binding symbol); their parity tests: tst-c receiving::managed_listener_cancel,
+# tst-py test_srt_managed_listener_cancel.py, JVM SrtManagedListenerCancelTest.
+bindings = []
+scenario_ids = []
+tier = "A"
+
 # Graduated in the tst-jni srt sub-wave C: ManagedTransport is the managed SEND
 # transport — both basic (org.tstrans.srt.ManagedSender) and mux
 # (org.tstrans.srt.ManagedMuxSender) JVM shells wrap it.
@@ -6505,6 +6589,10 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 [[exempt]]
 item = "tst_pipeline::managed_receive::ManagedRecvTransport"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_pipeline::managed_receive::FactoryCancel::default"
+reason = "derive(Default); exercised through FactoryCancel::new in managed_receive_cancel_factory.rs"
 
 [[exempt]]
 item = "tst_pipeline::mux_publisher::MuxPublisher"

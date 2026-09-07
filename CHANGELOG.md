@@ -114,6 +114,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `-Wall -Werror` against the all-features cdylib on the linux-x86_64
   leg. Until now only the scenario adapter was built; the other examples
   could rot against a header change unnoticed.
+- **`tst_pipeline::FactoryCancel`** + `ManagedRecvTransport::new_with_factory_cancel`
+  — a cross-thread wake slot for a reconnect factory that blocks (a
+  listener-mode re-accept): the factory installs the handle that can
+  unblock it (`Listener::cancel_handle()`) around its blocking call, and
+  the managed transport's cancel handle fires the slot. Installing into an
+  already-cancelled slot fires immediately, so a cancel that lands between
+  bind and install is never lost. `SrtCancelHandle` now implements
+  `TransportCancel` so a listener's handle can be installed directly.
+  Recipe in `docs/reference/srt-cancel-handle.md`.
 
 ### Changed
 
@@ -204,6 +213,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   URL key landed, so the example printed "unexpectedly parsed OK" for
   that case; it now uses `?transtype=`, a key that is still deliberately
   unexposed. The new C twin `send_srt.c` mirrors the corrected table.
+- **Managed receivers in listener mode ignored cancel while looking for
+  a new peer.** After a disconnect the reconnect factory parks in
+  `Listener::accept()` with nothing able to reach that listener, and the
+  backoff between attempts was an uninterruptible `thread::sleep` (up to
+  10 s under the default exponential policy) — so `tst_managed_*_cancel`
+  / Python `cancel()` / a SIGINT handler built on them did nothing until
+  the next peer happened to connect (`recv_srt_events.c` documented
+  `kill -9` as the way out). Both waits are now woken by the cancel: the
+  C ABI's three `tst_managed_*_open_listener` families and the Python
+  `ManagedDemuxReceiver` listener factory install the listener's cancel
+  handle into a `FactoryCancel` slot, and `ManagedRecvTransport` waits out
+  its backoff on the same interruptible signal the send side has used
+  since 0.6.0. Pinned by `loopback_cancel_wakes_managed_listener_parked_in_reaccept`
+  (tst-c) and the `managed_receive_cancel_*` tests (tst-pipeline). The
+  first accept inside a listener open, before any handle exists, is
+  unchanged (still uncancellable).
 
 ---
 

@@ -571,7 +571,10 @@ with ManagedDemuxReceiver.from_url(
 
 Unlike the plain `DemuxReceiver` (listener only), `ManagedDemuxReceiver`
 accepts `mode=caller` too — it re-dials in caller mode and re-binds +
-re-accepts in listener mode.
+re-accepts in listener mode. `cancel_handle().cancel()` reaches every
+phase of that reconnect: a live receive, the backoff wait between
+attempts, and a re-accept parked with no peer in sight (the iterator
+raises `SrtError(CLOSED)` promptly in all three).
 
 **Stats drift on the managed shells** (mirrors the JVM binding):
 `ManagedSender.srt_stats()` and `ManagedReceiver.srt_stats()` raise

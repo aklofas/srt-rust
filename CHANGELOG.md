@@ -229,6 +229,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (tst-c) and the `managed_receive_cancel_*` tests (tst-pipeline). The
   first accept inside a listener open, before any handle exists, is
   unchanged (still uncancellable).
+- **C ABI: IPv6 `srt://` opens never resolved.** `SrtUrl` strips the
+  brackets from an IPv6 host, and the C ABI's caller connect and both
+  listener binds re-joined it as a bare `{host}:{port}` (`::1:9000`),
+  which `ToSocketAddrs` rejects. All three now go through one
+  `join_host_port` that re-brackets an IPv6 literal (the JVM binding's
+  helper shape; Python already did this). Found by review on this PR's
+  new cancellable listen helper, which had inherited the bug.
 
 ---
 

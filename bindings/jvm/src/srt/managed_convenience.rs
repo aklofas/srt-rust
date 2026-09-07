@@ -108,6 +108,43 @@ fn listen_srt(host: &str, port: u16, cfg: &ListenerConfig) -> Result<SrtTranspor
     Ok(SrtTransport::new(socket))
 }
 
+/// [`listen_srt`] for the reconnect factory: the listener's cancel handle
+/// is published into the shared `FactoryCancel` slot around the accept so
+/// `cancel()` can reach a re-accept parked with no peer in sight. Mirror of
+/// `tst-c`'s `listen_srt_cancellable`.
+fn listen_srt_cancellable(
+    host: &str,
+    port: u16,
+    cfg: &ListenerConfig,
+    cancel: &tst_pipeline::FactoryCancel,
+) -> Result<SrtTransport, TransportError> {
+    if cancel.is_cancelled() {
+        return Err(TransportError::ExplicitClose);
+    }
+    let bind_host = if host.is_empty() { "0.0.0.0" } else { host };
+    let addr = if host.contains(':') && !host.starts_with('[') {
+        format!("[{bind_host}]:{port}")
+    } else {
+        format!("{bind_host}:{port}")
+    };
+    let mut listener =
+        Listener::bind_with(cfg, addr.as_str()).map_err(|e| TransportError::Broken {
+            msg: format!("bind: {e}"),
+            errno_code: None,
+        })?;
+    cancel.install(Arc::new(listener.cancel_handle()));
+    let accepted = listener.accept();
+    cancel.clear();
+    match accepted {
+        Ok((socket, _peer)) => Ok(SrtTransport::new(socket)),
+        Err(_) if cancel.is_cancelled() => Err(TransportError::ExplicitClose),
+        Err(e) => Err(TransportError::Broken {
+            msg: format!("accept: {e}"),
+            errno_code: None,
+        }),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // JniManagedMuxSender — wraps MuxSender<ManagedTransport<SrtTransport>>.
 // ---------------------------------------------------------------------------
@@ -840,11 +877,15 @@ fn build_demux_from_url(
     let host_for_factory = host.clone();
     let listener_cfg_for_factory = listener_cfg.clone();
     let sock_cfg_for_factory = sock_cfg.clone();
+    // Listener mode: the re-accept is reachable by `cancel()` through this
+    // slot (see `listen_srt_cancellable`).
+    let factory_cancel = Arc::new(tst_pipeline::FactoryCancel::new());
+    let fc = Arc::clone(&factory_cancel);
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
         Box::new(move || {
             attempts_for_factory.fetch_add(1, Ordering::Release);
             if is_listener {
-                listen_srt(&host_for_factory, port, &listener_cfg_for_factory)
+                listen_srt_cancellable(&host_for_factory, port, &listener_cfg_for_factory, &fc)
             } else {
                 connect_srt(&host_for_factory, port, &sock_cfg_for_factory)
             }
@@ -869,7 +910,8 @@ fn build_demux_from_url(
         }
     };
 
-    let managed = ManagedRecvTransport::new(initial, factory, policy);
+    let managed =
+        ManagedRecvTransport::new_with_factory_cancel(initial, factory, policy, factory_cancel);
     let receiver = match opts {
         None => RustManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default()),
         Some(opts) => RustManagedDemuxReceiver::with_demux_options(

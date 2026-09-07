@@ -72,10 +72,9 @@ fn build_sender_transport(url: &str) -> Result<SrtTransport, TransportError> {
     Ok(SrtTransport::new(socket))
 }
 
-/// Build a fresh listener-mode `SrtTransport` from a URL string. Used by the
-/// recv-side reconnect factory: every Broken/Closed event re-binds and
-/// re-accepts one incoming SRT handshake.
-fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
+/// Parse a listener-mode URL into its bind address + `ListenerConfig`
+/// (shared by the initial open and the reconnect factory below).
+fn listener_bind_target(url: &str) -> Result<(String, ListenerConfig), TransportError> {
     let parsed = SrtUrl::parse(url).map_err(|e| TransportError::Broken {
         msg: format!("managed receiver factory: URL parse failed: {e}"),
         errno_code: None,
@@ -96,6 +95,11 @@ fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
     } else {
         join_host_port(&parsed.host, parsed.port)
     };
+    Ok((addr, cfg))
+}
+
+fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
+    let (addr, cfg) = listener_bind_target(url)?;
     let mut listener =
         Listener::bind_with(&cfg, addr.as_str()).map_err(|e| TransportError::Broken {
             msg: format!("managed receiver factory: bind failed: {e}"),
@@ -106,6 +110,38 @@ fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
         errno_code: None,
     })?;
     Ok(SrtTransport::new(socket))
+}
+
+/// [`build_receiver_transport`] for the RECONNECT factory: the listener's
+/// cancel handle is published into the shared `FactoryCancel` slot around
+/// the accept, so `cancel()` on the managed receiver can wake a re-accept
+/// parked with no peer in sight (mirror of `tst-c`'s
+/// `listen_srt_cancellable`; the initial open above stays plain because no
+/// handle exists yet to cancel it with).
+fn build_receiver_transport_cancellable(
+    url: &str,
+    cancel: &tst_pipeline::FactoryCancel,
+) -> Result<SrtTransport, TransportError> {
+    if cancel.is_cancelled() {
+        return Err(TransportError::ExplicitClose);
+    }
+    let (addr, cfg) = listener_bind_target(url)?;
+    let mut listener =
+        Listener::bind_with(&cfg, addr.as_str()).map_err(|e| TransportError::Broken {
+            msg: format!("managed receiver factory: bind failed: {e}"),
+            errno_code: None,
+        })?;
+    cancel.install(Arc::new(listener.cancel_handle()));
+    let accepted = listener.accept();
+    cancel.clear();
+    match accepted {
+        Ok((socket, _peer)) => Ok(SrtTransport::new(socket)),
+        Err(_) if cancel.is_cancelled() => Err(TransportError::ExplicitClose),
+        Err(e) => Err(TransportError::Broken {
+            msg: format!("managed receiver factory: accept failed: {e}"),
+            errno_code: None,
+        }),
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -497,12 +533,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
 
         // FnMut factory for the recv-side (no `Sync` required — it lives entirely
         // behind `&mut self` on the recv path).
+        // The factory's re-accept is reachable by `cancel()` through this
+        // slot (see `build_receiver_transport_cancellable`).
+        let factory_cancel = Arc::new(tst_pipeline::FactoryCancel::new());
         let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> = {
             let url_for_factory = url_str.clone();
-            Box::new(move || build_receiver_transport(&url_for_factory))
+            let fc = Arc::clone(&factory_cancel);
+            Box::new(move || build_receiver_transport_cancellable(&url_for_factory, &fc))
         };
 
-        let managed = ManagedRecvTransport::new(initial, factory, policy);
+        let managed =
+            ManagedRecvTransport::new_with_factory_cancel(initial, factory, policy, factory_cancel);
         // Snapshot the reconnect counter BEFORE moving `managed` into the shell.
         let reconnects = managed.reconnects_handle();
         let inner = PlReceiver::new(managed, ReceiverConfig::default());

@@ -196,3 +196,47 @@ above. See the **Sync vs. async** section in
 - [`binding-authors.md`](/docs/reference/binding-authors.md) — Cancel handles for binding authors.
 - [Graceful shutdown from another thread via `SrtCancelHandle`](/docs/cookbook/operations/graceful-shutdown.md) — the cookbook recipe.
 - [`guides/pipeline.md`](/docs/guides/pipeline.md) — Pipeline shell composition (where `cancel_handle()` lives).
+
+## Managed receivers in listener mode
+
+A listener-mode `ManagedRecvTransport` re-runs its factory after a peer
+disconnect, and that factory parks in `Listener::accept()` until the next
+peer arrives — a wait nothing outside the factory can reach. The managed
+transport's cancel handle reaches it through a `FactoryCancel` slot: the
+factory installs the listener's own cancel handle into the slot around
+its `accept()`, and the managed cancel fires whatever is installed (an
+install that lands after the cancel fires immediately, so there is no
+lost wake-up). The same cancel also interrupts the backoff wait between
+attempts.
+
+```rust,ignore
+use std::sync::Arc;
+use tst_pipeline::{FactoryCancel, ManagedRecvTransport, ReconnectPolicy, TransportError};
+use tst_srt::{ListenerBuilder, SrtTransport};
+
+let factory_cancel = Arc::new(FactoryCancel::new());
+let fc = Arc::clone(&factory_cancel);
+let factory = Box::new(move || -> Result<SrtTransport, TransportError> {
+    if fc.is_cancelled() {
+        return Err(TransportError::ExplicitClose);
+    }
+    let mut listener = ListenerBuilder::new().bind("0.0.0.0:9000")
+        .map_err(|e| TransportError::Broken { msg: e.to_string(), errno_code: None })?;
+    fc.install(Arc::new(listener.cancel_handle()));   // `SrtCancelHandle: TransportCancel`
+    let accepted = listener.accept();
+    fc.clear();
+    match accepted {
+        Ok((socket, _peer)) => Ok(SrtTransport::new(socket)),
+        Err(_) if fc.is_cancelled() => Err(TransportError::ExplicitClose),
+        Err(e) => Err(TransportError::Broken { msg: e.to_string(), errno_code: None }),
+    }
+});
+let managed = ManagedRecvTransport::new_with_factory_cancel(initial, factory, ReconnectPolicy::default(), factory_cancel);
+// `managed.cancel_handle()` now wakes the re-accept as well as a live recv.
+```
+
+The C ABI's `tst_managed_*_open_listener` family and the Python
+`ManagedDemuxReceiver` in listener mode are wired this way internally,
+so their `_cancel` / `cancel()` cover the re-accept window. The one
+accept that stays uncancellable is the very first one inside a listener
+open, before any handle exists.

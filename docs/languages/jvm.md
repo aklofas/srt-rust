@@ -1167,7 +1167,10 @@ try (ManagedDemuxReceiver rx = ManagedDemuxReceiver.fromUrl(
 
 Unlike the plain `DemuxReceiver` (listener only), `ManagedDemuxReceiver` accepts
 `mode=caller` too — in caller mode it re-dials on each reconnect; in listener
-mode it re-binds and re-accepts.
+mode it re-binds and re-accepts. `cancelHandle().cancel()` reaches every phase
+of that reconnect — a live receive, the backoff wait between attempts, and a
+re-accept parked with no peer in sight — and the iterator ends with
+`SrtException(CLOSED)` promptly in all three.
 
 ### Stats drifts on the managed shells
 

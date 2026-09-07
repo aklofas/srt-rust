@@ -79,9 +79,10 @@
  *       [META] klv decode failed bytes=33: buffer truncated at offset 17: needed 3 bytes, have 0
  *       [SMPL] pts=0 dts=- key=1 codec=H264 size=500 nals=1
  *       [META] klv decode failed bytes=33: buffer truncated at offset 0: needed 2 bytes, have 1
- *     Stop the receiver afterward with `kill -9` (or a second Ctrl-C
- *     press) — see the GOTCHA note for why a single Ctrl-C may not land
- *     promptly once the sender has already disconnected.
+ *     Stop the receiver afterward with a single Ctrl-C: once the sender
+ *     has disconnected the receiver is parked in its reconnect re-accept,
+ *     and `_cancel` (this example's SIGINT path) wakes that too — see the
+ *     NOTE below on the reconnect-search window.
  *
  *   Recipe 2 — reliable Ctrl-C / cancel-path demo (a 5-second continuous
  *   stream gives a wide, easy-to-hit window to cancel while GENUINELY
@@ -107,23 +108,21 @@
  *   `srt-live-transmit srt://:9000?mode=listener ...`):
  *     LD_LIBRARY_PATH=target/debug /tmp/recv_srt_events srt://127.0.0.1:9000
  *
- *   GOTCHA — observed this session, not (yet) a documented library
- *   guarantee either way: if a peer disconnects and this listener-mode
- *   receiver goes looking for a NEW one (managed auto-reconnect), Ctrl-C
- *   during THAT specific window does not exit promptly. tstrans.h already
- *   documents that a listener's `accept()` wait is unbounded AND that
- *   `?x-recvtimeout` does NOT apply to it (SRTO_RCVTIMEO only governs a
- *   connected socket's recv, not `srt_accept`) — so the periodic wakeup
- *   this example relies on for Ctrl-C responsiveness (see
- *   `url_with_recv_timeout` below) never fires during that specific
- *   reconnect-search window either, and `g_shutdown_requested` just sits
- *   set until `_recv_event` eventually returns on its own. A second
- *   signal (`kill -9`) is the practical way out if you land in this
- *   window. This is a real, reproducible interaction worth a closer look
- *   outside the scope of this example — it does NOT affect the
- *   documented, and verified above (Recipe 2), "cancel while genuinely
- *   blocked in `_recv_event` on an established connection" contract this
- *   example's SIGINT handling is built around.
+ *   NOTE — the reconnect-search window: if a peer disconnects and this
+ *   listener-mode receiver goes looking for a NEW one (managed
+ *   auto-reconnect), the reader thread is either waiting out the
+ *   policy's backoff or parked in a fresh `accept()` with no peer in
+ *   sight. Neither is bounded by `?x-recvtimeout` (SRTO_RCVTIMEO governs a
+ *   connected socket's recv, not `srt_accept`), so the periodic wakeup
+ *   this example relies on never fires there. What makes Ctrl-C land
+ *   promptly in that window anyway is `_cancel` itself: the managed
+ *   receiver's cancel interrupts the backoff wait AND closes the listener
+ *   its factory is parked on, so `_recv_event` returns `TST_E_CLOSED`
+ *   within milliseconds (pinned by the tst-c test
+ *   `loopback_cancel_wakes_managed_listener_parked_in_reaccept`). Earlier
+ *   builds ignored the cancel in this window and needed a `kill -9`.
+ *   The one accept that still cannot be cancelled is the very FIRST one,
+ *   inside `_open_listener` before any handle exists to cancel.
  *
  *   NOTE on `mux_synthetic_srt.c`'s KLV (Recipe 1 only): its `make_klv()`
  *   writes the 16-byte ST 0601 Universal Label + a BER length byte, but

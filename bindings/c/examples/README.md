@@ -306,9 +306,10 @@ by knob (20 attempts, exponential 50 ms → 2 s, gap 256, DROP_OLDEST) with
 the rationale for each value; the sender's loop treats send errors as
 informational and never sees the outages. Peer mechanics worth reading
 before copying: the listener socket is released at accept, so closing
-the accepted handle IS the disconnect simulation; a thread blocked in
-`_open_listener` cannot be cancelled through the C ABI, so main joins
-with a deadline. The C twin of
+the accepted handle IS the disconnect simulation; a thread blocked in a
+plain `_open_listener` has no handle to cancel yet (the managed
+receiver's reconnect re-accept is cancellable; this first open is not),
+so main joins with a deadline. The C twin of
 [`managed_reconnect.rs`](../../../examples/operations/managed_reconnect.rs).
 
 ```sh

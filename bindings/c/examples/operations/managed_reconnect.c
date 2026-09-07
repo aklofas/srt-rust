@@ -34,11 +34,12 @@
  *     broken transport on its next send — and THAT is the entire
  *     disconnect simulation. The next round's `_open_listener` re-binds
  *     the port so the sender's reconnect has something to dial.
- *   - A thread blocked in `_open_listener` cannot be cancelled through the
- *     C ABI today (there is no handle to cancel until accept returns), so
- *     main joins the peer with a DEADLINE and reports rather than hangs if
- *     the choreography ever goes wrong (see Step 6). ROADMAP tracks a
- *     cancellable listener re-accept.
+ *   - A thread blocked in a PLAIN `_open_listener` (this peer) cannot be
+ *     cancelled through the C ABI: no handle exists until accept returns.
+ *     (The MANAGED receiver's reconnect re-accept is the other case, and
+ *     `_cancel` does wake that one.) So main joins the peer with a
+ *     DEADLINE and reports rather than hangs if the choreography ever goes
+ *     wrong (see Step 6).
  *
  * Build (from the ts-transformer workspace root):
  *   SRT_FORCE_VENDORED=1 cargo build -p tst-c --features srt
@@ -431,8 +432,8 @@ int main(void) {
      * ── Step 6: Bounded join of the peer ─────────────────────────────────
      *
      * pthread_timedjoin_np (GNU) rather than pthread_join: a peer stuck in
-     * an accept nobody will ever complete cannot be cancelled through the C
-     * ABI, and an unbounded join would hang the process. Return from main
+     * a plain `_open_listener` accept nobody will ever complete has no
+     * handle to cancel, and an unbounded join would hang the process. Return from main
      * ends the process (and the stuck thread) either way; the deadline just
      * turns "hangs forever" into a diagnosed non-zero exit.
      */

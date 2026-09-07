@@ -32,7 +32,7 @@ pub(crate) fn listen_srt(
     cfg: &ListenerConfig,
 ) -> Result<SrtTransport, TransportError> {
     let bind_host = if host.is_empty() { "0.0.0.0" } else { host };
-    let addr = format!("{bind_host}:{port}");
+    let addr = crate::srt_addr::join_host_port(bind_host, port);
     let mut listener = Listener::bind_with(cfg, addr.as_str()).map_err(|e| {
         // Bind/accept errors aren't libsrt MJ_* errnos in the typed
         // sense — pass None and let the message carry the detail.
@@ -75,7 +75,7 @@ pub(crate) fn listen_srt_cancellable(
         return Err(TransportError::ExplicitClose);
     }
     let bind_host = if host.is_empty() { "0.0.0.0" } else { host };
-    let addr = format!("{bind_host}:{port}");
+    let addr = crate::srt_addr::join_host_port(bind_host, port);
     let mut listener =
         Listener::bind_with(cfg, addr.as_str()).map_err(|e| TransportError::Broken {
             msg: format!("bind: {e}"),

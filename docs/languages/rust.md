@@ -122,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 On the receiver side, run something like:
 
 ```bash
-srt-live-transmit srt://:9000 file:///tmp/out.ts
+srt-live-transmit srt://:9000 file://con > /tmp/out.ts
 ```
 
 For the full runnable version with synthetic frames + commentary on every

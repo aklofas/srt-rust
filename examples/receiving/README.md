@@ -47,7 +47,7 @@ Reads a pre-muxed `.ts` from disk and relays it over SRT via the
 TS-bytes-in `pipeline::Sender` path (the input is already muxed
 upstream, e.g. by ffmpeg). Useful for testing SRT options against a
 captured stream without standing up a live encoder. Pair with
-`srt-live-transmit srt://:9000 file:///tmp/out.ts` (or another
+`srt-live-transmit srt://:9000 file://con > /tmp/out.ts` (or another
 SRT-aware listener) on the receiver side.
 
 Cookbook: [Relay a captured `.ts` file over SRT](../../docs/cookbook/sending/relay-file-to-srt.md).

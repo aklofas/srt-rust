@@ -23,7 +23,7 @@
  *   LD_LIBRARY_PATH=target/debug /tmp/mux_synthetic_srt 127.0.0.1:9000
  *
  * Run (receiver, separate terminal — receives and writes to a .ts file):
- *   srt-live-transmit srt://:9000 file:///tmp/out.ts
+ *   srt-live-transmit srt://:9000 file://con > /tmp/out.ts
  *
  * Verify the output:
  *   ffprobe /tmp/out.ts

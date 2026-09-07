@@ -6,7 +6,7 @@
 //! when the upstream is an encoder and the downstream is an SRT peer.
 //!
 //! On the receiver side, run something like:
-//!   srt-live-transmit srt://:9000 file:///tmp/out.ts
+//!   srt-live-transmit srt://:9000 file://con > /tmp/out.ts
 //!
 //! Usage: `cargo run -p tst-examples --example send_pipeline_to_socket -- 127.0.0.1:9000`
 

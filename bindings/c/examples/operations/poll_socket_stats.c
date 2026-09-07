@@ -18,7 +18,7 @@
  *
  * Run:
  *   # Terminal 1 (receiver — anything that accepts a libsrt connection):
- *   srt-live-transmit srt://:9000?mode=listener file:///tmp/out.ts
+ *   srt-live-transmit 'srt://:9000?mode=listener' file://con > /tmp/out.ts
  *
  *   # Terminal 2 (this example):
  *   LD_LIBRARY_PATH=../../target/debug /tmp/poll_socket_stats srt://127.0.0.1:9000
